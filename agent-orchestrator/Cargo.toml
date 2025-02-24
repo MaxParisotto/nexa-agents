@@ -1,0 +1,18 @@
+[package]
+name = "agent-orchestrator"
+version = "0.1.0"
+edition = "2021"
+authors = ["Cline"]
+description = "AI agent orchestration logic and core services"
+license = "MIT"
+repository = "https://github.com/your-organization/nexa-agents"
+
+[dependencies]
+dioxus = { version = "0.6.3" }
+tokio = { version = "1.0", features = ["full"] }
+chrono = "0.4"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+[[bin]]
+name = "agent-orchestrator"
+path = "src/main.rs"

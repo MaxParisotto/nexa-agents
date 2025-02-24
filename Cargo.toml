@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "agent-orchestrator",
+  "task-management-api"
+]
+
+resolver = "2"

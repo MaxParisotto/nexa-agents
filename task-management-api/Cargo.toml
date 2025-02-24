@@ -1,0 +1,19 @@
+[package]
+name = "task-management-api"
+version = "0.1.0"
+edition = "2021"
+authors = ["Cline"]
+description = "RESTful task management API for Nexa Agents"
+license = "MIT"
+repository = "https://github.com/your-organization/nexa-agents"
+
+[dependencies]
+actix-web = { version = "4.9.0" }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+chrono = "0.4"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+[[bin]]
+name = "task-management-api"
+path = "src/main.rs"
