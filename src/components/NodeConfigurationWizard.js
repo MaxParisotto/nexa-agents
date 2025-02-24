@@ -11,6 +11,8 @@ import {
   InputLabel,
   FormControl,
 } from '@mui/material';
+import store from '../store';
+import { addNotification } from '../store/actions/systemActions';
 
 const NodeConfigurationWizard = ({ open, onClose, onNodeAdd, lmStudioAddress, ollamaAddress }) => {
   const [nodeType, setNodeType] = useState('agent');
@@ -49,7 +51,24 @@ const NodeConfigurationWizard = ({ open, onClose, onNodeAdd, lmStudioAddress, ol
     setInferenceApi(event.target.value);
   };
 
+  const isValidUrl = (string) => {
+    try {
+      new URL(string);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   const handleAddNode = () => {
+    if (!isValidUrl(apiAddress)) {
+      store.dispatch(addNotification({
+        type: 'error',
+        message: 'Invalid API Address. Please enter a valid URL.'
+      }));
+      return;
+    }
+
     const newNode = {
       id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
       position: { x: 0, y: 0 },
@@ -64,6 +83,12 @@ const NodeConfigurationWizard = ({ open, onClose, onNodeAdd, lmStudioAddress, ol
       },
       type: nodeType,
     };
+
+    store.dispatch(addNotification({
+      type: 'info',
+      message: `New node added with API Address: ${apiAddress}`
+    }));
+
     onNodeAdd(newNode);
     onClose();
   };

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { Route, Routes, BrowserRouter } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import DashboardLayout from './components/Layout/DashboardLayout';
@@ -8,72 +9,51 @@ import Agents from './components/Agents';
 import Tasks from './components/Tasks';
 import Settings from './components/Settings';
 import Logs from './components/Logs';
+import { updateSettings } from './store/actions/settingsActions';
 import websocketService from './services/websocket';
 
-// Create a theme instance
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-    background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
-    },
-  },
-  typography: {
-    fontFamily: [
-      '-apple-system',
-      'BlinkMacSystemFont',
-      '"Segoe UI"',
-      'Roboto',
-      '"Helvetica Neue"',
-      'Arial',
-      'sans-serif',
-    ].join(','),
-  },
-  components: {
-    MuiCssBaseline: {
-      styleOverrides: {
-        body: {
-          backgroundColor: '#f5f5f5',
-        },
-      },
-    },
-  },
-});
+const App = () => {
+  const dispatch = useDispatch();
+  const settings = useSelector(state => state.settings);
 
-function App() {
   useEffect(() => {
+    // Load settings from localStorage
+    const storedSettings = localStorage.getItem('settings');
+    if (storedSettings) {
+      dispatch(updateSettings(JSON.parse(storedSettings)));
+    }
+
     // Initialize WebSocket connection
     websocketService.connect();
 
-    // Cleanup on unmount
+    // Clean up WebSocket connection on unmount
     return () => {
       websocketService.disconnect();
     };
-  }, []);
+  }, [dispatch]);
+
+  const theme = createTheme({
+    palette: {
+      mode: 'light',
+    },
+  });
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <BrowserRouter>
         <DashboardLayout>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route exact path="/" element={<Dashboard />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/logs" element={<Logs />} />
           </Routes>
         </DashboardLayout>
-      </Router>
+      </BrowserRouter>
     </ThemeProvider>
   );
-}
+};
 
 export default App;

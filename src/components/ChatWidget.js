@@ -48,29 +48,49 @@ const ChatWidget = () => {
     // Fetch models directly from APIs
     const fetchModels = async () => {
       try {
-        let response;
+          let response;
         if (server === 'lmstudio' && lmStudioAddress) {
-          response = await axios.get(`${lmStudioAddress}/api/models`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+          try {
+            response = await axios.get(`http://localhost:1234/v1/models`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              }
+            });
+            if (response.data && response.data.data && Array.isArray(response.data.data)) {
+              setModels(response.data.data.map(model => model.id));
+            } else {
+              console.error('Error: LM Studio /v1/models response is not in the expected format', response.data);
+              setModels([]);
             }
-          });
-          setModels(response.data.map(model => model.id));
+          } catch (error) {
+            console.error('Error fetching LM Studio models:', error);
+            setModels([]);
+          }
         } else if (server === 'ollama' && ollamaAddress) {
-          response = await axios.get(`${ollamaAddress}/api/models`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+          try {
+            response = await axios.get(`http://localhost:11434/api/tags`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              }
+            });
+            if (response.data && Array.isArray(response.data.models)) {
+              setModels(response.data.models.map(model => model.name));
+            } else {
+              console.error('Error: Ollama /api/tags response is not in the expected format', response.data);
+              setModels([]);
             }
-          });
-          setModels(response.data.models.map(model => model.name));
+          } catch (error) {
+            console.error('Error fetching Ollama models:', error);
+            setModels([]);
+          }
         }
       } catch (error) {
         console.error('Error fetching models:', error);
         setModels([]);
       }
-    };
+    }
 
     fetchModels();
   }, [lmStudioAddress, ollamaAddress, server]);
@@ -91,9 +111,10 @@ const ChatWidget = () => {
     try {
       let response;
       if (server === 'lmstudio') {
-        response = await axios.post(`${lmStudioAddress}/api/chat`, {
+        response = await axios.post(`${lmStudioAddress}/v1/chat/completions`, {
           model: model,
-          messages: [{ role: 'user', content: message }]
+          messages: [{ role: 'user', content: message }],
+          stream: false
         }, {
           headers: {
             'Content-Type': 'application/json',
@@ -113,7 +134,7 @@ const ChatWidget = () => {
         });
       }
 
-      const responseText = server === 'lmstudio' 
+      const responseText = server === 'lmstudio'
         ? response.data.choices[0].message.content
         : response.data.response;
 

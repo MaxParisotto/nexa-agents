@@ -14,20 +14,13 @@ class WebSocketService {
   }
 
   connect() {
-    // Get the client's IP address from the window location
-    const clientIP = window.location.hostname;
-    const isDevelopment = process.env.NODE_ENV === 'development';
+    // Get settings from store
+    const settings = store.getState().settings;
+    const port = settings.port;
     let serverUrl;
 
-    if (isDevelopment) {
-      // In development, connect to the server using the client's IP
-      serverUrl = clientIP === 'localhost' 
-        ? 'http://localhost:5000'
-        : `http://${clientIP}:5000`;
-    } else {
-      // In production, use the current window location
-      serverUrl = `${window.location.protocol}//${window.location.host}`;
-    }
+    // In production, use the current window location
+    serverUrl = `${window.location.protocol}//${window.location.host}`;
 
     console.log('Connecting to WebSocket server at:', serverUrl);
     

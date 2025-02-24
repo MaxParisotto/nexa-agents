@@ -1,20 +1,35 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Typography, Box, TextField, Select, MenuItem, InputLabel, FormControl, Button } from '@mui/material';
-import ReactFlow, {
-  ReactFlowProvider,
-  addEdge,
+import { Typography, Box, Button } from '@mui/material';
+import {
+  ReactFlow,
+  Controls,
+  Background,
+  Panel,
   useNodesState,
   useEdgesState,
+  addEdge,
+  ReactFlowProvider,
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
 import NodeConfigurationWizard from './NodeConfigurationWizard';
 
 const initialNodes = [
-  { id: '1', position: { x: 0, y: 0 }, data: { label: 'Agent Node' } },
+  {
+    id: '1',
+    position: { x: 0, y: 0 },
+    data: { label: 'Agent Node' },
+    type: 'default'
+  },
 ];
 
 const initialEdges = [];
+
+const flowStyles = {
+  background: '#f8f9fa',
+  width: '100%',
+  height: 500
+};
 
 const Agents = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -44,15 +59,45 @@ const Agents = () => {
   };
 
   const handleNodeAdd = (newNode) => {
-    setNodes((nds) => nds.concat(newNode));
+    setNodes((nds) => nds.concat({
+      ...newNode,
+      type: 'default',
+      dragHandle: '.custom-drag-handle'
+    }));
   };
 
   return (
-    <Box sx={{ flexGrow: 1, p: 3, height: '500px' }}>
+    <Box sx={{ flexGrow: 1, p: 3, height: '100%', minHeight: '500px' }}>
       <Typography variant="h4" gutterBottom>
         Agents
       </Typography>
-      <Button variant="contained" onClick={handleAddNodeClick}>Add Node</Button>
+      
+      <ReactFlowProvider>
+        <div style={flowStyles}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            fitView
+            attributionPosition="bottom-right"
+          >
+            <Background />
+            <Controls />
+            <Panel position="top-right">
+              <Button 
+                variant="contained" 
+                onClick={handleAddNodeClick}
+                sx={{ mb: 2 }}
+              >
+                Add Node
+              </Button>
+            </Panel>
+          </ReactFlow>
+        </div>
+      </ReactFlowProvider>
+
       <NodeConfigurationWizard
         open={isNodeConfigurationOpen}
         onClose={handleNodeConfigurationClose}
@@ -60,16 +105,6 @@ const Agents = () => {
         lmStudioAddress={lmStudioAddress}
         ollamaAddress={ollamaAddress}
       />
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          fitView
-        />
-      </ReactFlowProvider>
     </Box>
   );
 };
