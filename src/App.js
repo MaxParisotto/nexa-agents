@@ -1,8 +1,11 @@
 import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import Dashboard from './components/Dashboard/Dashboard';
+import Agents from './components/Agents';
+import Tasks from './components/Tasks';
 import websocketService from './services/websocket';
 
 // Create a theme instance
@@ -56,9 +59,15 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <DashboardLayout>
-        <Dashboard />
-      </DashboardLayout>
+      <Router>
+        <DashboardLayout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/tasks" element={<Tasks />} />
+          </Routes>
+        </DashboardLayout>
+      </Router>
     </ThemeProvider>
   );
 }

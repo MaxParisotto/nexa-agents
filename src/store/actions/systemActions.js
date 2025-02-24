@@ -53,10 +53,10 @@ export const startSystemMonitoring = () => {
       // Start periodic metrics collection
       const metricsInterval = setInterval(() => {
         const metrics = {
-          cpuUsage: Math.random() * 100, // Replace with actual metrics
-          memoryUsage: Math.random() * 100,
-          activeAgents: Math.floor(Math.random() * 10),
-          pendingTasks: Math.floor(Math.random() * 20)
+          cpuUsage: null, // Replace with actual metrics
+          memoryUsage: null,
+          activeAgents: null,
+          pendingTasks: null
         };
         dispatch(updateMetrics(metrics));
       }, 5000);

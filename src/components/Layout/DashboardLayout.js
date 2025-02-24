@@ -124,7 +124,7 @@ const DashboardLayout = ({ children }) => {
         <Divider />
         <List>
           {menuItems.map((item) => (
-            <ListItem button key={item.text}>
+            <ListItem button key={item.text} onClick={() => { window.location.href = item.path; }}>
               <ListItemIcon>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
             </ListItem>
