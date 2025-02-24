@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { styled } from '@mui/material/styles';
 import {
   Box,
@@ -127,9 +128,11 @@ const DashboardLayout = ({ children }) => {
         <Divider />
         <List>
           {menuItems.map((item) => (
-            <ListItem button key={item.text} onClick={() => { window.location.href = item.path; }}>
+            <ListItem button="true" key={item.text}>
               <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} />
+              <Link to={item.path} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <ListItemText primary={item.text} />
+              </Link>
             </ListItem>
           ))}
         </List>

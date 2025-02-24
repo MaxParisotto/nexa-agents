@@ -53,11 +53,33 @@ class WebSocketService {
 
     this.socket.on('connect_error', (error) => {
       store.dispatch(updateWebsocketStatus('error'));
-      store.dispatch(addError({
-        type: 'connection',
-        message: 'Failed to connect to server',
-        error: error.message
-      }));
+      
+      // Only show the error once, not repeatedly
+      if (!this.hasShownConnectError) {
+        this.hasShownConnectError = true;
+        
+        console.log('WebSocket connection error:', error);
+        
+        // Provide a more specific error message based on the error
+        let errorMessage = 'Failed to connect to server.';
+        
+        if (error.message.includes('ECONNREFUSED')) {
+          errorMessage = 'Cannot connect to the server. The server may not be running.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Connection to server timed out. The server may be overloaded or unreachable.';
+        }
+        
+        store.dispatch(addError({
+          type: 'connection',
+          message: `${errorMessage} The application will continue to function with limited capabilities. To resolve this issue, ensure the server is running on port 5000.`,
+          error: error.message
+        }));
+      }
+    });
+    
+    // Reset the error flag when we successfully connect
+    this.socket.on('connect', () => {
+      this.hasShownConnectError = false;
     });
 
     // Handle incoming events

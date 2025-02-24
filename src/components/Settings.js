@@ -24,6 +24,11 @@ const Settings = () => {
   });
 
   useEffect(() => {
+    console.log('LM Studio Address:', localStorage.getItem('lmStudioAddress'));
+    console.log('Ollama Address:', localStorage.getItem('ollamaAddress'));
+  }, []);
+
+  useEffect(() => {
     // Fetch models on component mount and when URLs change
     if (formData.lmStudio.apiUrl) {
       dispatch(fetchModels('lmStudio', formData.lmStudio.apiUrl));
@@ -156,6 +161,19 @@ const Settings = () => {
       <Typography variant="h4" gutterBottom>
         Settings
       </Typography>
+      
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="body1" color="text.secondary" paragraph>
+          Configure your LLM providers below. If you don't have LM Studio or Ollama running locally, 
+          you'll see connection errors, but the application will still function with fallback models.
+        </Typography>
+        <Typography variant="body2" color="info.main" paragraph>
+          • LM Studio typically runs on port 1234 (http://localhost:1234)
+        </Typography>
+        <Typography variant="body2" color="info.main" paragraph>
+          • Ollama typically runs on port 11434 (http://localhost:11434)
+        </Typography>
+      </Box>
       
       {renderProviderCard('lmStudio', 'LM Studio')}
       {renderProviderCard('ollama', 'Ollama')}

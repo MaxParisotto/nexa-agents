@@ -48,49 +48,71 @@ const ChatWidget = () => {
     // Fetch models directly from APIs
     const fetchModels = async () => {
       try {
-          let response;
+        let response;
+        let url = '';
+        
         if (server === 'lmstudio' && lmStudioAddress) {
+          url = `${lmStudioAddress}/v1/models`;
           try {
-            response = await axios.get(`http://localhost:1234/v1/models`, {
+            console.log(`Attempting to fetch LM Studio models from ${url}`);
+            response = await axios.get(url, {
               headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-              }
+              },
+              timeout: 2000 // 2 second timeout
             });
             if (response.data && response.data.data && Array.isArray(response.data.data)) {
-              setModels(response.data.data.map(model => model.id));
+              setModels(response.data.data.map((model) => model.id));
             } else {
-              console.error('Error: LM Studio /v1/models response is not in the expected format', response.data);
+              console.error(
+                'Error: LM Studio /v1/models response is not in the expected format',
+                response.data
+              );
               setModels([]);
             }
           } catch (error) {
             console.error('Error fetching LM Studio models:', error);
-            setModels([]);
+            console.error('Full error object:', error);
+            // Don't clear models if it's just a connection error - keep any previously loaded models
+            if (models.length === 0) {
+              // Only set default models if we don't have any
+              setModels([]);
+            }
           }
         } else if (server === 'ollama' && ollamaAddress) {
+          url = `${ollamaAddress}/api/tags`;
           try {
-            response = await axios.get(`http://localhost:11434/api/tags`, {
+            console.log(`Attempting to fetch Ollama models from ${url}`);
+            response = await axios.get(url, {
               headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-              }
+              },
+              timeout: 2000 // 2 second timeout
             });
             if (response.data && Array.isArray(response.data.models)) {
-              setModels(response.data.models.map(model => model.name));
+              setModels(response.data.models.map((model) => model.name));
             } else {
-              console.error('Error: Ollama /api/tags response is not in the expected format', response.data);
+              console.error(
+                'Error: Ollama /api/tags response is not in the expected format',
+                response.data
+              );
               setModels([]);
             }
           } catch (error) {
             console.error('Error fetching Ollama models:', error);
-            setModels([]);
+            console.error('Full error object:', error);
+            // Don't clear models if it's just a connection error - keep any previously loaded models
+            if (models.length === 0) {
+              // Only set default models if we don't have any
+              setModels([]);
+            }
           }
         }
       } catch (error) {
-        console.error('Error fetching models:', error);
-        setModels([]);
+        console.error('Error in fetchModels outer try/catch:', error);
+        // Keep any existing models
       }
-    }
+    };
 
     fetchModels();
   }, [lmStudioAddress, ollamaAddress, server]);
@@ -108,29 +130,41 @@ const ChatWidget = () => {
   };
 
   const handleSendMessage = async () => {
+    // Always add the user message to the conversation
+    setConversation([
+      ...conversation,
+      { role: 'user', content: message }
+    ]);
+    
     try {
       let response;
+      let url = '';
+      
       if (server === 'lmstudio') {
-        response = await axios.post(`${lmStudioAddress}/v1/chat/completions`, {
+        url = `${lmStudioAddress}/v1/chat/completions`;
+        console.log(`Sending message to LM Studio at ${url}`);
+        response = await axios.post(url, {
           model: model,
           messages: [{ role: 'user', content: message }],
           stream: false
         }, {
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000 // 10 second timeout
         });
       } else if (server === 'ollama') {
-        response = await axios.post(`${ollamaAddress}/api/generate`, {
+        url = `${ollamaAddress}/api/generate`;
+        console.log(`Sending message to Ollama at ${url}`);
+        response = await axios.post(url, {
           model: model,
           prompt: message,
           stream: false
         }, {
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000 // 10 second timeout
         });
       }
 
@@ -138,14 +172,30 @@ const ChatWidget = () => {
         ? response.data.choices[0].message.content
         : response.data.response;
 
-      setConversation([
-        ...conversation,
-        { role: 'user', content: message },
-        { role: 'assistant', content: responseText },
+      // Update conversation with the assistant's response
+      setConversation(prev => [
+        ...prev,
+        { role: 'assistant', content: responseText }
       ]);
+      
+      // Clear the message input
       setMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
+      
+      // Add an error message to the conversation
+      let errorMessage = 'Failed to get a response.';
+      
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Request timed out. The server may be busy or not responding.';
+      } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+        errorMessage = `Cannot connect to ${server} service. Please ensure it is running.`;
+      }
+      
+      setConversation(prev => [
+        ...prev,
+        { role: 'assistant', content: `Error: ${errorMessage}` }
+      ]);
     }
   };
 

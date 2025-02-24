@@ -32,10 +32,12 @@ export const fetchModels = (provider, apiUrl) => async (dispatch) => {
   try {
     let url = '';
     if (provider === 'lmStudio') {
-      url = 'http://localhost:1234/v1/models';
+      url = apiUrl ? `${apiUrl}/v1/models` : 'http://localhost:1234/v1/models';
     } else if (provider === 'ollama') {
-      url = 'http://localhost:11434/api/tags';
+      url = apiUrl ? `${apiUrl}/api/tags` : 'http://localhost:11434/api/tags';
     }
+
+    console.log(`Attempting to fetch models from ${url}`);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -67,7 +69,15 @@ export const fetchModels = (provider, apiUrl) => async (dispatch) => {
     }
     dispatch(fetchModelsSuccess(provider, models));
   } catch (error) {
-    dispatch(fetchModelsFailure(provider, error.message));
+    console.log(`Failed to connect to ${provider} service: ${error.message}`);
+    // Use a more user-friendly error message
+    const errorMessage = error.name === 'AbortError' 
+      ? 'Connection timed out. Service may not be running.' 
+      : error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_CONNECTION_REFUSED')
+        ? `Cannot connect to ${provider} service. Please ensure it is running.`
+        : error.message;
+    
+    dispatch(fetchModelsFailure(provider, errorMessage));
   }
 };
 
