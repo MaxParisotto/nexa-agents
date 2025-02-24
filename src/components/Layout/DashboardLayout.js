@@ -20,8 +20,10 @@ import {
   Group as AgentsIcon,
   Assignment as TasksIcon,
   Timeline as MetricsIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Assessment as LogsIcon
 } from '@mui/icons-material';
+import ChatWidget from '../ChatWidget';
 
 const drawerWidth = 240;
 
@@ -74,6 +76,7 @@ const menuItems = [
   { text: 'Agents', icon: <AgentsIcon />, path: '/agents' },
   { text: 'Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Metrics', icon: <MetricsIcon />, path: '/metrics' },
+  { text: 'Logs', icon: <LogsIcon />, path: '/logs' },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
 ];
 
@@ -135,6 +138,7 @@ const DashboardLayout = ({ children }) => {
         <DrawerHeader />
         {children}
       </Main>
+      <ChatWidget />
     </Box>
   );
 };

@@ -14,9 +14,26 @@ class WebSocketService {
   }
 
   connect() {
-    const serverUrl = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
+    // Get the client's IP address from the window location
+    const clientIP = window.location.hostname;
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    let serverUrl;
+
+    if (isDevelopment) {
+      // In development, connect to the server using the client's IP
+      serverUrl = clientIP === 'localhost' 
+        ? 'http://localhost:5000'
+        : `http://${clientIP}:5000`;
+    } else {
+      // In production, use the current window location
+      serverUrl = `${window.location.protocol}//${window.location.host}`;
+    }
+
+    console.log('Connecting to WebSocket server at:', serverUrl);
     
     this.socket = io(serverUrl, {
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,

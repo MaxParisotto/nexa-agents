@@ -6,15 +6,36 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',
+    'http://192.168.1.150:3000',
+    'https://b33x50n3-3000.uks1.devtunnels.ms'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+// Socket.IO configuration
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST']
-  }
+    origin: [
+      'http://localhost:3000',
+      'http://192.168.1.150:3000',
+      'https://b33x50n3-3000.uks1.devtunnels.ms'
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  allowEIO3: true
 });
 
-// Middleware
-app.use(cors());
+// Express middleware
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
 app.use(express.json());
 
 // WebSocket event handlers

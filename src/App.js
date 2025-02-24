@@ -6,6 +6,8 @@ import DashboardLayout from './components/Layout/DashboardLayout';
 import Dashboard from './components/Dashboard/Dashboard';
 import Agents from './components/Agents';
 import Tasks from './components/Tasks';
+import Settings from './components/Settings';
+import Logs from './components/Logs';
 import websocketService from './services/websocket';
 
 // Create a theme instance
@@ -65,6 +67,8 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/logs" element={<Logs />} />
           </Routes>
         </DashboardLayout>
       </Router>
