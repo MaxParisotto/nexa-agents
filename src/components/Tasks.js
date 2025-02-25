@@ -9,7 +9,8 @@ import {
   AccordionDetails, LinearProgress, Tooltip,
   List, ListItem, ListItemText, ListItemIcon,
   ListItemSecondaryAction, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow
+  TableCell, TableContainer, TableHead, TableRow,
+  Fab, Drawer, Menu, Popover, Badge
 } from '@mui/material';
 import Editor from '@monaco-editor/react';
 import {
@@ -25,7 +26,11 @@ import {
   Assignment as AssignmentIcon,
   Flag as FlagIcon,
   Timeline as TimelineIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Chat as ChatIcon,
+  Groups as GroupsIcon,
+  Settings as SettingsIcon,
+  Send as SendIcon
 } from '@mui/icons-material';
 import { v4 as uuidv4 } from 'uuid';
 import { createTask, fetchTasks, updateTaskStatus, assignTask, completeTask } from '../store/actions/taskActions';
@@ -35,7 +40,7 @@ import mermaid from 'mermaid';
 
 /**
  * Tasks component for managing structured tasks with milestones, goals, and progression status
- * Supports JSON/YAML editing and Mermaid graph visualization
+ * Supports JSON/YAML editing, Mermaid graph visualization, and Project Manager integration
  */
 const Tasks = () => {
   const dispatch = useDispatch();
@@ -75,9 +80,61 @@ const Tasks = () => {
     assignedAgent: null
   });
   
+  // State for Project Manager integration
+  const [orchestrationMenuAnchor, setOrchestrationMenuAnchor] = useState(null);
+  const [orchestrationDialogOpen, setOrchestrationDialogOpen] = useState(false);
+  const [orchestrationPrompt, setOrchestrationPrompt] = useState('');
+  
   // State for Mermaid graph
   const [mermaidGraph, setMermaidGraph] = useState('');
   const mermaidRef = useRef(null);
+  
+  // State for Project Manager chat
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSize, setChatSize] = useState({ width: 400, height: 500 });
+  const [isChatResizing, setIsChatResizing] = useState(false);
+  const [chatPosition, setChatPosition] = useState({ x: window.innerWidth - 500, y: 100 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const chatRef = useRef(null);
+  const resizeRef = useRef(null);
+  const dragRef = useRef(null);
+  
+  // Get settings from Redux store
+  const settings = useSelector(state => state.settings || {});
+  const selectedModel = settings.selectedModel || 'gpt-4';
+  const savedChatSettings = settings.chatSettings || {};
+  
+  // Initialize chat position and size from saved settings if available
+  useEffect(() => {
+    if (savedChatSettings.size) {
+      setChatSize(savedChatSettings.size);
+    }
+    
+    if (savedChatSettings.position) {
+      setChatPosition(savedChatSettings.position);
+    }
+  }, [savedChatSettings]);
+  
+  // Save chat settings when they change
+  useEffect(() => {
+    if (chatOpen) {
+      // Debounce to avoid excessive saves
+      const timer = setTimeout(() => {
+        dispatch({
+          type: 'UPDATE_CHAT_SETTINGS',
+          payload: {
+            size: chatSize,
+            position: chatPosition
+          }
+        });
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [chatSize, chatPosition, chatOpen, dispatch]);
   
   // Initialize mermaid
   useEffect(() => {
@@ -119,6 +176,521 @@ const Tasks = () => {
       }
     }
   }, [selectedTask]);
+  
+  /**
+   * Set up event listener for Project Manager responses
+   */
+  useEffect(() => {
+    const handleProjectManagerResponse = (event) => {
+      const { message, functionCall, toolCalls } = event.detail;
+      
+      // Log the response for debugging
+      dispatch(logInfo(LOG_CATEGORIES.TASKS, `Received Project Manager response: ${message?.substring(0, 100) || 'No message'}`));
+      
+      // Handle function calls from the Project Manager
+      if (functionCall) {
+        handleFunctionCall(functionCall);
+      }
+      
+      // Handle tool calls (newer format)
+      if (toolCalls && Array.isArray(toolCalls)) {
+        toolCalls.forEach(toolCall => {
+          if (toolCall.type === 'function') {
+            handleFunctionCall(toolCall.function);
+          }
+        });
+      }
+      
+      // Handle regular message responses
+      if (message && typeof message === 'string') {
+        // Check if the response contains a task creation instruction
+        if (message.includes('create_task') || message.includes('createTask')) {
+          try {
+            // Extract task data from the response if it has a structured format
+            const taskMatch = message.match(/```json\s*({[^`]*})\s*```/);
+            if (taskMatch && taskMatch[1]) {
+              const taskData = JSON.parse(taskMatch[1]);
+              
+              // Create a new task with the extracted data
+              const newTask = {
+                id: uuidv4(),
+                ...taskData,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              
+              dispatch(createTask(newTask));
+              dispatch(addNotification({
+                type: 'success',
+                message: `Task created by Project Manager: ${newTask.title}`
+              }));
+            }
+          } catch (error) {
+            console.error('Error parsing task data from Project Manager response:', error);
+            dispatch(logError(LOG_CATEGORIES.TASKS, 'Failed to parse task data from Project Manager', error));
+          }
+        }
+      }
+    };
+    
+    /**
+     * Handles function calls from the Project Manager
+     * @param {Object} funcCall - The function call object
+     */
+    const handleFunctionCall = (funcCall) => {
+      if (!funcCall || !funcCall.name) return;
+      
+      const { name, arguments: args } = funcCall;
+      let parsedArgs;
+      
+      try {
+        // Parse arguments if they're a string
+        parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
+        
+        dispatch(logInfo(LOG_CATEGORIES.TASKS, `Handling function call: ${name}`));
+        
+        // Process different function calls
+        switch (name) {
+          case 'create_task':
+            const newTask = {
+              id: uuidv4(),
+              title: parsedArgs.title,
+              description: parsedArgs.description || '',
+              status: 'pending',
+              priority: parsedArgs.priority || 'medium',
+              milestones: parsedArgs.milestones || [],
+              goals: parsedArgs.goals || [],
+              assignedAgents: [],
+              progress: 0,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            dispatch(createTask(newTask));
+            dispatch(addNotification({
+              type: 'success',
+              message: `Task created: ${newTask.title}`
+            }));
+            break;
+            
+          case 'assign_task':
+            dispatch(assignTask(parsedArgs.taskId, parsedArgs.agentId));
+            break;
+            
+          case 'update_task_status':
+            dispatch(updateTaskStatus(parsedArgs.taskId, parsedArgs.status));
+            break;
+            
+          case 'complete_task':
+            dispatch(completeTask(parsedArgs.taskId));
+            break;
+            
+          case 'split_task':
+            if (parsedArgs.subtasks && Array.isArray(parsedArgs.subtasks)) {
+              // Get the parent task
+              const parentTask = tasks.find(t => t.id === parsedArgs.taskId);
+              if (parentTask) {
+                // Create subtasks
+                parsedArgs.subtasks.forEach(subtask => {
+                  const newSubtask = {
+                    id: uuidv4(),
+                    title: subtask.title,
+                    description: subtask.description || '',
+                    status: 'pending',
+                    priority: parentTask.priority,
+                    milestones: [],
+                    goals: [],
+                    assignedAgents: [],
+                    parentTaskId: parsedArgs.taskId,
+                    progress: 0,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                  };
+                  dispatch(createTask(newSubtask));
+                });
+                
+                dispatch(addNotification({
+                  type: 'success',
+                  message: `Task ${parentTask.title} split into ${parsedArgs.subtasks.length} subtasks`
+                }));
+              }
+            }
+            break;
+            
+          case 'add_milestone':
+            // Implementation for adding a milestone to an existing task
+            // This would need to use a new action or modify an existing one
+            dispatch(logInfo(LOG_CATEGORIES.TASKS, 'Add milestone function called, but not implemented yet'));
+            break;
+            
+          default:
+            dispatch(logInfo(LOG_CATEGORIES.TASKS, `Unknown function call: ${name}`));
+        }
+      } catch (error) {
+        console.error(`Error handling function call ${name}:`, error);
+        dispatch(logError(LOG_CATEGORIES.TASKS, `Failed to process function call: ${name}`, error));
+      }
+    };
+    
+    // Add event listener for Project Manager responses
+    window.addEventListener('project-manager-message', handleProjectManagerResponse);
+    
+    // Clean up event listeners on component unmount
+    return () => {
+      window.removeEventListener('project-manager-message', handleProjectManagerResponse);
+    };
+  }, [dispatch, tasks]);
+  
+  /**
+   * Sends an orchestration request to the Project Manager
+   * @param {string} prompt - The orchestration prompt to send
+   */
+  const sendOrchestrationRequest = (prompt) => {
+    if (!prompt.trim()) return;
+    
+    // Get the orchestration template from settings if available
+    const orchestrationTemplate = settings.orchestrationTemplate || `
+As the Project Manager, I need your help with task orchestration. 
+Here's what I want to do: {prompt}
+
+You have access to the following task orchestration tools:
+1. create_task(title, description, priority, milestones, goals) - Creates a new task
+2. assign_task(taskId, agentId) - Assigns a task to an agent
+3. update_task_status(taskId, status) - Updates a task's status
+4. split_task(taskId, subtasks) - Splits a task into smaller subtasks
+5. complete_task(taskId) - Marks a task as complete
+
+If you need to create a structured task, please provide it in JSON format like this:
+\`\`\`json
+{
+  "title": "Task Title",
+  "description": "Task Description",
+  "priority": "high",
+  "milestones": [
+    {
+      "title": "Milestone 1",
+      "description": "Milestone Description",
+      "dueDate": "2023-12-31"
+    }
+  ],
+  "goals": [
+    "Goal 1",
+    "Goal 2"
+  ]
+}
+\`\`\`
+
+Please help me orchestrate this task efficiently.
+    `;
+    
+    // Substitute the prompt into the template
+    const enhancedPrompt = orchestrationTemplate.replace('{prompt}', prompt);
+    
+    // Get all necessary settings from the Redux store
+    const llmParams = settings.llmParameters || {};
+    
+    // Define tool functions for the Project Manager to use
+    const functionDefinitions = [
+      {
+        name: "create_task",
+        description: "Creates a new task with the specified details",
+        parameters: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "The title of the task"
+            },
+            description: {
+              type: "string",
+              description: "Detailed description of the task"
+            },
+            priority: {
+              type: "string",
+              enum: ["low", "medium", "high", "critical"],
+              description: "The priority level of the task"
+            },
+            milestones: {
+              type: "array",
+              description: "List of milestones for this task",
+              items: {
+                type: "object",
+                properties: {
+                  title: {
+                    type: "string",
+                    description: "Title of the milestone"
+                  },
+                  description: {
+                    type: "string",
+                    description: "Description of the milestone"
+                  },
+                  dueDate: {
+                    type: "string",
+                    description: "Due date in YYYY-MM-DD format"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["pending", "in_progress", "completed", "blocked"],
+                    description: "Current status of the milestone"
+                  }
+                }
+              }
+            },
+            goals: {
+              type: "array",
+              description: "List of goals for this task",
+              items: {
+                type: "string"
+              }
+            }
+          },
+          required: ["title"]
+        }
+      },
+      {
+        name: "assign_task",
+        description: "Assigns a task to an agent",
+        parameters: {
+          type: "object",
+          properties: {
+            taskId: {
+              type: "string",
+              description: "ID of the task to assign"
+            },
+            agentId: {
+              type: "string",
+              description: "ID of the agent to assign the task to"
+            }
+          },
+          required: ["taskId", "agentId"]
+        }
+      },
+      {
+        name: "update_task_status",
+        description: "Updates the status of a task",
+        parameters: {
+          type: "object",
+          properties: {
+            taskId: {
+              type: "string",
+              description: "ID of the task to update"
+            },
+            status: {
+              type: "string",
+              enum: ["pending", "in_progress", "completed", "blocked"],
+              description: "New status for the task"
+            }
+          },
+          required: ["taskId", "status"]
+        }
+      },
+      {
+        name: "split_task",
+        description: "Splits a task into multiple subtasks",
+        parameters: {
+          type: "object",
+          properties: {
+            taskId: {
+              type: "string",
+              description: "ID of the task to split"
+            },
+            subtasks: {
+              type: "array",
+              description: "List of subtasks to create",
+              items: {
+                type: "object",
+                properties: {
+                  title: {
+                    type: "string",
+                    description: "Title of the subtask"
+                  },
+                  description: {
+                    type: "string",
+                    description: "Description of the subtask"
+                  }
+                },
+                required: ["title"]
+              }
+            }
+          },
+          required: ["taskId", "subtasks"]
+        }
+      },
+      {
+        name: "complete_task",
+        description: "Marks a task as complete",
+        parameters: {
+          type: "object",
+          properties: {
+            taskId: {
+              type: "string",
+              description: "ID of the task to mark as complete"
+            }
+          },
+          required: ["taskId"]
+        }
+      },
+      {
+        name: "add_milestone",
+        description: "Adds a milestone to an existing task",
+        parameters: {
+          type: "object",
+          properties: {
+            taskId: {
+              type: "string",
+              description: "ID of the task to add the milestone to"
+            },
+            milestone: {
+              type: "object",
+              properties: {
+                title: {
+                  type: "string",
+                  description: "Title of the milestone"
+                },
+                description: {
+                  type: "string",
+                  description: "Description of the milestone"
+                },
+                dueDate: {
+                  type: "string",
+                  description: "Due date in YYYY-MM-DD format"
+                }
+              },
+              required: ["title"]
+            }
+          },
+          required: ["taskId", "milestone"]
+        }
+      }
+    ];
+    
+    // Get current available agents for reference
+    const availableAgents = agents.map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      capabilities: agent.capabilities || []
+    }));
+    
+    // Get current tasks for reference
+    const currentTasks = tasks.map(task => ({
+      id: task.id,
+      title: task.title,
+      status: task.status
+    }));
+    
+    // Dispatch a custom event to notify the Project Manager component
+    const event = new CustomEvent('project-manager-request', {
+      detail: { 
+        message: enhancedPrompt,
+        model: settings.selectedModel,
+        temperature: llmParams.temperature,
+        maxTokens: llmParams.maxTokens,
+        topP: llmParams.topP,
+        presencePenalty: llmParams.presencePenalty,
+        frequencyPenalty: llmParams.frequencyPenalty,
+        source: 'tasks', // Identify the source of the request
+        functionDefinitions, // Add function definitions for tool use
+        contextData: {  // Add additional context data
+          availableAgents,
+          currentTasks,
+          selectedTask: selectedTask ? {
+            id: selectedTask.id,
+            title: selectedTask.title,
+            status: selectedTask.status,
+            milestones: selectedTask.milestones,
+            goals: selectedTask.goals
+          } : null
+        },
+        functions: functionDefinitions, // Support for different formats
+        tools: functionDefinitions.map(func => ({ 
+          type: "function", 
+          function: func 
+        })), // Support for OpenAI format
+        enableFunctionCalling: true  // Explicitly enable function calling
+      }
+    });
+    window.dispatchEvent(event);
+    
+    dispatch(logInfo(LOG_CATEGORIES.TASKS, `Sent orchestration request to Project Manager: ${prompt}`));
+    
+    // Show notification to user
+    dispatch(addNotification({
+      type: 'info',
+      message: 'Task orchestration request sent to Project Manager'
+    }));
+    
+    // Close the dialog
+    setOrchestrationDialogOpen(false);
+    setOrchestrationPrompt('');
+  };
+  
+  /**
+   * Opens the orchestration menu
+   * @param {Event} event - The click event
+   */
+  const handleOrchestrationMenuOpen = (event) => {
+    setOrchestrationMenuAnchor(event.currentTarget);
+  };
+  
+  /**
+   * Closes the orchestration menu
+   */
+  const handleOrchestrationMenuClose = () => {
+    setOrchestrationMenuAnchor(null);
+  };
+  
+  /**
+   * Opens the orchestration dialog
+   */
+  const handleOrchestrationDialogOpen = () => {
+    setOrchestrationDialogOpen(true);
+    handleOrchestrationMenuClose();
+  };
+  
+  /**
+   * Sends a quick orchestration command to the Project Manager
+   * @param {string} command - The orchestration command to send
+   */
+  const handleQuickOrchestrate = (command) => {
+    let prompt = '';
+    
+    switch (command) {
+      case 'createBasicTask':
+        prompt = 'Create a basic task with title, description, and at least one goal';
+        break;
+      case 'splitSelectedTask':
+        if (selectedTask) {
+          prompt = `Split the task "${selectedTask.title}" into smaller, manageable subtasks with appropriate milestones`;
+        } else {
+          dispatch(addNotification({
+            type: 'warning',
+            message: 'Please select a task to split'
+          }));
+          handleOrchestrationMenuClose();
+          return;
+        }
+        break;
+      case 'assignAgents':
+        prompt = 'Suggest agent assignments for all pending tasks based on agent capabilities and availability';
+        break;
+      case 'createMilestones':
+        if (selectedTask) {
+          prompt = `Create appropriate milestones for the task "${selectedTask.title}" based on its description and goals`;
+        } else {
+          dispatch(addNotification({
+            type: 'warning',
+            message: 'Please select a task to create milestones for'
+          }));
+          handleOrchestrationMenuClose();
+          return;
+        }
+        break;
+      default:
+        prompt = 'Help me organize and optimize the current task list';
+    }
+    
+    sendOrchestrationRequest(prompt);
+    handleOrchestrationMenuClose();
+  };
   
   /**
    * Generates a Mermaid graph definition for the selected task
@@ -380,14 +952,62 @@ const Tasks = () => {
         <Typography variant="h4" gutterBottom>
           Tasks
         </Typography>
-        <Button 
-          variant="contained" 
-          color="primary" 
-          startIcon={<AddIcon />}
-          onClick={handleCreateTask}
-        >
-          Create Task
-        </Button>
+        <Box>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            startIcon={<AddIcon />}
+            onClick={handleCreateTask}
+            sx={{ mr: 1 }}
+          >
+            Create Task
+          </Button>
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<SettingsIcon />}
+            onClick={handleOrchestrationMenuOpen}
+          >
+            Orchestrate
+          </Button>
+          
+          {/* Orchestration Menu */}
+          <Menu
+            anchorEl={orchestrationMenuAnchor}
+            open={Boolean(orchestrationMenuAnchor)}
+            onClose={handleOrchestrationMenuClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+          >
+            <MenuItem onClick={() => handleQuickOrchestrate('createBasicTask')}>
+              <AddIcon fontSize="small" sx={{ mr: 1 }} />
+              Create Basic Task
+            </MenuItem>
+            <MenuItem onClick={() => handleQuickOrchestrate('splitSelectedTask')}>
+              <TimelineIcon fontSize="small" sx={{ mr: 1 }} />
+              Split Selected Task
+            </MenuItem>
+            <MenuItem onClick={() => handleQuickOrchestrate('assignAgents')}>
+              <GroupsIcon fontSize="small" sx={{ mr: 1 }} />
+              Suggest Agent Assignments
+            </MenuItem>
+            <MenuItem onClick={() => handleQuickOrchestrate('createMilestones')}>
+              <FlagIcon fontSize="small" sx={{ mr: 1 }} />
+              Create Milestones
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={handleOrchestrationDialogOpen}>
+              <ChatIcon fontSize="small" sx={{ mr: 1 }} />
+              Custom Orchestration...
+            </MenuItem>
+          </Menu>
+        </Box>
       </Box>
       
       {loading ? (
@@ -773,6 +1393,37 @@ const Tasks = () => {
             disabled={!currentMilestone.title}
           >
             Add
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Orchestration Dialog */}
+      <Dialog open={orchestrationDialogOpen} onClose={() => setOrchestrationDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Task Orchestration</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Describe what you want to do with your tasks, and the Project Manager will help orchestrate them.
+            You can create, split, assign, or manage tasks using natural language.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Orchestration prompt"
+            placeholder="E.g., Create a task for implementing a login system with appropriate milestones and assign it to the backend team"
+            value={orchestrationPrompt}
+            onChange={(e) => setOrchestrationPrompt(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOrchestrationDialogOpen(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={() => sendOrchestrationRequest(orchestrationPrompt)}
+            disabled={!orchestrationPrompt.trim()}
+          >
+            Send to Project Manager
           </Button>
         </DialogActions>
       </Dialog>
