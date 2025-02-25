@@ -210,16 +210,36 @@ const ChatWidget = () => {
    */
   const handleProjectManagerMessage = (event) => {
     console.log('Received project-manager-message:', event.detail);
-    const { content, role } = event.detail;
     
-    setConversation(prev => [
-      ...prev,
-      {
-        role,
-        content,
-        timestamp: new Date().toISOString(),
+    // Extract message content from event detail, handling both formats
+    const message = typeof event.detail === 'object' ? (event.detail.message || event.detail.content) : event.detail;
+    
+    if (!message) {
+      console.error('Received empty message from ProjectManager');
+      return;
+    }
+    
+    // Add message to conversation with proper formatting
+    const newMessage = {
+      role: 'assistant',
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+    
+    console.log('Adding message to conversation:', newMessage);
+    
+    setConversation(prev => {
+      // Remove any "thinking" messages first
+      const filtered = prev.filter(msg => !msg.isThinking);
+      return [...filtered, newMessage];
+    });
+    
+    // Auto-scroll to bottom after a short delay to ensure content is rendered
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
-    ]);
+    }, 100);
   };
   
   /**
@@ -231,20 +251,36 @@ const ChatWidget = () => {
     // Add user message to chat history
     const userMessage = {
       role: 'user',
-      content: message,
+      content: message.trim(),
       timestamp: new Date().toISOString(),
     };
     
-    setConversation(prev => [...prev, userMessage]);
+    // Add a "thinking" message
+    const thinkingMessage = {
+      role: 'assistant',
+      content: 'Thinking...',
+      timestamp: new Date().toISOString(),
+      isThinking: true
+    };
+    
+    setConversation(prev => [...prev, userMessage, thinkingMessage]);
+    
+    // Auto-scroll to bottom
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
     
     console.log('Dispatching chat-message event with content:', message);
     
     // Dispatch custom event to notify ProjectManager
     const event = new CustomEvent('chat-message', {
       detail: {
-        content: message,
+        content: message.trim(),
         role: 'user',
         timestamp: new Date().toISOString(),
+        serverType: server,
+        model: model,
+        apiUrl: server === 'lmstudio' ? lmStudioAddress : ollamaAddress
       }
     });
     window.dispatchEvent(event);
@@ -403,6 +439,7 @@ const ChatWidget = () => {
    */
   const renderMessage = (msg, index) => {
     const isUser = msg.role === 'user';
+    const isThinking = msg.isThinking;
     
     // Create a unique key for each message based on content and timestamp
     const messageKey = `msg-${msg.timestamp || Date.now()}-${index}`;
@@ -413,6 +450,7 @@ const ChatWidget = () => {
         sx={{
           justifyContent: isUser ? 'flex-end' : 'flex-start',
           padding: '8px 16px',
+          opacity: isThinking ? 0.7 : 1,
         }}
       >
         <Box
@@ -426,8 +464,8 @@ const ChatWidget = () => {
           <Avatar 
             sx={{ 
               bgcolor: isUser ? 'primary.main' : 'secondary.main',
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               marginRight: isUser ? 0 : 1,
               marginLeft: isUser ? 1 : 0,
             }}
@@ -442,12 +480,15 @@ const ChatWidget = () => {
               borderRadius: '12px',
               bgcolor: isUser ? 'primary.light' : 'background.paper',
               color: isUser ? 'primary.contrastText' : 'text.primary',
+              maxWidth: '100%',
+              wordBreak: 'break-word',
               '& pre': {
                 overflowX: 'auto',
                 backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5',
                 padding: '8px',
                 borderRadius: '4px',
                 color: (theme) => theme.palette.mode === 'dark' ? '#eee' : '#333',
+                margin: '8px 0',
               },
               '& code': {
                 fontFamily: 'monospace',
@@ -458,8 +499,15 @@ const ChatWidget = () => {
               },
             }}
           >
-            <Typography variant="body1" component="div">
-              {formatMessageContent(msg.content)}
+            <Typography variant="body1" component="div" sx={{ whiteSpace: 'pre-wrap' }}>
+              {isThinking ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <span>Thinking</span>
+                  <span className="typing-dots">...</span>
+                </Box>
+              ) : (
+                formatMessageContent(msg.content)
+              )}
             </Typography>
             <Typography 
               variant="caption" 
@@ -468,7 +516,8 @@ const ChatWidget = () => {
                 display: 'block', 
                 textAlign: isUser ? 'right' : 'left',
                 fontSize: '0.7rem',
-                mt: 0.5
+                mt: 0.5,
+                opacity: 0.8
               }}
             >
               {formatTimestamp(msg.timestamp)}
@@ -480,50 +529,70 @@ const ChatWidget = () => {
   };
 
   /**
-   * Format message content with Markdown-like syntax
+   * Format message content with proper handling of code blocks and formatting
    */
   const formatMessageContent = (content) => {
     if (!content) return null;
     
-    // Split by newlines to handle them properly
-    const lines = content.split('\n');
-    
-    return (
-      <>
-        {lines.map((line, index) => {
-          // Convert **bold** to bold text
-          line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-          
-          // Convert *italic* to italic text
-          line = line.replace(/\*(.*?)\*/g, '<em>$1</em>');
-          
-          // Convert `code` to code formatting
-          line = line.replace(/`(.*?)`/g, '<code>$1</code>');
-          
-          // Check if line starts with - or * for list items
-          const isListItem = line.trim().match(/^[-*]\s/);
-          
-          // Handle list items
-          if (isListItem) {
-            line = line.replace(/^[-*]\s/, '');
+    // Split content into segments based on code blocks
+    return content.split('```').map((segment, index) => {
+      if (index % 2 === 1) {
+        // This is a code block
+        return (
+          <Box 
+            component="pre" 
+            key={index}
+            sx={{ 
+              backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5',
+              padding: '8px',
+              borderRadius: '4px',
+              overflowX: 'auto',
+              fontFamily: 'monospace',
+              fontSize: '0.85rem',
+              margin: '8px 0',
+              width: '100%',
+              border: '1px solid',
+              borderColor: 'divider'
+            }}
+          >
+            {segment}
+          </Box>
+        );
+      }
+      
+      // Regular text - handle line breaks and inline formatting
+      return (
+        <React.Fragment key={index}>
+          {segment.split('\n').map((line, i) => {
+            // Convert **bold** to bold text
+            line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Convert *italic* to italic text
+            line = line.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // Convert `code` to code formatting
+            line = line.replace(/`(.*?)`/g, '<code>$1</code>');
+            
+            // Handle bullet points
+            if (line.trim().startsWith('•')) {
+              return (
+                <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                  <Box component="span" sx={{ mr: 1 }}>•</Box>
+                  <Box component="span" dangerouslySetInnerHTML={{ __html: line.substring(1) }} />
+                </Box>
+              );
+            }
+            
             return (
-              <Box key={index} sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
-                <Box component="span" sx={{ mr: 1, minWidth: '8px' }}>•</Box>
-                <Box component="span" dangerouslySetInnerHTML={{ __html: line }} />
-              </Box>
+              <React.Fragment key={i}>
+                <span dangerouslySetInnerHTML={{ __html: line }} />
+                {i < segment.split('\n').length - 1 && <br />}
+              </React.Fragment>
             );
-          }
-          
-          // Handle regular lines with a line break if not the last line
-          return (
-            <React.Fragment key={index}>
-              <span dangerouslySetInnerHTML={{ __html: line }} />
-              {index < lines.length - 1 && <br />}
-            </React.Fragment>
-          );
-        })}
-      </>
-    );
+          })}
+        </React.Fragment>
+      );
+    });
   };
 
   /**
@@ -724,3 +793,4 @@ const ChatWidget = () => {
 };
 
 export default ChatWidget;
+

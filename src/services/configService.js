@@ -56,6 +56,20 @@ const configMetadata = {
   maxRetries: 3
 };
 
+// Cache configuration state
+let configCache = {
+  data: null,
+  timestamp: 0,
+  ttl: 5000 // 5 seconds TTL
+};
+
+/**
+ * Check if cached config is still valid
+ */
+const isCacheValid = () => {
+  return configCache.data && (Date.now() - configCache.timestamp < configCache.ttl);
+};
+
 /**
  * Checks if the server is available
  * @returns {Promise<boolean>} - Whether the server is available
@@ -146,40 +160,37 @@ const shouldRateLimit = (operationType) => {
  * @throws {Error} - If loading fails
  */
 export const loadConfigFromFile = async (format = 'json', retryCount = 0) => {
-  // Apply rate limiting - if rate limited, return cached response or fall back to localStorage
-  if (shouldRateLimit('load')) {
-    if (operationTracker.cachedResponses.load) {
-      return operationTracker.cachedResponses.load;
-    }
-    return loadConfigFromLocalStorage();
+  // Return cached config if valid
+  if (isCacheValid()) {
+    return configCache.data;
   }
   
-  // Check if server is available
+  // Check server only once per load attempt
   const serverAvailable = await checkServerAvailability();
   if (!serverAvailable) {
-    console.log('Server unavailable, using localStorage for configuration');
-    return loadConfigFromLocalStorage();
+    const localConfig = loadConfigFromLocalStorage();
+    configCache = {
+      data: localConfig,
+      timestamp: Date.now(),
+      ttl: 30000 // Longer TTL for fallback config
+    };
+    return localConfig;
   }
-  
+
   try {
     const response = await axios.get(`${API_ENDPOINT}/api/config/load?format=${format}`, {
-      timeout: 5000  // 5 second timeout
+      timeout: 5000
     });
-    
-    if (response.data && response.data.success && response.data.content) {
-      let config;
+
+    if (response.data?.success && response.data?.content) {
+      const config = format === 'json' ? JSON.parse(response.data.content) : response.data.content;
       
-      if (format === 'json') {
-        config = JSON.parse(response.data.content);
-      } else {
-        // For YAML, we'd typically use a proper YAML parser
-        // But that would require an additional dependency
-        // For now, return the raw content
-        config = response.data.content;
-      }
-      
-      // Cache the successful response
-      operationTracker.cachedResponses.load = config;
+      // Update cache
+      configCache = {
+        data: config,
+        timestamp: Date.now(),
+        ttl: 5000
+      };
       
       return config;
     }

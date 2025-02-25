@@ -27,6 +27,9 @@ import configService from './services/configService';
 import { logInfo, logError, LOG_CATEGORIES } from './store/actions/logActions';
 import { addNotification } from './store/actions/systemActions';
 
+// Agents
+import projectManagerAgent from './agents/ProjectManagerAgent';
+
 // Styling
 import './App.css';
 
@@ -100,6 +103,45 @@ function AppContent() {
     setDarkMode(newDarkMode);
     localStorage.setItem('darkMode', newDarkMode.toString());
   };
+
+  useEffect(() => {
+    // Initialize Project Manager Agent
+    const initializeAgent = async () => {
+      try {
+        const success = await projectManagerAgent.initialize();
+        if (!success) {
+          dispatch(addNotification({
+            type: 'warning',
+            message: 'Project Manager Agent initialized with warnings',
+            description: 'Some features may be limited'
+          }));
+        } else {
+          dispatch(logInfo(
+            LOG_CATEGORIES.AGENT,
+            'Project Manager Agent initialized successfully'
+          ));
+        }
+      } catch (error) {
+        dispatch(logError(
+          LOG_CATEGORIES.AGENT,
+          'Failed to initialize Project Manager Agent',
+          { error: error.message }
+        ));
+        dispatch(addNotification({
+          type: 'error',
+          message: 'Project Manager Agent initialization failed',
+          description: error.message
+        }));
+      }
+    };
+
+    initializeAgent();
+    
+    // Cleanup on unmount
+    return () => {
+      projectManagerAgent.destroy();
+    };
+  }, [dispatch]);
 
   return (
     <ThemeProvider theme={theme}>

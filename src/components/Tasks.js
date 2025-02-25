@@ -249,96 +249,249 @@ const Tasks = () => {
         
         dispatch(logInfo(LOG_CATEGORIES.TASKS, `Handling function call: ${name}`));
         
-        // Process different function calls
+        // Handle different function calls
         switch (name) {
-          case 'create_task':
-            const newTask = {
-              id: uuidv4(),
-              title: parsedArgs.title,
-              description: parsedArgs.description || '',
-              status: 'pending',
-              priority: parsedArgs.priority || 'medium',
-              milestones: parsedArgs.milestones || [],
-              goals: parsedArgs.goals || [],
-              assignedAgents: [],
-              progress: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            };
-            dispatch(createTask(newTask));
-            dispatch(addNotification({
-              type: 'success',
-              message: `Task created: ${newTask.title}`
-            }));
+          case 'createTask':
+            handleLlmCreateTask(parsedArgs);
             break;
-            
-          case 'assign_task':
-            dispatch(assignTask(parsedArgs.taskId, parsedArgs.agentId));
+          case 'updateTask':
+            handleLlmUpdateTask(parsedArgs);
             break;
-            
-          case 'update_task_status':
-            dispatch(updateTaskStatus(parsedArgs.taskId, parsedArgs.status));
+          case 'deleteTask':
+            handleLlmDeleteTask(parsedArgs);
             break;
-            
-          case 'complete_task':
-            dispatch(completeTask(parsedArgs.taskId));
+          case 'listTasks':
+            handleLlmListTasks(parsedArgs);
             break;
-            
-          case 'split_task':
-            if (parsedArgs.subtasks && Array.isArray(parsedArgs.subtasks)) {
-              // Get the parent task
-              const parentTask = tasks.find(t => t.id === parsedArgs.taskId);
-              if (parentTask) {
-                // Create subtasks
-                parsedArgs.subtasks.forEach(subtask => {
-                  const newSubtask = {
-                    id: uuidv4(),
-                    title: subtask.title,
-                    description: subtask.description || '',
-                    status: 'pending',
-                    priority: parentTask.priority,
-                    milestones: [],
-                    goals: [],
-                    assignedAgents: [],
-                    parentTaskId: parsedArgs.taskId,
-                    progress: 0,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                  };
-                  dispatch(createTask(newSubtask));
-                });
-                
-                dispatch(addNotification({
-                  type: 'success',
-                  message: `Task ${parentTask.title} split into ${parsedArgs.subtasks.length} subtasks`
-                }));
-              }
-            }
-            break;
-            
-          case 'add_milestone':
-            // Implementation for adding a milestone to an existing task
-            // This would need to use a new action or modify an existing one
-            dispatch(logInfo(LOG_CATEGORIES.TASKS, 'Add milestone function called, but not implemented yet'));
-            break;
-            
           default:
             dispatch(logInfo(LOG_CATEGORIES.TASKS, `Unknown function call: ${name}`));
         }
       } catch (error) {
         console.error(`Error handling function call ${name}:`, error);
-        dispatch(logError(LOG_CATEGORIES.TASKS, `Failed to process function call: ${name}`, error));
+        dispatch(logError(LOG_CATEGORIES.TASKS, `Failed to handle function call ${name}`, error));
       }
     };
     
     // Add event listener for Project Manager responses
     window.addEventListener('project-manager-message', handleProjectManagerResponse);
     
-    // Clean up event listeners on component unmount
+    // Add event listeners for task management events
+    window.addEventListener('task-created', handleTaskCreatedEvent);
+    window.addEventListener('task-updated', handleTaskUpdatedEvent);
+    window.addEventListener('task-deleted', handleTaskDeletedEvent);
+    window.addEventListener('tasks-list-request', handleTasksListRequestEvent);
+    
+    // Cleanup event listeners on component unmount
     return () => {
       window.removeEventListener('project-manager-message', handleProjectManagerResponse);
+      window.removeEventListener('task-created', handleTaskCreatedEvent);
+      window.removeEventListener('task-updated', handleTaskUpdatedEvent);
+      window.removeEventListener('task-deleted', handleTaskDeletedEvent);
+      window.removeEventListener('tasks-list-request', handleTasksListRequestEvent);
     };
   }, [dispatch, tasks]);
+  
+  /**
+   * Handle task created event from ProjectManager
+   */
+  const handleTaskCreatedEvent = (event) => {
+    const { task } = event.detail;
+    
+    if (!task || !task.id) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, 'Invalid task data in task-created event'));
+      return;
+    }
+    
+    dispatch(createTask(task));
+    dispatch(addNotification({
+      type: 'success',
+      message: `Task created: ${task.title}`
+    }));
+  };
+  
+  /**
+   * Handle task updated event from ProjectManager
+   */
+  const handleTaskUpdatedEvent = (event) => {
+    const { taskId, updates } = event.detail;
+    
+    if (!taskId || !updates) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, 'Invalid data in task-updated event'));
+      return;
+    }
+    
+    // Find the task to update
+    const taskToUpdate = tasks.find(task => task.id === taskId);
+    
+    if (!taskToUpdate) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, `Task not found for update: ${taskId}`));
+      return;
+    }
+    
+    // Update the task
+    const updatedTask = {
+      ...taskToUpdate,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    dispatch(updateTaskStatus(updatedTask));
+    dispatch(addNotification({
+      type: 'info',
+      message: `Task updated: ${updatedTask.title}`
+    }));
+  };
+  
+  /**
+   * Handle task deleted event from ProjectManager
+   */
+  const handleTaskDeletedEvent = (event) => {
+    const { taskId } = event.detail;
+    
+    if (!taskId) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, 'Invalid data in task-deleted event'));
+      return;
+    }
+    
+    // Find the task to delete
+    const taskToDelete = tasks.find(task => task.id === taskId);
+    
+    if (!taskToDelete) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, `Task not found for deletion: ${taskId}`));
+      return;
+    }
+    
+    // Delete the task (implement this action in your Redux store)
+    dispatch({ type: 'DELETE_TASK', payload: taskId });
+    dispatch(addNotification({
+      type: 'info',
+      message: `Task deleted: ${taskToDelete.title}`
+    }));
+  };
+  
+  /**
+   * Handle tasks list request event from ProjectManager
+   */
+  const handleTasksListRequestEvent = (event) => {
+    const { status } = event.detail;
+    
+    // Filter tasks by status if provided
+    const filteredTasks = status 
+      ? tasks.filter(task => task.status === status)
+      : tasks;
+    
+    // Dispatch response event
+    const responseEvent = new CustomEvent('tasks-list-response', {
+      detail: { tasks: filteredTasks }
+    });
+    window.dispatchEvent(responseEvent);
+  };
+  
+  /**
+   * Handle create task function call from Project Manager
+   */
+  const handleLlmCreateTask = (args) => {
+    if (!args || !args.title) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, 'Invalid arguments for createTask function call'));
+      return;
+    }
+    
+    const newTask = {
+      id: uuidv4(),
+      ...args,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: args.status || 'pending',
+      progress: args.progress || 0
+    };
+    
+    dispatch(createTask(newTask));
+    dispatch(addNotification({
+      type: 'success',
+      message: `Task created: ${newTask.title}`
+    }));
+  };
+  
+  /**
+   * Handle update task function call from Project Manager
+   */
+  const handleLlmUpdateTask = (args) => {
+    if (!args || !args.taskId) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, 'Invalid arguments for updateTask function call'));
+      return;
+    }
+    
+    const { taskId, ...updates } = args;
+    
+    // Find the task to update
+    const taskToUpdate = tasks.find(task => task.id === taskId);
+    
+    if (!taskToUpdate) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, `Task not found for update: ${taskId}`));
+      return;
+    }
+    
+    // Update the task
+    const updatedTask = {
+      ...taskToUpdate,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    dispatch(updateTaskStatus(updatedTask));
+    dispatch(addNotification({
+      type: 'info',
+      message: `Task updated: ${updatedTask.title}`
+    }));
+  };
+  
+  /**
+   * Handle delete task function call from Project Manager
+   */
+  const handleLlmDeleteTask = (args) => {
+    if (!args || !args.taskId) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, 'Invalid arguments for deleteTask function call'));
+      return;
+    }
+    
+    const { taskId } = args;
+    
+    // Find the task to delete
+    const taskToDelete = tasks.find(task => task.id === taskId);
+    
+    if (!taskToDelete) {
+      dispatch(logError(LOG_CATEGORIES.TASKS, `Task not found for deletion: ${taskId}`));
+      return;
+    }
+    
+    // Delete the task (implement this action in your Redux store)
+    dispatch({ type: 'DELETE_TASK', payload: taskId });
+    dispatch(addNotification({
+      type: 'info',
+      message: `Task deleted: ${taskToDelete.title}`
+    }));
+  };
+  
+  /**
+   * Handle list tasks function call from Project Manager
+   */
+  const handleLlmListTasks = (args) => {
+    const status = args?.status;
+    
+    // Filter tasks by status if provided
+    const filteredTasks = status 
+      ? tasks.filter(task => task.status === status)
+      : tasks;
+    
+    // Send the tasks back to the Project Manager
+    const event = new CustomEvent('project-manager-message', {
+      detail: { 
+        message: JSON.stringify(filteredTasks, null, 2),
+        type: 'tasksListed'
+      }
+    });
+    window.dispatchEvent(event);
+  };
   
   /**
    * Sends an orchestration request to the Project Manager

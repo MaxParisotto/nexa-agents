@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   TextField,
@@ -11,15 +11,14 @@ import {
   ListItem,
   ListItemText,
   Avatar,
+  Tooltip,
 } from '@mui/material';
-import { Minimize as MinimizeIcon, OpenInFull as OpenInFullIcon, Send as SendIcon, Maximize as MaximizeIcon, Close as CloseIcon } from '@mui/icons-material';
-import { Resizable } from 'react-resizable';
+import { Minimize as MinimizeIcon, OpenInFull as OpenInFullIcon, Send as SendIcon, Maximize as MaximizeIcon, Close as CloseIcon, Refresh as RefreshIcon, DeleteSweep as DeleteSweepIcon } from '@mui/icons-material';
 import Draggable from 'react-draggable';
-import axios from 'axios';
 import PersonIcon from '@mui/icons-material/Person';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useDispatch, useSelector } from 'react-redux';
-import { logInfo, logError, LOG_CATEGORIES } from '../store/actions/logActions';
+import { logInfo, logError, logWarning, LOG_CATEGORIES } from '../store/actions/logActions';
 import { addNotification } from '../store/actions/systemActions';
 
 import 'react-resizable/css/styles.css';
@@ -27,15 +26,15 @@ import 'react-resizable/css/styles.css';
 /**
  * ProjectManagerChat component that provides a floating, resizable, draggable chat interface
  * for interacting with the Project Manager agent. This agent is persistent across the project
- * and uses a dedicated LLM endpoint (DeepSeek R1) with function calling capabilities.
+ * and uses a dedicated LLM endpoint with function calling capabilities.
  */
 const ProjectManagerChat = () => {
   const dispatch = useDispatch();
   const nodeRef = useRef(null);
   const [message, setMessage] = useState('');
   const [conversation, setConversation] = useState([]);
-  const [width, setWidth] = useState(300);
-  const [height, setHeight] = useState(400);
+  const [width, setWidth] = useState(350);
+  const [height, setHeight] = useState(500);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [minimized, setMinimized] = useState(true);
@@ -46,21 +45,115 @@ const ProjectManagerChat = () => {
   const [resizeStartPosition, setResizeStartPosition] = useState({ x: 0, y: 0 });
   const chatContainerRef = useRef(null);
   const [messageListenerAdded, setMessageListenerAdded] = useState(false);
+  const [projectManagerRequestListenerAdded, setProjectManagerRequestListenerAdded] = useState(false);
 
   // Store last position before collapse to restore it when expanding
   const [expandedPosition, setExpandedPosition] = useState({ x: 0, y: 0 });
   // Store last dimensions before collapse to restore when expanding
-  const [expandedDimensions, setExpandedDimensions] = useState({ width: 300, height: 400 });
+  const [expandedDimensions, setExpandedDimensions] = useState({ width: 350, height: 500 });
   
-  // Get Project Manager settings from Redux store
+  // Get Project Manager settings from Redux store with fallbacks
   const settings = useSelector(state => state.settings);
-  const projectManagerSettings = settings?.projectManager || {
-    apiUrl: '',
-    model: '',
-    loading: false,
-    error: null
+  const projectManagerSettings = useMemo(() => {
+    // Try to get settings from Redux
+    const reduxSettings = settings?.projectManager;
+    
+    // Try to get cached settings from sessionStorage
+    const cachedSettings = JSON.parse(sessionStorage.getItem('projectManagerSettings') || 'null');
+    
+    // Use Redux settings, cached settings, or defaults
+    return reduxSettings || cachedSettings || {
+      apiUrl: settings?.lmStudio?.apiUrl || 'http://localhost:1234',
+      model: settings?.lmStudio?.defaultModel || 'qwen2.5-7b-instruct-1m',
+      serverType: 'lmStudio',
+      loading: false,
+      error: null,
+      parameters: {
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+        repeatPenalty: 1.1,
+        maxTokens: 1024,
+        contextLength: 4096
+      }
+    };
+  }, [settings]);
+
+  // Cache settings when they change
+  useEffect(() => {
+    if (projectManagerSettings) {
+      sessionStorage.setItem('projectManagerSettings', JSON.stringify(projectManagerSettings));
+    }
+  }, [projectManagerSettings]);
+
+  /**
+   * Initialize or reinitialize the Project Manager settings
+   */
+  const initializeSettings = async () => {
+    try {
+      // Log the current settings
+      dispatch(logInfo(
+        LOG_CATEGORIES.AGENT,
+        'Initializing Project Manager settings',
+        { settings: projectManagerSettings }
+      ));
+      
+      // Try to validate the connection
+      const response = await fetch(`${projectManagerSettings.apiUrl}/v1/models`);
+      if (!response.ok) {
+        throw new Error(`Failed to connect to LM Studio: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      if (!data?.data?.some(model => model.id === projectManagerSettings.model)) {
+        throw new Error(`Model ${projectManagerSettings.model} not found`);
+      }
+
+      // Log successful initialization
+      dispatch(logInfo(
+        LOG_CATEGORIES.AGENT,
+        'Project Manager settings initialized successfully',
+        {
+          settings: projectManagerSettings,
+          availableModels: data.data.map(m => m.id)
+        }
+      ));
+      
+      // Cache validated settings
+      sessionStorage.setItem('projectManagerSettings', JSON.stringify(projectManagerSettings));
+
+      return true;
+    } catch (error) {
+      // Log initialization error
+      dispatch(logError(
+        LOG_CATEGORIES.AGENT,
+        'Failed to initialize Project Manager settings',
+        {
+          error: error.message,
+          settings: projectManagerSettings
+        }
+      ));
+      
+      // Try to load cached settings from sessionStorage
+      const cachedSettings = JSON.parse(sessionStorage.getItem('projectManagerSettings') || 'null');
+      if (cachedSettings) {
+        dispatch(logInfo(
+          LOG_CATEGORIES.AGENT,
+          'Using cached Project Manager settings',
+          { settings: cachedSettings }
+        ));
+      }
+
+      return false;
+    }
   };
 
+  // Initialize settings on mount
+  useEffect(() => {
+    initializeSettings();
+  }, [dispatch, projectManagerSettings]);
+
+  // Initialize position and load conversation history
   useEffect(() => {
     // Setup event listener for dock toggling
     const handleDockToggle = (event) => {
@@ -105,18 +198,12 @@ const ProjectManagerChat = () => {
         setConversation(JSON.parse(savedConversation));
       } catch (error) {
         console.error('Failed to parse saved conversation:', error);
+        // Add welcome message if loading fails
+        addWelcomeMessage();
       }
-    }
-
-    // Add welcome message if no conversation exists
-    if (!savedConversation) {
-      const welcomeMessage = {
-        role: 'assistant',
-        content: 'Hello! I am your Project Manager assistant. I can help you manage your project, organize tasks, and provide guidance. How can I assist you today?',
-        timestamp: new Date().toISOString()
-      };
-      setConversation([welcomeMessage]);
-      localStorage.setItem('projectManagerConversation', JSON.stringify([welcomeMessage]));
+    } else {
+      // Add welcome message if no conversation exists
+      addWelcomeMessage();
     }
 
     // Cleanup event listener on component unmount
@@ -128,14 +215,43 @@ const ProjectManagerChat = () => {
   // Add message listener for receiving responses from the Project Manager agent
   useEffect(() => {
     if (!messageListenerAdded) {
-      window.addEventListener('project-manager-message', handleProjectManagerMessage);
+      const handleProjectManagerMessageEvent = (event) => {
+        // Only handle events specifically meant for ProjectManagerChat
+        if (event.detail?.target !== 'project-manager') {
+          return;
+        }
+        handleProjectManagerMessage(event);
+      };
+      
+      window.addEventListener('project-manager-message', handleProjectManagerMessageEvent);
       setMessageListenerAdded(true);
       
       return () => {
-        window.removeEventListener('project-manager-message', handleProjectManagerMessage);
+        window.removeEventListener('project-manager-message', handleProjectManagerMessageEvent);
       };
     }
   }, [messageListenerAdded]);
+  
+  // Add listener for project manager requests
+  useEffect(() => {
+    if (!projectManagerRequestListenerAdded) {
+      // Remove any existing thinking messages when a new response comes in
+      const cleanupThinkingMessages = (event) => {
+        // Only handle events specifically meant for ProjectManagerChat
+        if (event.detail?.target !== 'project-manager') {
+          return;
+        }
+        setConversation(prev => prev.filter(msg => !msg.isThinking));
+      };
+      
+      window.addEventListener('project-manager-message', cleanupThinkingMessages);
+      setProjectManagerRequestListenerAdded(true);
+      
+      return () => {
+        window.removeEventListener('project-manager-message', cleanupThinkingMessages);
+      };
+    }
+  }, [projectManagerRequestListenerAdded]);
 
   // Scroll to bottom of chat when conversation updates
   useEffect(() => {
@@ -147,74 +263,116 @@ const ProjectManagerChat = () => {
     localStorage.setItem('projectManagerConversation', JSON.stringify(conversation));
   }, [conversation, minimized]);
 
+  // Add cleanup for event listeners on component unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, []);
+
   /**
-   * Handle messages from the Project Manager agent
+   * Handle messages from the ProjectManager agent
    */
   const handleProjectManagerMessage = (event) => {
-    const { message } = event.detail;
+    // Extract message content from event detail
+    const { 
+      content,
+      messageId,
+      isThinking,
+      temporary,
+      replaces,
+      isError
+    } = event.detail;
     
-    if (message && typeof message === 'string') {
-      const newMessage = {
-        role: 'assistant',
-        content: message,
-        timestamp: new Date().toISOString()
-      };
-      
-      setConversation(prev => [...prev, newMessage]);
+    if (!content) {
+      console.error('Received empty message from ProjectManager');
+      return;
     }
+    
+    // Create new message object
+    const newMessage = {
+      role: 'assistant',
+      content,
+      messageId,
+      timestamp: new Date().toISOString(),
+      isThinking,
+      temporary,
+      isError
+    };
+    
+    setConversation(prev => {
+      // If this message replaces another, remove the one being replaced
+      const filtered = replaces ? 
+        prev.filter(msg => msg.messageId !== replaces) : 
+        prev;
+      
+      // If temporary, remove other temporary messages
+      const withoutTemporary = temporary ?
+        filtered.filter(msg => !msg.temporary) :
+        filtered;
+      
+      return [...withoutTemporary, newMessage];
+    });
+    
+    // Auto-scroll to bottom after a short delay to ensure content is rendered
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    }, 100);
   };
 
   /**
-   * Send a message to the Project Manager agent
+   * Send a message to the chat
    */
   const handleSendMessage = async () => {
     if (!message.trim()) return;
     
-    // Add user message to conversation
+    // Generate a unique message ID
+    const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Add user message to chat history
     const userMessage = {
       role: 'user',
-      content: message,
+      content: message.trim(),
+      messageId,
       timestamp: new Date().toISOString()
     };
     
     setConversation(prev => [...prev, userMessage]);
     
+    // Auto-scroll to bottom
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+    
+    // Add thinking message
+    const thinkingMessage = {
+      role: 'assistant',
+      content: 'Thinking...',
+      messageId: `thinking-${messageId}`,
+      timestamp: new Date().toISOString(),
+      isThinking: true,
+      temporary: true
+    };
+    
+    setConversation(prev => [...prev, thinkingMessage]);
+    
+    // Dispatch custom event to notify ProjectManager
+    const event = new CustomEvent('project-manager-request', {
+      detail: {
+        target: 'project-manager',
+        message: message.trim(),
+        messageId,
+        timestamp: new Date().toISOString(),
+        settings: projectManagerSettings // Include the current settings
+      }
+    });
+    window.dispatchEvent(event);
+    
     // Clear input field
     setMessage('');
-    
-    try {
-      // Dispatch a custom event to notify the Project Manager component
-      const event = new CustomEvent('project-manager-request', {
-        detail: { message: userMessage.content }
-      });
-      window.dispatchEvent(event);
-      
-      // Add a temporary "thinking" message
-      const thinkingMessage = {
-        role: 'assistant',
-        content: '...',
-        timestamp: new Date().toISOString(),
-        isThinking: true
-      };
-      
-      setConversation(prev => [...prev, thinkingMessage]);
-      
-      // The response will come through the project-manager-message event
-    } catch (error) {
-      console.error('Error sending message to Project Manager:', error);
-      dispatch(logError(LOG_CATEGORIES.AGENT, 'Failed to send message to Project Manager', error));
-      
-      // Remove the thinking message and add an error message
-      setConversation(prev => {
-        const filtered = prev.filter(msg => !msg.isThinking);
-        return [...filtered, {
-          role: 'assistant',
-          content: 'Sorry, I encountered an error while processing your request. Please try again later.',
-          timestamp: new Date().toISOString(),
-          isError: true
-        }];
-      });
-    }
   };
 
   const handleMessageChange = (event) => {
@@ -226,13 +384,6 @@ const ProjectManagerChat = () => {
       event.preventDefault();
       handleSendMessage();
     }
-  };
-
-  const handleResize = (event, { size }) => {
-    event.preventDefault();
-    setWidth(size.width);
-    setHeight(size.height);
-    setExpandedDimensions({ width: size.width, height: size.height });
   };
 
   const handleDrag = (e, ui) => {
@@ -311,6 +462,35 @@ const ProjectManagerChat = () => {
       x: e.clientX,
       y: e.clientY
     });
+    
+    // Add global event listeners for resize
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+    
+    // Prevent text selection during resize
+    e.preventDefault();
+  };
+  
+  const handleResizeMove = (e) => {
+    if (!isResizing) return;
+    
+    const deltaX = e.clientX - resizeStartPosition.x;
+    const deltaY = e.clientY - resizeStartPosition.y;
+    
+    const newWidth = Math.max(300, resizeStartDimensions.width + deltaX);
+    const newHeight = Math.max(200, resizeStartDimensions.height + deltaY);
+    
+    setWidth(newWidth);
+    setHeight(newHeight);
+    setExpandedDimensions({ width: newWidth, height: newHeight });
+  };
+  
+  const handleResizeEnd = () => {
+    setIsResizing(false);
+    
+    // Remove global event listeners
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
   };
 
   const toggleMinimize = () => {
@@ -333,8 +513,183 @@ const ProjectManagerChat = () => {
     window.dispatchEvent(event);
   };
 
+  const addWelcomeMessage = () => {
+    const welcomeMessage = {
+      role: 'assistant',
+      content: 'Hello! I am your Project Manager assistant. I can help you manage your project, organize tasks, and provide guidance. How can I assist you today?',
+      timestamp: new Date().toISOString()
+    };
+    setConversation([welcomeMessage]);
+    localStorage.setItem('projectManagerConversation', JSON.stringify([welcomeMessage]));
+  };
+
   /**
-   * Render a single message in the chat
+   * Reset the chat history and settings
+   */
+  const handleReset = async () => {
+    try {
+      // Clear conversation history
+      setConversation([]);
+      localStorage.removeItem('projectManagerConversation');
+      
+      // Clear cached settings
+      sessionStorage.removeItem('projectManagerSettings');
+      
+      // Re-initialize settings
+      const success = await initializeSettings();
+      
+      if (success) {
+        // Add welcome message
+        addWelcomeMessage();
+        
+        // Log the reset
+        dispatch(logInfo(
+          LOG_CATEGORIES.AGENT,
+          'Project Manager chat has been reset successfully'
+        ));
+
+        // Notify user of successful reset
+        const resetMessage = {
+          role: 'assistant',
+          content: 'Chat has been reset successfully. Settings have been reinitialized.',
+          timestamp: new Date().toISOString()
+        };
+        setConversation([resetMessage]);
+      } else {
+        // Show error message if initialization failed
+        const errorMessage = {
+          role: 'assistant',
+          content: 'Chat has been reset, but there was an issue reinitializing settings. Using default or cached settings.',
+          timestamp: new Date().toISOString(),
+          isError: true
+        };
+        setConversation([errorMessage]);
+      }
+    } catch (error) {
+      // Handle any errors during reset
+      dispatch(logError(
+        LOG_CATEGORIES.AGENT,
+        'Error resetting Project Manager chat',
+        { error: error.message }
+      ));
+
+      const errorMessage = {
+        role: 'assistant',
+        content: `Error resetting chat: ${error.message}`,
+        timestamp: new Date().toISOString(),
+        isError: true
+      };
+      setConversation([errorMessage]);
+    }
+  };
+
+  /**
+   * Test the LLM connection
+   */
+  const handleTest = async () => {
+    try {
+      // Show testing message
+      const testingMessage = {
+        role: 'assistant',
+        content: 'Testing LLM connection...',
+        messageId: `test-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        isThinking: true
+      };
+      setConversation(prev => [...prev, testingMessage]);
+
+      // Format API URL
+      let apiUrl = projectManagerSettings.apiUrl;
+      if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+        apiUrl = `http://${apiUrl}`;
+      }
+      apiUrl = apiUrl.replace(/\/+$/, '');
+
+      // Test models endpoint
+      const modelsResponse = await fetch(`${apiUrl}/v1/models`);
+      if (!modelsResponse.ok) {
+        throw new Error(`Failed to connect to LLM server: ${modelsResponse.statusText}`);
+      }
+
+      const models = await modelsResponse.json();
+      if (!models?.data?.some(model => model.id === projectManagerSettings.model)) {
+        throw new Error(`Model ${projectManagerSettings.model} not found on server`);
+      }
+
+      // Test chat completion
+      const completionResponse = await fetch(`${apiUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: projectManagerSettings.model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant.'
+            },
+            {
+              role: 'user',
+              content: 'Test message'
+            }
+          ],
+          max_tokens: 5
+        })
+      });
+
+      if (!completionResponse.ok) {
+        throw new Error(`Chat completion test failed: ${completionResponse.statusText}`);
+      }
+
+      const completion = await completionResponse.json();
+      if (!completion?.choices?.[0]?.message) {
+        throw new Error('Invalid response format from test completion');
+      }
+
+      // Show success message
+      const successMessage = {
+        role: 'assistant',
+        content: '✅ Connection test successful!\n\n' +
+                `• Server: ${apiUrl}\n` +
+                `• Model: ${projectManagerSettings.model}\n` +
+                `• Available models: ${models.data.map(m => m.id).join(', ')}`,
+        messageId: `test-success-${Date.now()}`,
+        timestamp: new Date().toISOString()
+      };
+
+      setConversation(prev => [...prev.filter(msg => !msg.isThinking), successMessage]);
+      
+      // Log success
+      dispatch(logInfo(
+        LOG_CATEGORIES.AGENT,
+        'Project Manager connection test successful',
+        { settings: projectManagerSettings }
+      ));
+
+    } catch (error) {
+      // Show error message
+      const errorMessage = {
+        role: 'assistant',
+        content: `❌ Connection test failed: ${error.message}`,
+        messageId: `test-error-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        isError: true
+      };
+
+      setConversation(prev => [...prev.filter(msg => !msg.isThinking), errorMessage]);
+      
+      // Log error
+      dispatch(logError(
+        LOG_CATEGORIES.AGENT,
+        'Project Manager connection test failed',
+        { error: error.message }
+      ));
+    }
+  };
+
+  /**
+   * Render a chat message
    */
   const renderMessage = (msg, index) => {
     const isUser = msg.role === 'user';
@@ -342,84 +697,70 @@ const ProjectManagerChat = () => {
     const isError = msg.isError;
     
     return (
-      <ListItem 
-        key={index} 
-        sx={{ 
-          flexDirection: 'column', 
-          alignItems: isUser ? 'flex-end' : 'flex-start',
-          padding: '8px 16px'
+      <ListItem
+        key={msg.messageId || index}
+        sx={{
+          justifyContent: isUser ? 'flex-end' : 'flex-start',
+          padding: '8px 16px',
+          opacity: isThinking ? 0.7 : 1,
         }}
       >
-        <Box 
-          sx={{ 
-            display: 'flex', 
-            flexDirection: 'row',
+        <Box
+          sx={{
+            display: 'flex',
+            maxWidth: '85%',
+            flexDirection: isUser ? 'row-reverse' : 'row',
             alignItems: 'flex-start',
-            width: '100%',
-            justifyContent: isUser ? 'flex-end' : 'flex-start'
           }}
         >
-          {!isUser && (
-            <Avatar 
-              sx={{ 
-                bgcolor: isError ? 'error.main' : 'primary.main',
-                width: 28, 
-                height: 28,
-                marginRight: 1,
-                marginTop: 0.5
-              }}
-            >
-              <SmartToyIcon sx={{ fontSize: 18 }} />
-            </Avatar>
-          )}
-          
-          <Paper 
-            elevation={1} 
+          <Avatar 
             sx={{ 
-              padding: '8px 12px', 
-              maxWidth: '80%',
-              backgroundColor: isUser ? 'primary.light' : isError ? 'error.light' : 'background.paper',
-              color: isUser ? 'primary.contrastText' : isError ? 'error.contrastText' : 'text.primary',
-              borderRadius: isUser ? '12px 12px 0 12px' : '12px 12px 12px 0',
-              wordBreak: 'break-word'
+              bgcolor: isUser ? 'primary.main' : isError ? 'error.main' : 'secondary.main',
+              width: 32,
+              height: 32,
+              marginRight: isUser ? 0 : 1,
+              marginLeft: isUser ? 1 : 0,
             }}
           >
-            {isThinking ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px' }}>
-                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>Thinking...</Typography>
-              </Box>
-            ) : (
-              <Typography variant="body2">{formatMessageContent(msg.content)}</Typography>
-            )}
-          </Paper>
+            {isUser ? <PersonIcon /> : <SmartToyIcon />}
+          </Avatar>
           
-          {isUser && (
-            <Avatar 
+          <Paper
+            elevation={2}
+            sx={{
+              padding: '8px 16px',
+              borderRadius: '12px',
+              bgcolor: isError ? 'error.light' : (isUser ? 'primary.light' : 'background.paper'),
+              color: isUser || isError ? 'primary.contrastText' : 'text.primary',
+              maxWidth: '100%',
+              wordBreak: 'break-word',
+            }}
+          >
+            <Typography variant="body1" component="div" sx={{ whiteSpace: 'pre-wrap' }}>
+              {isThinking ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <span>Thinking</span>
+                  <span className="typing-dots">...</span>
+                </Box>
+              ) : (
+                formatMessageContent(msg.content)
+              )}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="textSecondary" 
               sx={{ 
-                bgcolor: 'secondary.main',
-                width: 28, 
-                height: 28,
-                marginLeft: 1,
-                marginTop: 0.5
+                display: 'block', 
+                textAlign: isUser ? 'right' : 'left',
+                fontSize: '0.7rem',
+                mt: 0.5,
+                opacity: 0.8
               }}
             >
-              <PersonIcon sx={{ fontSize: 18 }} />
-            </Avatar>
-          )}
+              {formatTimestamp(msg.timestamp)}
+            </Typography>
+          </Paper>
         </Box>
-        
-        <Typography 
-          variant="caption" 
-          color="text.secondary" 
-          sx={{ 
-            alignSelf: isUser ? 'flex-end' : 'flex-start',
-            marginTop: '2px',
-            marginLeft: isUser ? 0 : '36px',
-            marginRight: isUser ? '36px' : 0
-          }}
-        >
-          {formatTimestamp(msg.timestamp)}
-        </Typography>
       </ListItem>
     );
   };
@@ -534,7 +875,25 @@ const ProjectManagerChat = () => {
             <SmartToyIcon sx={{ marginRight: 1, fontSize: 20 }} />
             <Typography variant="subtitle2">Project Manager</Typography>
           </Box>
-          <Box>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <Tooltip title="Test Connection">
+              <IconButton
+                size="small"
+                onClick={handleTest}
+                sx={{ color: 'primary.contrastText', padding: '4px' }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Reset Chat">
+              <IconButton
+                size="small"
+                onClick={handleReset}
+                sx={{ color: 'primary.contrastText', padding: '4px' }}
+              >
+                <DeleteSweepIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <IconButton
               size="small"
               onClick={handleCollapse}
@@ -611,9 +970,28 @@ const ProjectManagerChat = () => {
               position: 'absolute',
               bottom: 0,
               right: 0,
-              width: '15px',
-              height: '15px',
+              width: '20px',
+              height: '20px',
               cursor: 'nwse-resize',
+              backgroundColor: 'rgba(0, 0, 0, 0.05)',
+              borderTop: '1px solid',
+              borderLeft: '1px solid',
+              borderColor: 'divider',
+              borderTopLeftRadius: '4px',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.1)',
+              },
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                bottom: '5px',
+                right: '5px',
+                width: '6px',
+                height: '6px',
+                borderBottom: '2px solid',
+                borderRight: '2px solid',
+                borderColor: 'rgba(0, 0, 0, 0.3)',
+              }
             }}
             onMouseDown={handleResizeStart}
           />
