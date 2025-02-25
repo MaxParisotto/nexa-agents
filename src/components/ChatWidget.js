@@ -373,9 +373,12 @@ const ChatWidget = () => {
   const renderMessage = (msg, index) => {
     const isUser = msg.role === 'user';
     
+    // Create a unique key for each message based on content and timestamp
+    const messageKey = `msg-${msg.timestamp || Date.now()}-${index}`;
+    
     return (
       <ListItem
-        key={index}
+        key={messageKey}
         sx={{
           justifyContent: isUser ? 'flex-end' : 'flex-start',
           padding: '8px 16px',

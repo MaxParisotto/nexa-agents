@@ -138,9 +138,33 @@ const ProjectManager = () => {
       }
     });
     
-    // Check if LLM is configured
+    // First try to restore LLM configuration from sessionStorage (fastest)
+    const sessionLlmConfigured = sessionStorage.getItem('llmConfigured');
+    if (sessionLlmConfigured === 'true') {
+      const provider = sessionStorage.getItem('lastConfiguredProvider');
+      const apiUrl = sessionStorage.getItem(`${provider}Url`);
+      const modelName = sessionStorage.getItem(`${provider}Model`);
+      
+      if (provider && apiUrl && modelName) {
+        log('info', `Restoring cached LLM configuration from sessionStorage: ${provider} with model ${modelName}`);
+        setLlmConfigured(true);
+        setLlmProvider(provider);
+        
+        // Also test the connection to ensure it's still valid
+        if (provider === 'lmStudio') {
+          testLmStudioConnection(apiUrl, modelName);
+        } else if (provider === 'ollama') {
+          testOllamaConnection(apiUrl, modelName);
+        }
+      }
+    }
+    
+    // Check if LLM is configured - try both from localStorage and Redux
     setTimeout(() => {
-      checkLlmConfiguration(true);
+      if (!llmConfigured) {
+        loadSettingsFromLocalStorage();
+        checkLlmConfiguration(true);
+      }
     }, 2000); // Wait for settings to load
     
     setInitialized(true);
@@ -158,9 +182,67 @@ const ProjectManager = () => {
   useEffect(() => {
     if (initialized) {
       log('info', 'Settings changed, rechecking LLM configuration...');
-      checkLlmConfiguration(true);
+      if (settings && Object.keys(settings).length > 0) {
+        checkLlmConfiguration(true);
+      } else {
+        log('info', 'Redux settings not loaded yet, loading from localStorage');
+        loadSettingsFromLocalStorage();
+      }
     }
   }, [settings, initialized]);
+  
+  /**
+   * Load settings from localStorage as a fallback
+   * This helps ensure we don't miss settings if Redux is slow to initialize
+   */
+  const loadSettingsFromLocalStorage = () => {
+    try {
+      log('info', 'Attempting to load settings from localStorage...');
+      
+      // Get settings from localStorage
+      const rawSettings = localStorage.getItem('settings');
+      if (rawSettings) {
+        const localSettings = JSON.parse(rawSettings);
+        log('info', 'Found settings in localStorage:', localSettings);
+        
+        // Check if local settings are valid
+        const validation = LlmDebugUtil.validateSettings(localSettings);
+        if (validation.valid) {
+          log('info', 'Local settings are valid, using them for configuration check');
+          
+          // Use these settings to validate LLM configuration
+          validateLlmConfiguration(localSettings);
+        }
+      } else {
+        // Try individual keys as fallback
+        const lmStudioUrl = localStorage.getItem('lmStudioAddress');
+        const lmStudioModel = localStorage.getItem('defaultLmStudioModel');
+        const ollamaUrl = localStorage.getItem('ollamaAddress');
+        const ollamaModel = localStorage.getItem('defaultOllamaModel');
+        
+        if ((lmStudioUrl && lmStudioModel) || (ollamaUrl && ollamaModel)) {
+          log('info', 'Found individual LLM settings in localStorage');
+          
+          const fallbackSettings = {
+            lmStudio: {
+              apiUrl: lmStudioUrl || '',
+              defaultModel: lmStudioModel || ''
+            },
+            ollama: {
+              apiUrl: ollamaUrl || '',
+              defaultModel: ollamaModel || ''
+            }
+          };
+          
+          validateLlmConfiguration(fallbackSettings);
+        } else {
+          log('info', 'No LLM settings found in localStorage');
+        }
+      }
+    } catch (error) {
+      log('error', 'Error loading settings from localStorage', error);
+    }
+  };
   
   /**
    * Run diagnostics tests on LLM configuration
@@ -170,7 +252,26 @@ const ProjectManager = () => {
       log('info', 'Running LLM diagnostics...');
       setRunningDiagnostics(true);
       
-      const results = await LlmDebugUtil.runDiagnostics(settings);
+      // First try with Redux settings
+      let settingsToUse = settings;
+      
+      // If Redux settings aren't valid, try localStorage as fallback
+      if (!LlmDebugUtil.validateSettings(settings).valid) {
+        try {
+          const rawSettings = localStorage.getItem('settings');
+          if (rawSettings) {
+            const localSettings = JSON.parse(rawSettings);
+            if (LlmDebugUtil.validateSettings(localSettings).valid) {
+              settingsToUse = localSettings;
+              log('info', 'Using localStorage settings for diagnostics');
+            }
+          }
+        } catch (error) {
+          log('warn', 'Error parsing localStorage settings', error);
+        }
+      }
+      
+      const results = await LlmDebugUtil.runDiagnostics(settingsToUse);
       
       log('info', 'Diagnostics completed', results);
       setDiagnosticResults(results);
@@ -183,9 +284,19 @@ const ProjectManager = () => {
         if (results.lmStudio.chat?.success) {
           setLlmProvider('lmStudio');
           log('info', 'LM Studio configuration validated successfully');
+          
+          // Save these settings to component state
+          if (settingsToUse?.lmStudio) {
+            saveValidatedSettings('lmStudio', settingsToUse.lmStudio.apiUrl, settingsToUse.lmStudio.defaultModel);
+          }
         } else if (results.ollama.chat?.success) {
           setLlmProvider('ollama');
           log('info', 'Ollama configuration validated successfully');
+          
+          // Save these settings to component state
+          if (settingsToUse?.ollama) {
+            saveValidatedSettings('ollama', settingsToUse.ollama.apiUrl, settingsToUse.ollama.defaultModel);
+          }
         }
       } else {
         log('warn', 'LLM diagnostics failed', results.validation.errors);
@@ -204,279 +315,26 @@ const ProjectManager = () => {
   };
   
   /**
-   * Dump debug info to console and UI
+   * Save validated settings to component state and sessionStorage
+   * This provides a caching mechanism in case Redux state gets reset
    */
-  const dumpDebugInfo = () => {
-    const debugInfo = {
-      settings,
-      lmStudioSettings,
-      ollamaSettings,
-      llmConfigured,
-      llmProvider,
-      logs: logRef.current.slice(-20)
-    };
-    
-    log('info', 'Debug info:', debugInfo);
-    
-    // Create a notification with basic debug info
-    dispatch(addNotification({
-      type: 'info',
-      message: `Debug Info: LLM ${llmConfigured ? 'configured' : 'not configured'}, Provider: ${llmProvider || 'none'}`
-    }));
-    
-    // Create a temporary div to show all debug info
-    const debugDiv = document.createElement('div');
-    debugDiv.style.position = 'fixed';
-    debugDiv.style.top = '50px';
-    debugDiv.style.left = '50px';
-    debugDiv.style.right = '50px';
-    debugDiv.style.bottom = '50px';
-    debugDiv.style.backgroundColor = 'white';
-    debugDiv.style.color = 'black';
-    debugDiv.style.padding = '20px';
-    debugDiv.style.overflow = 'auto';
-    debugDiv.style.zIndex = '10000';
-    debugDiv.style.border = '2px solid #333';
-    debugDiv.style.borderRadius = '5px';
-    
-    const closeButton = document.createElement('button');
-    closeButton.innerText = 'Close';
-    closeButton.style.position = 'absolute';
-    closeButton.style.top = '10px';
-    closeButton.style.right = '10px';
-    closeButton.style.padding = '5px 10px';
-    closeButton.onclick = () => document.body.removeChild(debugDiv);
-    debugDiv.appendChild(closeButton);
-    
-    // Tabs for different sections
-    const tabsContainer = document.createElement('div');
-    tabsContainer.style.display = 'flex';
-    tabsContainer.style.borderBottom = '1px solid #ccc';
-    tabsContainer.style.marginBottom = '10px';
-    
-    const contentContainer = document.createElement('div');
-    
-    // Create tabs
-    const tabs = [
-      { id: 'status', label: 'Status' },
-      { id: 'logs', label: 'Logs' },
-      { id: 'diagnostics', label: 'Diagnostics' }
-    ];
-    
-    // Tab click handler
-    const showTab = (tabId) => {
-      // Hide all content
-      Array.from(contentContainer.children).forEach(child => {
-        child.style.display = 'none';
-      });
+  const saveValidatedSettings = (provider, apiUrl, modelName) => {
+    try {
+      // Store the LLM configuration in sessionStorage
+      sessionStorage.setItem(`${provider}Url`, apiUrl);
+      sessionStorage.setItem(`${provider}Model`, modelName);
+      sessionStorage.setItem('lastConfiguredProvider', provider);
+      sessionStorage.setItem('llmConfigured', 'true');
+      sessionStorage.setItem('llmConfigTimestamp', new Date().toISOString());
       
-      // Show selected content
-      const selectedContent = document.getElementById(`tab-content-${tabId}`);
-      if (selectedContent) {
-        selectedContent.style.display = 'block';
-      }
+      // Also update component state
+      setLlmConfigured(true);
+      setLlmProvider(provider);
       
-      // Update active tab styling
-      Array.from(tabsContainer.children).forEach(tab => {
-        tab.style.fontWeight = tab.id === `tab-${tabId}` ? 'bold' : 'normal';
-        tab.style.borderBottom = tab.id === `tab-${tabId}` ? '2px solid #2196f3' : 'none';
-      });
-    };
-    
-    // Create tab elements
-    tabs.forEach(tab => {
-      const tabElement = document.createElement('div');
-      tabElement.id = `tab-${tab.id}`;
-      tabElement.innerText = tab.label;
-      tabElement.style.padding = '10px 20px';
-      tabElement.style.cursor = 'pointer';
-      tabElement.style.userSelect = 'none';
-      tabElement.onclick = () => showTab(tab.id);
-      tabsContainer.appendChild(tabElement);
-    });
-    
-    debugDiv.appendChild(tabsContainer);
-    debugDiv.appendChild(contentContainer);
-    
-    // Status tab content
-    const statusContent = document.createElement('div');
-    statusContent.id = 'tab-content-status';
-    statusContent.style.display = 'block'; // Show by default
-    
-    // Add title
-    const title = document.createElement('h2');
-    title.innerText = 'Project Manager Debug Info';
-    statusContent.appendChild(title);
-    
-    // LLM Status
-    const llmStatus = document.createElement('div');
-    llmStatus.innerHTML = `<h3>LLM Status</h3>
-      <p>Configured: ${llmConfigured ? 'Yes' : 'No'}</p>
-      <p>Provider: ${llmProvider || 'None'}</p>
-      <p>LM Studio URL: ${lmStudioSettings?.apiUrl || 'Not set'}</p>
-      <p>LM Studio Model: ${lmStudioSettings?.defaultModel || 'Not set'}</p>
-      <p>Ollama URL: ${ollamaSettings?.apiUrl || 'Not set'}</p>
-      <p>Ollama Model: ${ollamaSettings?.defaultModel || 'Not set'}</p>
-    `;
-    statusContent.appendChild(llmStatus);
-    
-    // Logs tab content
-    const logsContent = document.createElement('div');
-    logsContent.id = 'tab-content-logs';
-    logsContent.style.display = 'none';
-    
-    const logsTitle = document.createElement('h3');
-    logsTitle.innerText = 'Recent Logs';
-    logsContent.appendChild(logsTitle);
-    
-    const logsDiv = document.createElement('pre');
-    logsDiv.style.backgroundColor = '#f5f5f5';
-    logsDiv.style.padding = '10px';
-    logsDiv.style.overflow = 'auto';
-    logsDiv.style.maxHeight = '500px';
-    logsDiv.style.fontFamily = 'monospace';
-    logsDiv.style.fontSize = '12px';
-    
-    logRef.current.slice(-30).forEach(entry => {
-      const logLine = document.createElement('div');
-      logLine.style.marginBottom = '3px';
-      logLine.style.color = entry.level === 'error' ? 'red' : entry.level === 'warn' ? 'orange' : 'black';
-      
-      const time = new Date(entry.timestamp).toLocaleTimeString();
-      logLine.textContent = `[${time}] [${entry.level.toUpperCase()}] ${entry.message}`;
-      if (entry.data) {
-        logLine.textContent += ` ${JSON.stringify(entry.data)}`;
-      }
-      
-      logsDiv.appendChild(logLine);
-    });
-    
-    logsContent.appendChild(logsDiv);
-    
-    // Diagnostics tab content
-    const diagnosticsContent = document.createElement('div');
-    diagnosticsContent.id = 'tab-content-diagnostics';
-    diagnosticsContent.style.display = 'none';
-    
-    const diagnosticsTitle = document.createElement('h3');
-    diagnosticsTitle.innerText = 'LLM Diagnostics';
-    diagnosticsContent.appendChild(diagnosticsTitle);
-    
-    const runButton = document.createElement('button');
-    runButton.innerText = runningDiagnostics ? 'Running diagnostics...' : 'Run Diagnostics';
-    runButton.disabled = runningDiagnostics;
-    runButton.style.padding = '8px 16px';
-    runButton.style.marginBottom = '16px';
-    runButton.style.backgroundColor = '#2196f3';
-    runButton.style.color = 'white';
-    runButton.style.border = 'none';
-    runButton.style.borderRadius = '4px';
-    runButton.style.cursor = 'pointer';
-    
-    runButton.onclick = async () => {
-      runButton.innerText = 'Running diagnostics...';
-      runButton.disabled = true;
-      
-      // Clear previous results
-      const resultsDiv = document.getElementById('diagnostics-results');
-      if (resultsDiv) {
-        resultsDiv.innerHTML = '<p>Running diagnostics, please wait...</p>';
-      }
-      
-      const results = await runDiagnostics();
-      
-      // Update results display
-      if (resultsDiv) {
-        resultsDiv.innerHTML = '';
-        
-        const summaryDiv = document.createElement('div');
-        summaryDiv.innerHTML = `
-          <h4>Diagnostic Summary</h4>
-          <p style="color: ${results.success ? 'green' : 'red'}">
-            <strong>Overall result: ${results.success ? 'Success' : 'Failed'}</strong>
-          </p>
-          ${results.validation.errors.map(err => `<p style="color: red">${err}</p>`).join('')}
-        `;
-        resultsDiv.appendChild(summaryDiv);
-        
-        // Add provider results
-        const providers = ['lmStudio', 'ollama'];
-        providers.forEach(provider => {
-          if (results[provider]?.connection) {
-            const providerDiv = document.createElement('div');
-            providerDiv.style.marginTop = '15px';
-            providerDiv.style.padding = '10px';
-            providerDiv.style.backgroundColor = '#f5f5f5';
-            providerDiv.style.borderRadius = '4px';
-            
-            providerDiv.innerHTML = `
-              <h4>${provider === 'lmStudio' ? 'LM Studio' : 'Ollama'} Results</h4>
-              <p>Connection: ${results[provider].connection.success ? 
-                '<span style="color: green">Success</span>' : 
-                `<span style="color: red">Failed - ${results[provider].connection.error}</span>`}</p>
-              ${results[provider].chat ? 
-                `<p>Chat test: ${results[provider].chat.success ? 
-                  '<span style="color: green">Success</span>' : 
-                  `<span style="color: red">Failed - ${results[provider].chat.error}</span>`}</p>` : 
-                ''}
-              ${results[provider].connection.success && results[provider].connection.models ?
-                `<p>Available models: ${results[provider].connection.models.length}</p>` : ''}
-            `;
-            
-            // Show model response if available
-            if (results[provider].chat?.success && results[provider].chat?.message) {
-              const responseDiv = document.createElement('div');
-              responseDiv.style.marginTop = '10px';
-              responseDiv.style.padding = '10px';
-              responseDiv.style.backgroundColor = 'white';
-              responseDiv.style.border = '1px solid #ddd';
-              responseDiv.style.borderRadius = '4px';
-              
-              responseDiv.innerHTML = `
-                <h5>Model Response:</h5>
-                <p style="white-space: pre-wrap;">${results[provider].chat.message}</p>
-              `;
-              providerDiv.appendChild(responseDiv);
-            }
-            
-            resultsDiv.appendChild(providerDiv);
-          }
-        });
-      }
-      
-      runButton.innerText = 'Run Diagnostics';
-      runButton.disabled = false;
-    };
-    
-    diagnosticsContent.appendChild(runButton);
-    
-    const resultsContainer = document.createElement('div');
-    resultsContainer.id = 'diagnostics-results';
-    
-    // Show previous results if available
-    if (diagnosticResults) {
-      resultsContainer.innerHTML = `
-        <h4>Last Diagnostic Results</h4>
-        <p>Overall: ${diagnosticResults.success ? 
-          '<span style="color: green">Success</span>' : 
-          '<span style="color: red">Failed</span>'}</p>
-        <p>Timestamp: ${new Date(diagnosticResults.timestamp).toLocaleString()}</p>
-      `;
-    } else {
-      resultsContainer.innerHTML = '<p>No diagnostic results available. Run diagnostics to test the LLM configuration.</p>';
+      log('info', `Cached validated ${provider} settings to sessionStorage`);
+    } catch (error) {
+      log('warn', `Error caching settings to sessionStorage: ${error.message}`);
     }
-    
-    diagnosticsContent.appendChild(resultsContainer);
-    
-    // Add all tab contents to the container
-    contentContainer.appendChild(statusContent);
-    contentContainer.appendChild(logsContent);
-    contentContainer.appendChild(diagnosticsContent);
-    
-    document.body.appendChild(debugDiv);
-    
-    // Show the first tab by default
-    showTab('status');
   };
   
   /**
@@ -485,8 +343,17 @@ const ProjectManager = () => {
   const checkLlmConfiguration = (verbose = false) => {
     log('info', 'Checking LLM configuration...');
     
+    return validateLlmConfiguration(settings, verbose);
+  };
+  
+  /**
+   * Validate LLM configuration with specific settings object
+   * Extracted as a separate function to allow validation against 
+   * both Redux state and localStorage settings
+   */
+  const validateLlmConfiguration = (settingsToCheck, verbose = false) => {
     // First verify settings exist
-    if (!settings) {
+    if (!settingsToCheck) {
       log('error', 'Settings object is undefined or null');
       setLlmConfigured(false);
       setLlmProvider(null);
@@ -495,13 +362,28 @@ const ProjectManager = () => {
     
     // Log raw settings
     if (verbose) {
-      log('info', 'Current settings:', settings);
-      log('info', 'LM Studio settings:', lmStudioSettings);
-      log('info', 'Ollama settings:', ollamaSettings);
+      log('info', 'Current settings to check:', settingsToCheck);
+      log('info', 'LM Studio settings:', settingsToCheck.lmStudio || {});
+      log('info', 'Ollama settings:', settingsToCheck.ollama || {});
+    }
+    
+    // Try to recover settings from session storage if missing
+    if (!settingsToCheck.lmStudio?.apiUrl && sessionStorage.getItem('lmStudioUrl')) {
+      log('info', 'Recovering LM Studio settings from sessionStorage');
+      if (!settingsToCheck.lmStudio) settingsToCheck.lmStudio = {};
+      settingsToCheck.lmStudio.apiUrl = sessionStorage.getItem('lmStudioUrl');
+      settingsToCheck.lmStudio.defaultModel = sessionStorage.getItem('lmStudioModel');
+    }
+    
+    if (!settingsToCheck.ollama?.apiUrl && sessionStorage.getItem('ollamaUrl')) {
+      log('info', 'Recovering Ollama settings from sessionStorage');
+      if (!settingsToCheck.ollama) settingsToCheck.ollama = {};
+      settingsToCheck.ollama.apiUrl = sessionStorage.getItem('ollamaUrl');
+      settingsToCheck.ollama.defaultModel = sessionStorage.getItem('ollamaModel');
     }
     
     // Validate settings using our utility
-    const validation = LlmDebugUtil.validateSettings(settings);
+    const validation = LlmDebugUtil.validateSettings(settingsToCheck);
     
     if (!validation.valid) {
       log('warn', 'LLM configuration validation failed', validation.errors);
@@ -519,39 +401,48 @@ const ProjectManager = () => {
       return false;
     }
     
+    const lmStudio = settingsToCheck.lmStudio || {};
+    const ollama = settingsToCheck.ollama || {};
+    
     // Configuration is valid, determine which provider to use
     if (validation.details.lmStudio.valid) {
-      log('info', `LM Studio configured with model: ${lmStudioSettings.defaultModel} at ${lmStudioSettings.apiUrl}`);
+      log('info', `LM Studio configured with model: ${lmStudio.defaultModel} at ${lmStudio.apiUrl}`);
       setLlmConfigured(true);
       setLlmProvider('lmStudio');
+      
+      // Cache these validated settings
+      saveValidatedSettings('lmStudio', lmStudio.apiUrl, lmStudio.defaultModel);
       
       // Send notification only if verbose
       if (verbose) {
         dispatch(addNotification({
           type: 'info',
-          message: `Project Manager using LM Studio with model: ${lmStudioSettings.defaultModel}`
+          message: `Project Manager using LM Studio with model: ${lmStudio.defaultModel}`
         }));
       }
       
       // Test connection to LM Studio
-      testLmStudioConnection(lmStudioSettings.apiUrl, lmStudioSettings.defaultModel);
+      testLmStudioConnection(lmStudio.apiUrl, lmStudio.defaultModel);
       
       return true;
     } else if (validation.details.ollama.valid) {
-      log('info', `Ollama configured with model: ${ollamaSettings.defaultModel} at ${ollamaSettings.apiUrl}`);
+      log('info', `Ollama configured with model: ${ollama.defaultModel} at ${ollama.apiUrl}`);
       setLlmConfigured(true);
       setLlmProvider('ollama');
+      
+      // Cache these validated settings
+      saveValidatedSettings('ollama', ollama.apiUrl, ollama.defaultModel);
       
       // Send notification only if verbose
       if (verbose) {
         dispatch(addNotification({
           type: 'info',
-          message: `Project Manager using Ollama with model: ${ollamaSettings.defaultModel}`
+          message: `Project Manager using Ollama with model: ${ollama.defaultModel}`
         }));
       }
       
       // Test connection to Ollama
-      testOllamaConnection(ollamaSettings.apiUrl, ollamaSettings.defaultModel);
+      testOllamaConnection(ollama.apiUrl, ollama.defaultModel);
       
       return true;
     }
@@ -639,8 +530,56 @@ const ProjectManager = () => {
     // Only process user messages
     if (role !== 'user') return;
     
-    // Check LLM configuration status first
-    const isLlmConfigured = checkLlmConfiguration();
+    // Check LLM configuration status first - force a check from all possible storage
+    // This is a more aggressive check than the regular checkLlmConfiguration
+    let isLlmConfigured = false;
+    
+    // First check if we've already confirmed we're configured
+    if (llmConfigured && llmProvider) {
+      isLlmConfigured = true;
+    } else {
+      // Next try a full configuration check including localStorage and sessionStorage
+      log('info', 'Checking LLM configuration before processing message');
+      
+      // Try Redux settings first
+      if (settings && (settings.lmStudio?.defaultModel || settings.ollama?.defaultModel)) {
+        isLlmConfigured = checkLlmConfiguration(false);
+      }
+      
+      // If Redux check failed, try sessionStorage next (fastest)
+      if (!isLlmConfigured) {
+        const sessionLlmUrl = sessionStorage.getItem('lmStudioUrl') || sessionStorage.getItem('ollamaUrl');
+        const sessionModel = sessionStorage.getItem('lmStudioModel') || sessionStorage.getItem('ollamaModel');
+        
+        if (sessionLlmUrl && sessionModel) {
+          log('info', 'Found LLM configuration in sessionStorage');
+          const provider = sessionStorage.getItem('lmStudioUrl') ? 'lmStudio' : 'ollama';
+          
+          // Manually set the LLM as configured since we've verified it exists in session
+          setLlmConfigured(true);
+          setLlmProvider(provider);
+          
+          // Create a temporary settings object to validate
+          const tempSettings = {
+            [provider]: {
+              apiUrl: sessionStorage.getItem(`${provider}Url`),
+              defaultModel: sessionStorage.getItem(`${provider}Model`)
+            }
+          };
+          
+          isLlmConfigured = validateLlmConfiguration(tempSettings, false);
+        }
+      }
+      
+      // Lastly, check localStorage as a last resort
+      if (!isLlmConfigured) {
+        loadSettingsFromLocalStorage();
+        // After loading from localStorage, if we're configured, update the flag
+        if (llmConfigured) {
+          isLlmConfigured = true;
+        }
+      }
+    }
     
     // Process the message 
     try {
@@ -659,7 +598,7 @@ const ProjectManager = () => {
       // Process with LLM or fallback
       else if (isLlmConfigured) {
         try {
-          log('info', 'Attempting to process with LLM...');
+          log('info', `Attempting to process with LLM using provider ${llmProvider}...`);
           response = await processWithLLM(content);
           log('info', 'LLM response received');
         } catch (llmError) {
@@ -691,22 +630,46 @@ const ProjectManager = () => {
     let apiUrl;
     let modelName;
     let useOpenAIFormat = false;
+    let provider = llmProvider;
     
-    // Select service based on active model and settings
+    // First check Redux store settings
     if (lmStudioSettings?.defaultModel && lmStudioSettings?.apiUrl) {
       apiUrl = lmStudioSettings.apiUrl;
       modelName = lmStudioSettings.defaultModel;
       useOpenAIFormat = true;
-      log('info', `Using LM Studio at ${apiUrl} with model ${modelName}`);
+      provider = 'lmStudio';
+      log('info', `Using LM Studio from Redux store: ${apiUrl} with model ${modelName}`);
     } else if (ollamaSettings?.defaultModel && ollamaSettings?.apiUrl) {
       apiUrl = ollamaSettings.apiUrl;
       modelName = ollamaSettings.defaultModel;
       useOpenAIFormat = false;
-      log('info', `Using Ollama at ${apiUrl} with model ${modelName}`);
+      provider = 'ollama';
+      log('info', `Using Ollama from Redux store: ${apiUrl} with model ${modelName}`);
     } else {
-      // No LLM is configured
-      log('error', 'No LLM configuration available');
-      throw new Error('No LLM model configured. Please check your settings.');
+      // Try sessionStorage as fallback
+      provider = sessionStorage.getItem('lastConfiguredProvider');
+      
+      if (provider === 'lmStudio') {
+        apiUrl = sessionStorage.getItem('lmStudioUrl');
+        modelName = sessionStorage.getItem('lmStudioModel');
+        useOpenAIFormat = true;
+        log('info', `Using LM Studio from sessionStorage: ${apiUrl} with model ${modelName}`);
+      } else if (provider === 'ollama') {
+        apiUrl = sessionStorage.getItem('ollamaUrl');
+        modelName = sessionStorage.getItem('ollamaModel');
+        useOpenAIFormat = false;
+        log('info', `Using Ollama from sessionStorage: ${apiUrl} with model ${modelName}`);
+      } else {
+        // No LLM is configured
+        log('error', 'No LLM configuration available');
+        throw new Error('No LLM model configured. Please check your settings.');
+      }
+    }
+    
+    // Final validation to ensure we have all required values
+    if (!apiUrl || !modelName) {
+      log('error', 'Incomplete LLM configuration', { apiUrl, modelName, provider });
+      throw new Error('Incomplete LLM configuration. Please check your settings.');
     }
     
     try {
@@ -1181,6 +1144,282 @@ Would you like me to walk you through creating a workflow first?`;
     
     // Also update local chat history
     setChatHistory(prev => [...prev, { role: 'assistant', content }]);
+  };
+  
+  /**
+   * Dump debug info to console and UI
+   */
+  const dumpDebugInfo = () => {
+    const debugInfo = {
+      settings,
+      lmStudioSettings,
+      ollamaSettings,
+      llmConfigured,
+      llmProvider,
+      logs: logRef.current.slice(-20)
+    };
+    
+    log('info', 'Debug info:', debugInfo);
+    
+    // Create a notification with basic debug info
+    dispatch(addNotification({
+      type: 'info',
+      message: `Debug Info: LLM ${llmConfigured ? 'configured' : 'not configured'}, Provider: ${llmProvider || 'none'}`
+    }));
+    
+    // Create a temporary div to show all debug info
+    const debugDiv = document.createElement('div');
+    debugDiv.style.position = 'fixed';
+    debugDiv.style.top = '50px';
+    debugDiv.style.left = '50px';
+    debugDiv.style.right = '50px';
+    debugDiv.style.bottom = '50px';
+    debugDiv.style.backgroundColor = 'white';
+    debugDiv.style.color = 'black';
+    debugDiv.style.padding = '20px';
+    debugDiv.style.overflow = 'auto';
+    debugDiv.style.zIndex = '10000';
+    debugDiv.style.border = '2px solid #333';
+    debugDiv.style.borderRadius = '5px';
+    
+    const closeButton = document.createElement('button');
+    closeButton.innerText = 'Close';
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.padding = '5px 10px';
+    closeButton.onclick = () => document.body.removeChild(debugDiv);
+    debugDiv.appendChild(closeButton);
+    
+    // Tabs for different sections
+    const tabsContainer = document.createElement('div');
+    tabsContainer.style.display = 'flex';
+    tabsContainer.style.borderBottom = '1px solid #ccc';
+    tabsContainer.style.marginBottom = '10px';
+    
+    const contentContainer = document.createElement('div');
+    
+    // Create tabs
+    const tabs = [
+      { id: 'status', label: 'Status' },
+      { id: 'logs', label: 'Logs' },
+      { id: 'diagnostics', label: 'Diagnostics' }
+    ];
+    
+    // Tab click handler
+    const showTab = (tabId) => {
+      // Hide all content
+      Array.from(contentContainer.children).forEach(child => {
+        child.style.display = 'none';
+      });
+      
+      // Show selected content
+      const selectedContent = document.getElementById(`tab-content-${tabId}`);
+      if (selectedContent) {
+        selectedContent.style.display = 'block';
+      }
+      
+      // Update active tab styling
+      Array.from(tabsContainer.children).forEach(tab => {
+        tab.style.fontWeight = tab.id === `tab-${tabId}` ? 'bold' : 'normal';
+        tab.style.borderBottom = tab.id === `tab-${tabId}` ? '2px solid #2196f3' : 'none';
+      });
+    };
+    
+    // Create tab elements
+    tabs.forEach(tab => {
+      const tabElement = document.createElement('div');
+      tabElement.id = `tab-${tab.id}`;
+      tabElement.innerText = tab.label;
+      tabElement.style.padding = '10px 20px';
+      tabElement.style.cursor = 'pointer';
+      tabElement.style.userSelect = 'none';
+      tabElement.onclick = () => showTab(tab.id);
+      tabsContainer.appendChild(tabElement);
+    });
+    
+    debugDiv.appendChild(tabsContainer);
+    debugDiv.appendChild(contentContainer);
+    
+    // Status tab content
+    const statusContent = document.createElement('div');
+    statusContent.id = 'tab-content-status';
+    statusContent.style.display = 'block'; // Show by default
+    
+    // Add title
+    const title = document.createElement('h2');
+    title.innerText = 'Project Manager Debug Info';
+    statusContent.appendChild(title);
+    
+    // LLM Status
+    const llmStatus = document.createElement('div');
+    llmStatus.innerHTML = `<h3>LLM Status</h3>
+      <p>Configured: ${llmConfigured ? 'Yes' : 'No'}</p>
+      <p>Provider: ${llmProvider || 'None'}</p>
+      <p>LM Studio URL: ${lmStudioSettings?.apiUrl || 'Not set'}</p>
+      <p>LM Studio Model: ${lmStudioSettings?.defaultModel || 'Not set'}</p>
+      <p>Ollama URL: ${ollamaSettings?.apiUrl || 'Not set'}</p>
+      <p>Ollama Model: ${ollamaSettings?.defaultModel || 'Not set'}</p>
+    `;
+    statusContent.appendChild(llmStatus);
+    
+    // Logs tab content
+    const logsContent = document.createElement('div');
+    logsContent.id = 'tab-content-logs';
+    logsContent.style.display = 'none';
+    
+    const logsTitle = document.createElement('h3');
+    logsTitle.innerText = 'Recent Logs';
+    logsContent.appendChild(logsTitle);
+    
+    const logsDiv = document.createElement('pre');
+    logsDiv.style.backgroundColor = '#f5f5f5';
+    logsDiv.style.padding = '10px';
+    logsDiv.style.overflow = 'auto';
+    logsDiv.style.maxHeight = '500px';
+    logsDiv.style.fontFamily = 'monospace';
+    logsDiv.style.fontSize = '12px';
+    
+    logRef.current.slice(-30).forEach(entry => {
+      const logLine = document.createElement('div');
+      logLine.style.marginBottom = '3px';
+      logLine.style.color = entry.level === 'error' ? 'red' : entry.level === 'warn' ? 'orange' : 'black';
+      
+      const time = new Date(entry.timestamp).toLocaleTimeString();
+      logLine.textContent = `[${time}] [${entry.level.toUpperCase()}] ${entry.message}`;
+      if (entry.data) {
+        logLine.textContent += ` ${JSON.stringify(entry.data)}`;
+      }
+      
+      logsDiv.appendChild(logLine);
+    });
+    
+    logsContent.appendChild(logsDiv);
+    
+    // Diagnostics tab content
+    const diagnosticsContent = document.createElement('div');
+    diagnosticsContent.id = 'tab-content-diagnostics';
+    diagnosticsContent.style.display = 'none';
+    
+    const diagnosticsTitle = document.createElement('h3');
+    diagnosticsTitle.innerText = 'LLM Diagnostics';
+    diagnosticsContent.appendChild(diagnosticsTitle);
+    
+    const runButton = document.createElement('button');
+    runButton.innerText = runningDiagnostics ? 'Running diagnostics...' : 'Run Diagnostics';
+    runButton.disabled = runningDiagnostics;
+    runButton.style.padding = '8px 16px';
+    runButton.style.marginBottom = '16px';
+    runButton.style.backgroundColor = '#2196f3';
+    runButton.style.color = 'white';
+    runButton.style.border = 'none';
+    runButton.style.borderRadius = '4px';
+    runButton.style.cursor = 'pointer';
+    
+    runButton.onclick = async () => {
+      runButton.innerText = 'Running diagnostics...';
+      runButton.disabled = true;
+      
+      // Clear previous results
+      const resultsDiv = document.getElementById('diagnostics-results');
+      if (resultsDiv) {
+        resultsDiv.innerHTML = '<p>Running diagnostics, please wait...</p>';
+      }
+      
+      const results = await runDiagnostics();
+      
+      // Update results display
+      if (resultsDiv) {
+        resultsDiv.innerHTML = '';
+        
+        const summaryDiv = document.createElement('div');
+        summaryDiv.innerHTML = `
+          <h4>Diagnostic Summary</h4>
+          <p style="color: ${results.success ? 'green' : 'red'}">
+            <strong>Overall result: ${results.success ? 'Success' : 'Failed'}</strong>
+          </p>
+          ${results.validation.errors.map(err => `<p style="color: red">${err}</p>`).join('')}
+        `;
+        resultsDiv.appendChild(summaryDiv);
+        
+        // Add provider results
+        const providers = ['lmStudio', 'ollama'];
+        providers.forEach(provider => {
+          if (results[provider]?.connection) {
+            const providerDiv = document.createElement('div');
+            providerDiv.style.marginTop = '15px';
+            providerDiv.style.padding = '10px';
+            providerDiv.style.backgroundColor = '#f5f5f5';
+            providerDiv.style.borderRadius = '4px';
+            
+            providerDiv.innerHTML = `
+              <h4>${provider === 'lmStudio' ? 'LM Studio' : 'Ollama'} Results</h4>
+              <p>Connection: ${results[provider].connection.success ? 
+                '<span style="color: green">Success</span>' : 
+                `<span style="color: red">Failed - ${results[provider].connection.error}</span>`}</p>
+              ${results[provider].chat ? 
+                `<p>Chat test: ${results[provider].chat.success ? 
+                  '<span style="color: green">Success</span>' : 
+                  `<span style="color: red">Failed - ${results[provider].chat.error}</span>`}</p>` : 
+                ''}
+              ${results[provider].connection.success && results[provider].connection.models ?
+                `<p>Available models: ${results[provider].connection.models.length}</p>` : ''}
+            `;
+            
+            // Show model response if available
+            if (results[provider].chat?.success && results[provider].chat?.message) {
+              const responseDiv = document.createElement('div');
+              responseDiv.style.marginTop = '10px';
+              responseDiv.style.padding = '10px';
+              responseDiv.style.backgroundColor = 'white';
+              responseDiv.style.border = '1px solid #ddd';
+              responseDiv.style.borderRadius = '4px';
+              
+              responseDiv.innerHTML = `
+                <h5>Model Response:</h5>
+                <p style="white-space: pre-wrap;">${results[provider].chat.message}</p>
+              `;
+              providerDiv.appendChild(responseDiv);
+            }
+            
+            resultsDiv.appendChild(providerDiv);
+          }
+        });
+      }
+      
+      runButton.innerText = 'Run Diagnostics';
+      runButton.disabled = false;
+    };
+    
+    diagnosticsContent.appendChild(runButton);
+    
+    const resultsContainer = document.createElement('div');
+    resultsContainer.id = 'diagnostics-results';
+    
+    // Show previous results if available
+    if (diagnosticResults) {
+      resultsContainer.innerHTML = `
+        <h4>Last Diagnostic Results</h4>
+        <p>Overall: ${diagnosticResults.success ? 
+          '<span style="color: green">Success</span>' : 
+          '<span style="color: red">Failed</span>'}</p>
+        <p>Timestamp: ${new Date(diagnosticResults.timestamp).toLocaleString()}</p>
+      `;
+    } else {
+      resultsContainer.innerHTML = '<p>No diagnostic results available. Run diagnostics to test the LLM configuration.</p>';
+    }
+    
+    diagnosticsContent.appendChild(resultsContainer);
+    
+    // Add all tab contents to the container
+    contentContainer.appendChild(statusContent);
+    contentContainer.appendChild(logsContent);
+    contentContainer.appendChild(diagnosticsContent);
+    
+    document.body.appendChild(debugDiv);
+    
+    // Show the first tab by default
+    showTab('status');
   };
   
   // This is a service component with no UI

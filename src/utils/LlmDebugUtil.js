@@ -16,9 +16,31 @@ const LlmDebugUtil = {
       details: {}
     };
 
+    // First check the provided settings object
     if (!settings) {
-      result.errors.push('Settings object is undefined or null');
-      return result;
+      // Try to get settings from sessionStorage as fallback
+      try {
+        const provider = sessionStorage.getItem('lastConfiguredProvider');
+        const apiUrl = sessionStorage.getItem(`${provider}Url`);
+        const modelName = sessionStorage.getItem(`${provider}Model`);
+        
+        if (provider && apiUrl && modelName) {
+          // Create a temporary settings object
+          settings = {
+            [provider]: {
+              apiUrl,
+              defaultModel: modelName
+            }
+          };
+          console.log('Using sessionStorage for LLM settings validation');
+        } else {
+          result.errors.push('Settings object is undefined or null and no sessionStorage fallback available');
+          return result;
+        }
+      } catch (error) {
+        result.errors.push('Settings object is undefined or null and sessionStorage check failed');
+        return result;
+      }
     }
 
     // Check LM Studio settings
