@@ -444,17 +444,17 @@ const ChatWidget = () => {
               color: isUser ? 'primary.contrastText' : 'text.primary',
               '& pre': {
                 overflowX: 'auto',
-                backgroundColor: '#f5f5f5',
+                backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5',
                 padding: '8px',
                 borderRadius: '4px',
-                color: '#333',
+                color: (theme) => theme.palette.mode === 'dark' ? '#eee' : '#333',
               },
               '& code': {
                 fontFamily: 'monospace',
-                backgroundColor: '#f5f5f5',
+                backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5',
                 padding: '2px 4px',
                 borderRadius: '4px',
-                color: '#333',
+                color: (theme) => theme.palette.mode === 'dark' ? '#eee' : '#333',
               },
             }}
           >
@@ -657,13 +657,31 @@ const ChatWidget = () => {
                   </FormControl>
                 </Box>
                 
-                <Box sx={{ 
-                  overflowY: 'auto', 
-                  flex: 1,
-                  p: 1,
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: 1
-                }}>
+                <Box 
+                  ref={chatContainerRef}
+                  sx={{ 
+                    overflowY: 'auto', 
+                    flex: 1,
+                    p: 1,
+                    backgroundColor: (theme) => theme.palette.mode === 'dark' ? 'rgba(30, 30, 30, 0.8)' : '#f5f5f5',
+                    borderRadius: 1,
+                    '&::-webkit-scrollbar': {
+                      width: '8px',
+                      height: '8px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      background: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f1f1f1',
+                      borderRadius: '4px',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      background: (theme) => theme.palette.mode === 'dark' ? '#666' : '#cccccc',
+                      borderRadius: '4px',
+                    },
+                    '&::-webkit-scrollbar-thumb:hover': {
+                      background: (theme) => theme.palette.mode === 'dark' ? '#888' : '#aaaaaa',
+                    },
+                  }}
+                >
                   {conversation.map((msg, index) => renderMessage(msg, index))}
                 </Box>
                 
@@ -675,11 +693,23 @@ const ChatWidget = () => {
                     value={message} 
                     onChange={handleMessageChange}
                     onKeyPress={handleKeyPress}
+                    variant="outlined"
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': {
+                          borderColor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.23)' : 'rgba(0, 0, 0, 0.23)',
+                        },
+                        '&:hover fieldset': {
+                          borderColor: 'primary.main',
+                        },
+                      },
+                    }}
                   />
                   <Button 
                     variant="contained" 
                     onClick={handleSendMessage}
                     disabled={!message.trim() || !model}
+                    color="primary"
                   >
                     <SendIcon />
                   </Button>

@@ -86,7 +86,10 @@ const Dock = () => {
                 sx={{
                   color: isActive ? 'primary.main' : 'text.secondary',
                   backgroundColor: isActive ? 
-                    (theme) => theme.palette.mode === 'dark' ? 'rgba(80, 80, 80, 0.3)' : 'rgba(230, 230, 230, 0.5)' 
+                    (theme) => 
+                      theme.palette.mode === 'dark' 
+                        ? 'rgba(80, 80, 80, 0.3)' 
+                        : 'rgba(230, 230, 230, 0.5)'
                     : 'transparent',
                   p: 1.5,
                   borderRadius: '12px',
@@ -110,7 +113,10 @@ const Dock = () => {
             sx={{
               color: isChatOpen ? 'primary.main' : 'text.secondary',
               backgroundColor: isChatOpen ?
-                (theme) => theme.palette.mode === 'dark' ? 'rgba(80, 80, 80, 0.3)' : 'rgba(230, 230, 230, 0.5)'
+                (theme) => 
+                  theme.palette.mode === 'dark' 
+                    ? 'rgba(80, 80, 80, 0.3)' 
+                    : 'rgba(230, 230, 230, 0.5)'
                 : 'transparent',
               p: 1.5,
               borderRadius: '12px',

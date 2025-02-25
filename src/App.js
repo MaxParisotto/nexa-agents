@@ -69,7 +69,7 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-          <div className="app">
+          <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
             <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
             <div className="app-container">
               <main className="content-full">
