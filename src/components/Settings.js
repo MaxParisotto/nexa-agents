@@ -62,6 +62,7 @@ const Settings = () => {
     projectManager: {
       apiUrl: settings?.projectManager?.apiUrl || DEFAULT_URLS.ollama,
       model: settings?.projectManager?.model || 'deepscaler:7b',
+      serverType: settings?.projectManager?.serverType || 'ollama',
       parameters: settings?.projectManager?.parameters || {
         temperature: 0.7,
         topP: 0.9,
@@ -113,6 +114,9 @@ const Settings = () => {
     result: null
   });
   
+  // Add a terminal refresh interval state
+  const [terminalRefreshInterval, setTerminalRefreshInterval] = useState(null);
+
   // Handle benchmark button click
   const handleBenchmark = async () => {
     if (!formData.projectManager.model) {
@@ -127,63 +131,103 @@ const Settings = () => {
     setBenchmarkResults(null);
     setShowTerminal(true);
     
-    // Initialize terminal if not already done
-    setTimeout(() => {
-      if (!terminalInstance.current && terminalContainerRef.current) {
-        terminalInstance.current = new Terminal({
-          cursorBlink: true,
-          fontSize: 14,
-          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-          theme: {
-            background: '#1e1e1e',
-            foreground: '#f0f0f0',
-            cursor: '#f0f0f0',
-            selection: 'rgba(255, 255, 255, 0.3)',
-            black: '#000000',
-            red: '#e06c75',
-            green: '#98c379',
-            yellow: '#e5c07b',
-            blue: '#61afef',
-            magenta: '#c678dd',
-            cyan: '#56b6c2',
-            white: '#d0d0d0'
-          }
-        });
-        
-        fitAddon.current = new FitAddon();
-        terminalInstance.current.loadAddon(fitAddon.current);
-        terminalInstance.current.open(terminalContainerRef.current);
-        fitAddon.current.fit();
-        
-        // Clear terminal
-        terminalInstance.current.clear();
-        terminalInstance.current.write('\x1b[1;32m=== Benchmark Started ===\x1b[0m\r\n\n');
-        terminalInstance.current.write(`\x1b[1;36mModel:\x1b[0m ${formData.projectManager.model}\r\n`);
-        terminalInstance.current.write(`\x1b[1;36mAPI URL:\x1b[0m ${formData.projectManager.apiUrl}\r\n`);
-        terminalInstance.current.write(`\x1b[1;36mParameters:\x1b[0m\r\n`);
-        Object.entries(formData.projectManager.parameters).forEach(([key, value]) => {
-          terminalInstance.current.write(`  - ${key}: ${value}\r\n`);
-        });
-        terminalInstance.current.write('\r\n');
-      } else if (terminalInstance.current) {
-        // Clear terminal
-        terminalInstance.current.clear();
-        terminalInstance.current.write('\x1b[1;32m=== Benchmark Started ===\x1b[0m\r\n\n');
-        terminalInstance.current.write(`\x1b[1;36mModel:\x1b[0m ${formData.projectManager.model}\r\n`);
-        terminalInstance.current.write(`\x1b[1;36mAPI URL:\x1b[0m ${formData.projectManager.apiUrl}\r\n`);
-        terminalInstance.current.write(`\x1b[1;36mParameters:\x1b[0m\r\n`);
-        Object.entries(formData.projectManager.parameters).forEach(([key, value]) => {
-          terminalInstance.current.write(`  - ${key}: ${value}\r\n`);
-        });
-        terminalInstance.current.write('\r\n');
-        
+    // Create a helper function to ensure terminal writes are flushed
+    const writeToTerminal = (text) => {
+      if (terminalInstance.current) {
+        terminalInstance.current.write(text);
+        // Force a redraw by triggering a resize event
         if (fitAddon.current) {
           fitAddon.current.fit();
+          // Force browser to repaint
+          setTimeout(() => {
+            if (terminalContainerRef.current) {
+              // Force a reflow
+              terminalContainerRef.current.style.display = 'none';
+              // This line forces a reflow
+              void terminalContainerRef.current.offsetHeight;
+              terminalContainerRef.current.style.display = 'block';
+            }
+          }, 5);
         }
       }
-    }, 100);
+    };
     
     try {
+      // Wait a moment for the terminal container to be visible in the DOM
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Initialize terminal
+      if (!terminalInstance.current && terminalContainerRef.current) {
+        try {
+          // Make sure the terminal container is visible
+          terminalContainerRef.current.style.display = 'block';
+          
+          terminalInstance.current = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            rows: 20,
+            cols: 100,
+            theme: {
+              background: '#1e1e1e',
+              foreground: '#f0f0f0',
+              cursor: '#f0f0f0',
+              selection: 'rgba(255, 255, 255, 0.3)',
+              black: '#000000',
+              red: '#e06c75',
+              green: '#98c379',
+              yellow: '#e5c07b',
+              blue: '#61afef',
+              magenta: '#c678dd',
+              cyan: '#56b6c2',
+              white: '#d0d0d0'
+            }
+          });
+          
+          fitAddon.current = new FitAddon();
+          terminalInstance.current.loadAddon(fitAddon.current);
+          terminalInstance.current.open(terminalContainerRef.current);
+          
+          // Force initial fit
+          fitAddon.current.fit();
+        } catch (error) {
+          console.error('Error initializing terminal:', error);
+          dispatch(addNotification({
+            type: 'error',
+            message: 'Failed to initialize terminal: ' + error.message
+          }));
+          throw error; // Re-throw to exit the benchmark
+        }
+      }
+      
+      // Set up a refresh interval for the terminal
+      if (terminalRefreshInterval) {
+        clearInterval(terminalRefreshInterval);
+      }
+      const refreshInterval = setInterval(() => {
+        if (terminalInstance.current && fitAddon.current && terminalContainerRef.current) {
+          fitAddon.current.fit();
+        }
+      }, 500);
+      setTerminalRefreshInterval(refreshInterval);
+      
+      // Wait a moment for the terminal to be fully initialized
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Clear terminal and write initial content
+      if (terminalInstance.current) {
+        terminalInstance.current.clear();
+        writeToTerminal('\x1b[1;32m=== Benchmark Started ===\x1b[0m\r\n\n');
+        writeToTerminal(`\x1b[1;36mModel:\x1b[0m ${formData.projectManager.model}\r\n`);
+        writeToTerminal(`\x1b[1;36mAPI URL:\x1b[0m ${formData.projectManager.apiUrl}\r\n`);
+        writeToTerminal(`\x1b[1;36mServer Type:\x1b[0m ${formData.projectManager.serverType || 'ollama'}\r\n`);
+        writeToTerminal(`\x1b[1;36mParameters:\x1b[0m\r\n`);
+        Object.entries(formData.projectManager.parameters).forEach(([key, value]) => {
+          writeToTerminal(`  - ${key}: ${value}\r\n`);
+        });
+        writeToTerminal('\r\n');
+      }
+      
       dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Starting benchmark for model: ${formData.projectManager.model}`));
       
       // Notify user
@@ -192,51 +236,74 @@ const Settings = () => {
         message: `Benchmarking ${formData.projectManager.model}. This may take a minute...`
       }));
       
-      // Check if the Ollama server is available
+      // Get server type
+      const serverType = formData.projectManager.serverType || 'ollama';
+      
+      // Check if the server is available
       if (terminalInstance.current) {
-        terminalInstance.current.write(`\x1b[33mChecking Ollama server availability...\x1b[0m\r\n`);
+        writeToTerminal(`\x1b[33mChecking ${serverType === 'lmStudio' ? 'LM Studio' : 'Ollama'} server availability...\x1b[0m\r\n`);
       }
       
       try {
-        const serverCheckResponse = await axios.get(`${formData.projectManager.apiUrl}/api/version`);
+        // Use different endpoints based on server type
+        const versionEndpoint = serverType === 'lmStudio' ? '/v1/models' : '/api/version';
+        const serverCheckResponse = await axios.get(`${formData.projectManager.apiUrl}${versionEndpoint}`);
         
         if (terminalInstance.current) {
-          terminalInstance.current.write(`\x1b[32mOllama server is available (version: ${serverCheckResponse.data.version})\x1b[0m\r\n\n`);
+          if (serverType === 'lmStudio') {
+            writeToTerminal(`\x1b[32mLM Studio server is available\x1b[0m\r\n\n`);
+          } else {
+            writeToTerminal(`\x1b[32mOllama server is available (version: ${serverCheckResponse.data.version})\x1b[0m\r\n\n`);
+          }
         }
       } catch (serverCheckError) {
         if (terminalInstance.current) {
-          terminalInstance.current.write(`\x1b[31mError: Ollama server is not available at ${formData.projectManager.apiUrl}\x1b[0m\r\n`);
-          terminalInstance.current.write(`\x1b[31mDetails: ${serverCheckError.message}\x1b[0m\r\n\n`);
+          writeToTerminal(`\x1b[31mError: ${serverType === 'lmStudio' ? 'LM Studio' : 'Ollama'} server is not available at ${formData.projectManager.apiUrl}\x1b[0m\r\n`);
+          writeToTerminal(`\x1b[31mDetails: ${serverCheckError.message}\x1b[0m\r\n\n`);
         }
         
-        throw new Error(`Ollama server is not available at ${formData.projectManager.apiUrl}: ${serverCheckError.message}`);
+        throw new Error(`${serverType === 'lmStudio' ? 'LM Studio' : 'Ollama'} server is not available at ${formData.projectManager.apiUrl}: ${serverCheckError.message}`);
       }
       
       // Check if the model exists
       if (terminalInstance.current) {
-        terminalInstance.current.write(`\x1b[33mVerifying model exists...\x1b[0m\r\n`);
+        writeToTerminal(`\x1b[33mVerifying model exists...\x1b[0m\r\n`);
       }
       
       try {
-        const modelCheckResponse = await axios.get(`${formData.projectManager.apiUrl}/api/tags`);
-        const availableModels = modelCheckResponse.data.models.map(model => model.name);
+        // Use different endpoints based on server type
+        const modelsEndpoint = serverType === 'lmStudio' ? '/v1/models' : '/api/tags';
+        const modelCheckResponse = await axios.get(`${formData.projectManager.apiUrl}${modelsEndpoint}`);
+        
+        let availableModels = [];
+        if (serverType === 'lmStudio') {
+          // Extract models from LM Studio response
+          if (modelCheckResponse.data && modelCheckResponse.data.data && Array.isArray(modelCheckResponse.data.data)) {
+            availableModels = modelCheckResponse.data.data.map(model => model.id);
+          }
+        } else {
+          // Extract models from Ollama response
+          if (modelCheckResponse.data && modelCheckResponse.data.models && Array.isArray(modelCheckResponse.data.models)) {
+            availableModels = modelCheckResponse.data.models.map(model => model.name);
+          }
+        }
         
         if (!availableModels.includes(formData.projectManager.model)) {
           if (terminalInstance.current) {
-            terminalInstance.current.write(`\x1b[31mError: Model "${formData.projectManager.model}" not found in available models.\x1b[0m\r\n`);
-            terminalInstance.current.write(`\x1b[33mAvailable models: ${availableModels.join(', ')}\x1b[0m\r\n\n`);
+            writeToTerminal(`\x1b[31mError: Model "${formData.projectManager.model}" not found in available models.\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[33mAvailable models: ${availableModels.join(', ')}\x1b[0m\r\n\n`);
           }
           
           throw new Error(`Model "${formData.projectManager.model}" not found. Available models: ${availableModels.join(', ')}`);
         }
         
         if (terminalInstance.current) {
-          terminalInstance.current.write(`\x1b[32mModel verified. Proceeding with benchmark...\x1b[0m\r\n\n`);
+          writeToTerminal(`\x1b[32mModel verified. Proceeding with benchmark...\x1b[0m\r\n\n`);
         }
       } catch (modelCheckError) {
         if (terminalInstance.current) {
-          terminalInstance.current.write(`\x1b[31mError checking model: ${modelCheckError.message}\x1b[0m\r\n\n`);
-          terminalInstance.current.write(`\x1b[33mProceeding with benchmark anyway...\x1b[0m\r\n\n`);
+          writeToTerminal(`\x1b[31mError checking model: ${modelCheckError.message}\x1b[0m\r\n\n`);
+          writeToTerminal(`\x1b[33mProceeding with benchmark anyway...\x1b[0m\r\n\n`);
         }
         
         // Log the error but continue with the benchmark
@@ -254,11 +321,11 @@ const Settings = () => {
       
       // Write final results to terminal
       if (terminalInstance.current) {
-        terminalInstance.current.write('\x1b[1;32m=== Benchmark Completed ===\x1b[0m\r\n\n');
-        terminalInstance.current.write(`\x1b[1;33mOverall Score:\x1b[0m ${results.averageScore.toFixed(1)}/10\r\n`);
-        terminalInstance.current.write(`\x1b[1;33mAverage Latency:\x1b[0m ${results.averageLatency.toFixed(0)}ms\r\n`);
-        terminalInstance.current.write(`\x1b[1;33mTokens/sec:\x1b[0m ${results.averageTokensPerSecond.toFixed(1)}\r\n`);
-        terminalInstance.current.write(`\x1b[1;33mTotal Time:\x1b[0m ${(results.totalTime / 1000).toFixed(1)}s\r\n\n`);
+        writeToTerminal('\x1b[1;32m=== Benchmark Completed ===\x1b[0m\r\n\n');
+        writeToTerminal(`\x1b[1;33mOverall Score:\x1b[0m ${results.averageScore.toFixed(1)}/10\r\n`);
+        writeToTerminal(`\x1b[1;33mAverage Latency:\x1b[0m ${results.averageLatency.toFixed(0)}ms\r\n`);
+        writeToTerminal(`\x1b[1;33mTokens/sec:\x1b[0m ${results.averageTokensPerSecond.toFixed(1)}\r\n`);
+        writeToTerminal(`\x1b[1;33mTotal Time:\x1b[0m ${(results.totalTime / 1000).toFixed(1)}s\r\n\n`);
       }
       
       dispatch(addNotification({
@@ -270,8 +337,8 @@ const Settings = () => {
       
       // Write error to terminal
       if (terminalInstance.current) {
-        terminalInstance.current.write('\x1b[1;31m=== Benchmark Failed ===\x1b[0m\r\n\n');
-        terminalInstance.current.write(`\x1b[1;31mError:\x1b[0m ${error.message}\r\n`);
+        writeToTerminal('\x1b[1;31m=== Benchmark Failed ===\x1b[0m\r\n\n');
+        writeToTerminal(`\x1b[1;31mError:\x1b[0m ${error.message}\r\n`);
       }
       
       dispatch(addNotification({
@@ -280,11 +347,40 @@ const Settings = () => {
       }));
     } finally {
       setIsBenchmarking(false);
+      // Clear the refresh interval
+      if (terminalRefreshInterval) {
+        clearInterval(terminalRefreshInterval);
+        setTerminalRefreshInterval(null);
+      }
     }
   };
   
   // Run model benchmark
   const runModelBenchmark = async (apiUrl, modelName, parameters) => {
+    // Determine server type from the current form data
+    const serverType = formData.projectManager.serverType || 'ollama';
+    
+    // Create a helper function to ensure terminal writes are flushed
+    const writeToTerminal = (text) => {
+      if (terminalInstance.current) {
+        terminalInstance.current.write(text);
+        // Force a redraw by triggering a resize event
+        if (fitAddon.current) {
+          fitAddon.current.fit();
+          // Force browser to repaint
+          setTimeout(() => {
+            if (terminalContainerRef.current) {
+              // Force a reflow
+              terminalContainerRef.current.style.display = 'none';
+              // This line forces a reflow
+              void terminalContainerRef.current.offsetHeight;
+              terminalContainerRef.current.style.display = 'block';
+            }
+          }, 5);
+        }
+      }
+    };
+    
     // Prepare benchmark tests
     const tests = [
       {
@@ -327,16 +423,16 @@ const Settings = () => {
     
     // Write test plan to terminal
     if (terminalInstance.current) {
-      terminalInstance.current.write('\x1b[1;33mRunning Tests:\x1b[0m\r\n');
+      writeToTerminal('\x1b[1;33mRunning Tests:\x1b[0m\r\n');
       tests.forEach((test, index) => {
-        terminalInstance.current.write(`  ${index + 1}. ${test.name}\r\n`);
+        writeToTerminal(`  ${index + 1}. ${test.name}\r\n`);
       });
-      terminalInstance.current.write('\r\n');
+      writeToTerminal('\r\n');
     }
     
     /**
-     * Helper function to handle streaming responses from Ollama
-     * @param {string} apiUrl - The Ollama API URL
+     * Helper function to handle streaming responses
+     * @param {string} apiUrl - The API URL
      * @param {string} modelName - The model name
      * @param {string} prompt - The prompt to send
      * @param {object} parameters - The model parameters
@@ -344,17 +440,22 @@ const Settings = () => {
      */
     const handleStreamingRequest = async (apiUrl, modelName, prompt, parameters) => {
       if (terminalInstance.current) {
-        terminalInstance.current.write(`\x1b[90mAttempting streaming request as fallback...\x1b[0m\r\n`);
+        writeToTerminal(`\x1b[90mAttempting streaming request as fallback...\x1b[0m\r\n`);
       }
       
       try {
-        // Make a raw fetch request to handle streaming
-        const response = await fetch(`${apiUrl}/api/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
+        // Use different endpoints based on server type
+        const endpoint = serverType === 'lmStudio' ? '/v1/chat/completions' : '/api/generate';
+        const payload = serverType === 'lmStudio' ? 
+          {
+            model: modelName,
+            messages: [{ role: "user", content: prompt }],
+            stream: true,
+            temperature: parameters?.temperature || 0.7,
+            top_p: parameters?.topP || 0.9,
+            max_tokens: parameters?.maxTokens || 1024
+          } : 
+          {
             model: modelName,
             prompt: prompt,
             stream: true,
@@ -363,7 +464,15 @@ const Settings = () => {
             top_k: parameters?.topK || 40,
             repeat_penalty: parameters?.repeatPenalty || 1.1,
             max_tokens: parameters?.maxTokens || 1024
-          })
+          };
+        
+        // Make a raw fetch request to handle streaming
+        const response = await fetch(`${apiUrl}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
         });
         
         if (!response.ok) {
@@ -391,7 +500,7 @@ const Settings = () => {
           
           // Log progress
           if (terminalInstance.current && responseChunks.length % 10 === 0) {
-            terminalInstance.current.write('.');
+            writeToTerminal('.');
           }
         }
         
@@ -413,14 +522,14 @@ const Settings = () => {
         }
         
         if (terminalInstance.current) {
-          terminalInstance.current.write('\r\x1b[K'); // Clear the line
-          terminalInstance.current.write(`\x1b[32mStreaming response received (${extractedText.length} chars)\x1b[0m\r\n`);
+          writeToTerminal('\r\x1b[K'); // Clear the line
+          writeToTerminal(`\x1b[32mStreaming response received (${extractedText.length} chars)\x1b[0m\r\n`);
         }
         
         return extractedText;
       } catch (error) {
         if (terminalInstance.current) {
-          terminalInstance.current.write(`\x1b[31mStreaming request failed: ${error.message}\x1b[0m\r\n`);
+          writeToTerminal(`\x1b[31mStreaming request failed: ${error.message}\x1b[0m\r\n`);
         }
         throw error;
       }
@@ -432,15 +541,16 @@ const Settings = () => {
       
       // Write test start to terminal
       if (terminalInstance.current) {
-        terminalInstance.current.write(`\x1b[1;34m[${index + 1}/${tests.length}] Running test: ${test.name}...\x1b[0m\r\n`);
-        terminalInstance.current.write(`\x1b[90mPrompt: ${test.prompt}\x1b[0m\r\n`);
-        terminalInstance.current.write(`\x1b[33mWaiting for response...\x1b[0m`);
+        writeToTerminal(`\x1b[1;34m[${index + 1}/${tests.length}] Running test: ${test.name}...\x1b[0m\r\n`);
+        writeToTerminal(`\x1b[90mPrompt: ${test.prompt}\x1b[0m\r\n`);
+        writeToTerminal(`\x1b[33mWaiting for response...\x1b[0m`);
       }
       
       try {
-        // Call Ollama API
+        // Call API based on server type
         if (terminalInstance.current) {
-          terminalInstance.current.write(`\x1b[90mSending request to ${apiUrl}/api/generate...\x1b[0m\r\n`);
+          const endpoint = serverType === 'lmStudio' ? '/v1/chat/completions' : '/api/generate';
+          writeToTerminal(`\x1b[90mSending request to ${apiUrl}${endpoint}...\x1b[0m\r\n`);
         }
         
         // Add a timeout promise to handle cases where the API doesn't respond
@@ -453,9 +563,17 @@ const Settings = () => {
         
         try {
           // First try with non-streaming request
-          // Create the API call promise
-          const apiCallPromise = axios.post(
-            `${apiUrl}/api/generate`,
+          // Create the API call promise with the appropriate endpoint and payload
+          const endpoint = serverType === 'lmStudio' ? '/v1/chat/completions' : '/api/generate';
+          const payload = serverType === 'lmStudio' ? 
+            {
+              model: modelName,
+              messages: [{ role: "user", content: test.prompt }],
+              stream: false,
+              temperature: parameters?.temperature || 0.7,
+              top_p: parameters?.topP || 0.9,
+              max_tokens: parameters?.maxTokens || 1024
+            } : 
             {
               model: modelName,
               prompt: test.prompt,
@@ -464,8 +582,12 @@ const Settings = () => {
               top_k: parameters?.topK || 40,
               repeat_penalty: parameters?.repeatPenalty || 1.1,
               max_tokens: parameters?.maxTokens || 1024,
-              stream: false // Explicitly disable streaming to get a complete response
-            },
+              stream: false
+            };
+          
+          const apiCallPromise = axios.post(
+            `${apiUrl}${endpoint}`,
+            payload,
             {
               headers: {
                 'Content-Type': 'application/json'
@@ -480,45 +602,52 @@ const Settings = () => {
           
           // Debug the response structure
           if (terminalInstance.current) {
-            terminalInstance.current.write('\r\x1b[K'); // Clear the line
-            terminalInstance.current.write(`\x1b[36mDebug - Response structure: ${JSON.stringify(Object.keys(response.data))}\x1b[0m\r\n`);
+            writeToTerminal('\r\x1b[K'); // Clear the line
+            writeToTerminal(`\x1b[36mDebug - Response structure: ${JSON.stringify(Object.keys(response.data))}\x1b[0m\r\n`);
           }
           
           // Handle different response formats
           
-          // Check if response has the expected structure
-          if (response.data && response.data.response) {
-            // Standard Ollama response format
-            responseText = response.data.response;
-          } else if (response.data && typeof response.data === 'string') {
-            // Plain text response
-            responseText = response.data;
-          } else if (response.data && Array.isArray(response.data)) {
-            // Array of responses (some API versions)
-            responseText = response.data.map(item => item.response || '').join('');
-          } else if (response.data && typeof response.data === 'object') {
-            // If it's a streaming response that was collected as a single object
-            if (terminalInstance.current) {
-              terminalInstance.current.write(`\x1b[33mWarning: Received unexpected response format. Attempting to extract content.\x1b[0m\r\n`);
-            }
-            
-            // Try to extract any text content from the object
-            const dataStr = JSON.stringify(response.data);
-            const matches = dataStr.match(/"response":"([^"]*)"/g);
-            if (matches && matches.length > 0) {
-              responseText = matches.map(m => m.replace(/"response":"/, '').replace(/"$/, '')).join('');
+          // Handle different response formats based on server type
+          if (serverType === 'lmStudio') {
+            if (response.data && response.data.choices && response.data.choices.length > 0) {
+              // LM Studio/OpenAI format
+              responseText = response.data.choices[0].message?.content || response.data.choices[0].text || '';
             } else {
-              // Last resort - use the stringified data
-              responseText = `Unable to parse response: ${dataStr.substring(0, 100)}...`;
+              throw new Error(`Invalid LM Studio response structure: ${JSON.stringify(response.data)}`);
             }
           } else {
-            throw new Error(`Invalid response structure: ${JSON.stringify(response.data)}`);
+            // Ollama format
+            if (response.data && response.data.response) {
+              responseText = response.data.response;
+            } else if (response.data && typeof response.data === 'string') {
+              responseText = response.data;
+            } else if (response.data && Array.isArray(response.data)) {
+              responseText = response.data.map(item => item.response || '').join('');
+            } else if (response.data && typeof response.data === 'object') {
+              // If it's a streaming response that was collected as a single object
+              if (terminalInstance.current) {
+                writeToTerminal(`\x1b[33mWarning: Received unexpected response format. Attempting to extract content.\x1b[0m\r\n`);
+              }
+              
+              // Try to extract any text content from the object
+              const dataStr = JSON.stringify(response.data);
+              const matches = dataStr.match(/"response":"([^"]*)"/g);
+              if (matches && matches.length > 0) {
+                responseText = matches.map(m => m.replace(/"response":"/, '').replace(/"$/, '')).join('');
+              } else {
+                // Last resort - use the stringified data
+                responseText = `Unable to parse response: ${dataStr.substring(0, 100)}...`;
+              }
+            } else {
+              throw new Error(`Invalid Ollama response structure: ${JSON.stringify(response.data)}`);
+            }
           }
         } catch (nonStreamingError) {
           // If non-streaming request fails, try with streaming as fallback
           if (terminalInstance.current) {
-            terminalInstance.current.write('\r\x1b[K'); // Clear the line
-            terminalInstance.current.write(`\x1b[33mNon-streaming request failed: ${nonStreamingError.message}\x1b[0m\r\n`);
+            writeToTerminal('\r\x1b[K'); // Clear the line
+            writeToTerminal(`\x1b[33mNon-streaming request failed: ${nonStreamingError.message}\x1b[0m\r\n`);
           }
           
           // Try streaming request as fallback
@@ -539,27 +668,27 @@ const Settings = () => {
           if (response && response.data && response.data.eval_count) {
             tokensGenerated = response.data.eval_count;
             if (terminalInstance.current) {
-              terminalInstance.current.write(`\x1b[90mToken count from API: ${tokensGenerated}\x1b[0m\r\n`);
+              writeToTerminal(`\x1b[90mToken count from API: ${tokensGenerated}\x1b[0m\r\n`);
             }
           } 
           // Otherwise estimate based on whitespace (works for both streaming and non-streaming)
           else if (responseText && typeof responseText === 'string') {
             tokensGenerated = responseText.split(/\s+/).length;
             if (terminalInstance.current) {
-              terminalInstance.current.write(`\x1b[90mEstimated token count: ${tokensGenerated}\x1b[0m\r\n`);
+              writeToTerminal(`\x1b[90mEstimated token count: ${tokensGenerated}\x1b[0m\r\n`);
             }
           } else {
             // If we can't determine tokens, use a default value
             tokensGenerated = 10;
             if (terminalInstance.current) {
-              terminalInstance.current.write(`\x1b[33mWarning: Could not determine token count, using default value\x1b[0m\r\n`);
+              writeToTerminal(`\x1b[33mWarning: Could not determine token count, using default value\x1b[0m\r\n`);
             }
           }
         } catch (tokenError) {
           // Fallback if token calculation fails
           tokensGenerated = responseText ? Math.ceil(responseText.length / 4) : 10;
           if (terminalInstance.current) {
-            terminalInstance.current.write(`\x1b[33mWarning: Error calculating tokens, using estimate: ${tokensGenerated}\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[33mWarning: Error calculating tokens, using estimate: ${tokensGenerated}\x1b[0m\r\n`);
           }
         }
         
@@ -576,26 +705,26 @@ const Settings = () => {
             score = test.evaluateFunc(responseText);
           } else {
             if (terminalInstance.current) {
-              terminalInstance.current.write(`\x1b[33mWarning: Response is not a string, cannot evaluate\x1b[0m\r\n`);
+              writeToTerminal(`\x1b[33mWarning: Response is not a string, cannot evaluate\x1b[0m\r\n`);
             }
           }
         } catch (evalError) {
           if (terminalInstance.current) {
-            terminalInstance.current.write(`\x1b[33mWarning: Error evaluating response: ${evalError.message}\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[33mWarning: Error evaluating response: ${evalError.message}\x1b[0m\r\n`);
           }
         }
         
         // Clear the "Waiting for response..." line and write results to terminal
         if (terminalInstance.current) {
-          terminalInstance.current.write('\r\x1b[K'); // Clear the line
-          terminalInstance.current.write(`\x1b[32mResponse received in ${(latency / 1000).toFixed(2)}s\x1b[0m\r\n`);
+          writeToTerminal('\r\x1b[K'); // Clear the line
+          writeToTerminal(`\x1b[32mResponse received in ${(latency / 1000).toFixed(2)}s\x1b[0m\r\n`);
           
           // Safely display response text
           if (responseText && typeof responseText === 'string') {
-            terminalInstance.current.write(`\x1b[90m${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[90m${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}\x1b[0m\r\n`);
           } else {
-            terminalInstance.current.write(`\x1b[33mWarning: Response is not a string\x1b[0m\r\n`);
-            terminalInstance.current.write(`\x1b[90m${JSON.stringify(response.data).substring(0, 100)}...\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[33mWarning: Response is not a string\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[90m${JSON.stringify(response.data).substring(0, 100)}...\x1b[0m\r\n`);
           }
           
           // Write score with color based on value
@@ -603,8 +732,8 @@ const Settings = () => {
           if (score >= 8) scoreColor = '32'; // Green
           else if (score >= 5) scoreColor = '33'; // Yellow
           
-          terminalInstance.current.write(`\x1b[1;${scoreColor}mScore: ${score}/10\x1b[0m\r\n`);
-          terminalInstance.current.write(`Tokens/sec: ${tokensPerSecond.toFixed(1)}\r\n\n`);
+          writeToTerminal(`\x1b[1;${scoreColor}mScore: ${score}/10\x1b[0m\r\n`);
+          writeToTerminal(`Tokens/sec: ${tokensPerSecond.toFixed(1)}\r\n\n`);
         }
         
         results.push({
@@ -619,7 +748,7 @@ const Settings = () => {
       } catch (error) {
         // Clear the "Waiting for response..." line and write error to terminal
         if (terminalInstance.current) {
-          terminalInstance.current.write('\r\x1b[K'); // Clear the line
+          writeToTerminal('\r\x1b[K'); // Clear the line
           
           // Provide more detailed error information
           let errorMessage = error.message;
@@ -660,8 +789,8 @@ const Settings = () => {
                   .join('');
                 
                 if (extractedText) {
-                  terminalInstance.current.write(`\x1b[33mDetected streaming response. Extracted content:\x1b[0m\r\n`);
-                  terminalInstance.current.write(`\x1b[90m${extractedText.substring(0, 200)}${extractedText.length > 200 ? '...' : ''}\x1b[0m\r\n`);
+                  writeToTerminal(`\x1b[33mDetected streaming response. Extracted content:\x1b[0m\r\n`);
+                  writeToTerminal(`\x1b[90m${extractedText.substring(0, 200)}${extractedText.length > 200 ? '...' : ''}\x1b[0m\r\n`);
                   
                   // Try to evaluate the extracted text
                   let score = 0;
@@ -687,26 +816,26 @@ const Settings = () => {
                     if (score >= 8) scoreColor = '32'; // Green
                     else if (score >= 5) scoreColor = '33'; // Yellow
                     
-                    terminalInstance.current.write(`\x1b[1;${scoreColor}mScore: ${score}/10\x1b[0m\r\n`);
-                    terminalInstance.current.write(`Tokens/sec: ${tokensPerSecond.toFixed(1)}\r\n\n`);
+                    writeToTerminal(`\x1b[1;${scoreColor}mScore: ${score}/10\x1b[0m\r\n`);
+                    writeToTerminal(`Tokens/sec: ${tokensPerSecond.toFixed(1)}\r\n\n`);
                     
                     // Skip the rest of the error handling
                     return;
                   } catch (evalError) {
-                    terminalInstance.current.write(`\x1b[33mWarning: Error evaluating extracted response: ${evalError.message}\x1b[0m\r\n`);
+                    writeToTerminal(`\x1b[33mWarning: Error evaluating extracted response: ${evalError.message}\x1b[0m\r\n`);
                   }
                 }
               }
             } catch (parseError) {
-              terminalInstance.current.write(`\x1b[33mWarning: Failed to parse streaming response: ${parseError.message}\x1b[0m\r\n`);
+              writeToTerminal(`\x1b[33mWarning: Failed to parse streaming response: ${parseError.message}\x1b[0m\r\n`);
             }
           }
           
-          terminalInstance.current.write(`\x1b[31mError: ${errorMessage}\x1b[0m\r\n`);
+          writeToTerminal(`\x1b[31mError: ${errorMessage}\x1b[0m\r\n`);
           if (errorDetails) {
-            terminalInstance.current.write(`\x1b[31mDetails: ${errorDetails}\x1b[0m\r\n`);
+            writeToTerminal(`\x1b[31mDetails: ${errorDetails}\x1b[0m\r\n`);
           }
-          terminalInstance.current.write('\n');
+          writeToTerminal('\n');
         }
         
         results.push({
@@ -726,11 +855,11 @@ const Settings = () => {
     
     // Write summary to terminal
     if (terminalInstance.current) {
-      terminalInstance.current.write('\x1b[1;35m=== Summary ===\x1b[0m\r\n');
-      terminalInstance.current.write(`Total time: ${(totalTime / 1000).toFixed(2)}s\r\n`);
-      terminalInstance.current.write(`Average score: ${averageScore.toFixed(1)}/10\r\n`);
-      terminalInstance.current.write(`Average latency: ${averageLatency.toFixed(0)}ms\r\n`);
-      terminalInstance.current.write(`Average tokens/sec: ${averageTokensPerSecond.toFixed(1)}\r\n\n`);
+      writeToTerminal('\x1b[1;35m=== Summary ===\x1b[0m\r\n');
+      writeToTerminal(`Total time: ${(totalTime / 1000).toFixed(2)}s\r\n`);
+      writeToTerminal(`Average score: ${averageScore.toFixed(1)}/10\r\n`);
+      writeToTerminal(`Average latency: ${averageLatency.toFixed(0)}ms\r\n`);
+      writeToTerminal(`Average tokens/sec: ${averageTokensPerSecond.toFixed(1)}\r\n\n`);
     }
     
     return {
@@ -783,8 +912,13 @@ const Settings = () => {
     return () => {
       // Log when component unmounts
       dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings component unmounted'));
+      
+      // Clear any terminal refresh interval
+      if (terminalRefreshInterval) {
+        clearInterval(terminalRefreshInterval);
+      }
     };
-  }, []);
+  }, [terminalRefreshInterval]);
   
   // Debounce config generation to prevent excessive updates
   useEffect(() => {
@@ -807,7 +941,8 @@ const Settings = () => {
       },
       projectManager: {
         apiUrl: formData.projectManager.apiUrl,
-        model: formData.projectManager.model
+        model: formData.projectManager.model,
+        serverType: formData.projectManager.serverType || 'ollama'
       },
       nodeEnv: formData.nodeEnv,
       port: formData.port
@@ -879,6 +1014,7 @@ const Settings = () => {
     if (config.projectManager) {
       if (config.projectManager.apiUrl) newFormData.projectManager.apiUrl = config.projectManager.apiUrl;
       if (config.projectManager.model) newFormData.projectManager.model = config.projectManager.model;
+      if (config.projectManager.serverType) newFormData.projectManager.serverType = config.projectManager.serverType;
     }
     
     if (config.nodeEnv) newFormData.nodeEnv = config.nodeEnv;
@@ -939,6 +1075,9 @@ const Settings = () => {
       modelName = formData.projectManager.model;
     }
     
+    // Log the connection attempt
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Testing connection to ${provider} at ${apiUrl}`));
+    
     if (!apiUrl) {
       setValidationErrors(prev => ({
         ...prev,
@@ -950,10 +1089,25 @@ const Settings = () => {
       return;
     }
     
+    // Show notification that we're testing the connection
+    dispatch(addNotification({
+      type: 'info',
+      message: `Testing connection to ${provider}...`
+    }));
+    
+    // For Project Manager, pass the server type to the fetchModels action
+    const serverType = provider === 'projectManager' ? formData.projectManager.serverType || 'ollama' : null;
+    
     // Dispatch the fetchModels action
-    dispatch(fetchModels(provider, apiUrl))
+    dispatch(fetchModels(provider, apiUrl, serverType))
       .then(models => {
         if (models && models.length > 0) {
+          // Show success notification
+          dispatch(addNotification({
+            type: 'success',
+            message: `Successfully connected to ${provider} and found ${models.length} models`
+          }));
+          
           // Mark this service as manually loaded
           setServicesManuallyLoaded(prev => ({
             ...prev,
@@ -963,14 +1117,47 @@ const Settings = () => {
           // If no model is selected and we have models, select the first one
           if (!modelName && models.length > 0) {
             if (provider === 'projectManager') {
-              // For Project Manager, prefer deepseek-r1:7b if available
-              const deepseekModel = models.find(m => m === 'deepseek-r1:7b') || models[0];
-              handleInputChange(provider, 'model', deepseekModel);
+              // For Project Manager, try to find a suitable model
+              // First look for deepscaler models
+              let selectedModel = models.find(m => 
+                m.toLowerCase().includes('deepscaler') || 
+                m.toLowerCase().includes('deep-scaler')
+              );
+              
+              // If no deepscaler model, try deepseek models
+              if (!selectedModel) {
+                selectedModel = models.find(m => 
+                  m.toLowerCase().includes('deepseek')
+                );
+              }
+              
+              // If still no model found, use the first one
+              if (!selectedModel) {
+                selectedModel = models[0];
+              }
+              
+              handleInputChange(provider, 'model', selectedModel);
+              dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Selected model for Project Manager: ${selectedModel}`));
             } else {
               handleInputChange(provider, 'defaultModel', models[0]);
+              dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Selected model for ${provider}: ${models[0]}`));
             }
           }
+        } else {
+          // Show warning if no models were found
+          dispatch(addNotification({
+            type: 'warning',
+            message: `Connected to ${provider} but found no models. Please check if models are installed.`
+          }));
         }
+      })
+      .catch(error => {
+        // This catch block handles any errors not caught by the fetchModels function
+        dispatch(logError(LOG_CATEGORIES.SETTINGS, `Error in handleTestConnection for ${provider}:`, error));
+        dispatch(addNotification({
+          type: 'error',
+          message: `Failed to connect to ${provider}: ${error.message}`
+        }));
       });
   };
 
@@ -1080,11 +1267,18 @@ const Settings = () => {
         }
       }));
     } else if (provider === 'projectManager') {
+      // Use the appropriate default URL based on server type
+      const serverType = formData.projectManager.serverType || 'ollama';
+      const defaultUrl = DEFAULT_URLS[serverType];
+      
       setFormData(prev => ({
         ...prev,
         projectManager: {
-          apiUrl: DEFAULT_URLS.ollama, // Uses the same URL as Ollama
-          model: 'deepscaler:7b'
+          ...prev.projectManager,
+          apiUrl: defaultUrl,
+          // Keep the existing model or use a default based on server type
+          model: prev.projectManager.model || (serverType === 'lmStudio' ? '' : 'deepscaler:7b'),
+          serverType: serverType
         }
       }));
     }
@@ -1305,6 +1499,27 @@ const Settings = () => {
           <Divider sx={{ my: 2 }} />
           
           <Grid container spacing={3}>
+            {/* Add server type selector for Project Manager */}
+            {provider === 'projectManager' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel id="server-type-label">Server Type</InputLabel>
+                  <Select
+                    labelId="server-type-label"
+                    value={formData.projectManager.serverType || 'ollama'}
+                    onChange={(e) => handleInputChange('projectManager', 'serverType', e.target.value)}
+                    label="Server Type"
+                  >
+                    <MenuItem value="ollama">Ollama</MenuItem>
+                    <MenuItem value="lmStudio">LM Studio</MenuItem>
+                  </Select>
+                  <FormHelperText>
+                    Select the type of server you're connecting to
+                  </FormHelperText>
+                </FormControl>
+              </Grid>
+            )}
+            
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <TextField
@@ -1314,10 +1529,10 @@ const Settings = () => {
                   onChange={(e) => handleInputChange(provider, 'apiUrl', e.target.value)}
                   error={!!validationErrors[provider].apiUrl}
                   helperText={validationErrors[provider].apiUrl || 
-                    `Example: ${DEFAULT_URLS[provider]}`}
+                    `Example: ${DEFAULT_URLS[provider === 'projectManager' ? (formData.projectManager.serverType === 'lmStudio' ? 'lmStudio' : 'ollama') : provider]}`}
                   sx={{ mr: 1 }}
                 />
-                <Tooltip title={`Use default URL: ${DEFAULT_URLS[provider]}`}>
+                <Tooltip title={`Use default URL: ${DEFAULT_URLS[provider === 'projectManager' ? (formData.projectManager.serverType === 'lmStudio' ? 'lmStudio' : 'ollama') : provider]}`}>
                   <IconButton 
                     size="small" 
                     color="primary"
@@ -1379,6 +1594,90 @@ const Settings = () => {
                 </Alert>
               )}
             </Grid>
+            
+            {/* Add model parameters for Project Manager */}
+            {provider === 'projectManager' && (
+              <>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
+                    Model Parameters
+                  </Typography>
+                  <Divider />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Temperature"
+                    type="number"
+                    inputProps={{ step: 0.1, min: 0, max: 2 }}
+                    value={formData.projectManager.parameters.temperature}
+                    onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
+                    helperText="Controls randomness (0.0-2.0)"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Top P"
+                    type="number"
+                    inputProps={{ step: 0.05, min: 0, max: 1 }}
+                    value={formData.projectManager.parameters.topP}
+                    onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
+                    helperText="Nucleus sampling (0.0-1.0)"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Top K"
+                    type="number"
+                    inputProps={{ step: 1, min: 1, max: 100 }}
+                    value={formData.projectManager.parameters.topK}
+                    onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
+                    helperText="Limits vocabulary to top K tokens"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Repeat Penalty"
+                    type="number"
+                    inputProps={{ step: 0.1, min: 1, max: 2 }}
+                    value={formData.projectManager.parameters.repeatPenalty}
+                    onChange={(e) => handleParameterChange('repeatPenalty', parseFloat(e.target.value))}
+                    helperText="Penalizes repetition (1.0-2.0)"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Max Tokens"
+                    type="number"
+                    inputProps={{ step: 128, min: 128, max: 4096 }}
+                    value={formData.projectManager.parameters.maxTokens}
+                    onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
+                    helperText="Maximum tokens to generate"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Context Length"
+                    type="number"
+                    inputProps={{ step: 512, min: 512, max: 8192 }}
+                    value={formData.projectManager.parameters.contextLength}
+                    onChange={(e) => handleParameterChange('contextLength', parseInt(e.target.value))}
+                    helperText="Maximum context window size"
+                  />
+                </Grid>
+              </>
+            )}
           </Grid>
         </CardContent>
       </Card>
@@ -1439,16 +1738,43 @@ const Settings = () => {
               <Box sx={{ mt: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, bgcolor: 'background.default' }}>
                   <Typography variant="subtitle2">Benchmark Terminal</Typography>
-                  <IconButton size="small" onClick={() => setShowTerminal(false)}>
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
+                  <Box>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => {
+                        // Force terminal refresh
+                        if (terminalInstance.current && fitAddon.current) {
+                          fitAddon.current.fit();
+                          // Force a reflow
+                          if (terminalContainerRef.current) {
+                            terminalContainerRef.current.style.display = 'none';
+                            void terminalContainerRef.current.offsetHeight;
+                            terminalContainerRef.current.style.display = 'block';
+                          }
+                        }
+                      }}
+                      sx={{ mr: 1 }}
+                    >
+                      <Assessment fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => setShowTerminal(false)}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
                 </Box>
                 <Box 
                   ref={terminalContainerRef} 
                   sx={{ 
-                    height: '300px', 
+                    height: '400px', // Increased height for better visibility
                     width: '100%', 
-                    bgcolor: '#1e1e1e'
+                    bgcolor: '#1e1e1e',
+                    overflow: 'hidden', // Prevent scrollbars
+                    position: 'relative', // Ensure proper positioning
+                    '& .xterm': {
+                      padding: '8px', // Add padding inside terminal
+                      height: '100%',
+                      width: '100%'
+                    }
                   }} 
                 />
               </Box>

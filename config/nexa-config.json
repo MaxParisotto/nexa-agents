@@ -9,15 +9,8 @@
   },
   "projectManager": {
     "apiUrl": "http://localhost:1234",
-    "model": "deepscaler:latest",
-    "parameters": {
-      "temperature": 0.7,
-      "topP": 0.9,
-      "topK": 40,
-      "repeatPenalty": 1.1,
-      "maxTokens": 1024,
-      "contextLength": 4096
-    }
+    "model": "qwen2.5-7b-instruct-1m",
+    "serverType": "lmStudio"
   },
   "nodeEnv": "development",
   "port": "3001"

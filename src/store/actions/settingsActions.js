@@ -54,51 +54,140 @@ export const loadConfigFailure = (error) => ({
 });
 
 // Thunk Actions
-export const fetchModels = (provider, apiUrl) => async (dispatch, getState) => {
+export const fetchModels = (provider, apiUrl, serverType = null) => async (dispatch, getState) => {
   dispatch(fetchModelsRequest(provider));
+  
+  // Add detailed logging
+  dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Attempting to fetch models from ${provider} at ${apiUrl}${serverType ? ` (server type: ${serverType})` : ''}`));
   
   try {
     let models = [];
     
     if (provider === 'lmStudio') {
       // LM Studio API call to fetch models
-      const response = await axios.get(`${apiUrl}/v1/models`);
-      models = response.data.data.map(model => model.id);
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to LM Studio API: ${apiUrl}/v1/models`));
+      
+      const response = await axios.get(`${apiUrl}/v1/models`, {
+        // Add timeout and headers for better debugging
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `LM Studio API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
+      
+      if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        models = response.data.data.map(model => model.id);
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully extracted ${models.length} models from LM Studio response`));
+      } else {
+        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected LM Studio API response format: ${JSON.stringify(response.data).substring(0, 200)}`));
+        models = [];
+      }
       
       dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models from LM Studio`));
     } 
     else if (provider === 'ollama') {
       // Ollama API call to fetch models
-      const response = await axios.get(`${apiUrl}/api/tags`);
-      models = response.data.models.map(model => model.name);
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to Ollama API: ${apiUrl}/api/tags`));
+      
+      const response = await axios.get(`${apiUrl}/api/tags`, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Ollama API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
+      
+      if (response.data && response.data.models && Array.isArray(response.data.models)) {
+        models = response.data.models.map(model => model.name);
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully extracted ${models.length} models from Ollama response`));
+      } else {
+        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected Ollama API response format: ${JSON.stringify(response.data).substring(0, 200)}`));
+        models = [];
+      }
       
       dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models from Ollama`));
     }
     else if (provider === 'projectManager') {
-      // For Project Manager, we use Ollama API but we're specifically looking for DeepScaler models
-      const response = await axios.get(`${apiUrl}/api/tags`);
-      const allModels = response.data.models.map(model => model.name);
+      // For Project Manager, use the specified server type to determine the API endpoint
+      const effectiveServerType = serverType || 'ollama';
       
-      // Filter for DeepScaler models first
-      models = allModels.filter(name => 
-        name.toLowerCase().includes('deepscaler') || 
-        name.toLowerCase().includes('deep-scaler')
-      );
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Project Manager using server type: ${effectiveServerType}`));
       
-      // If no DeepScaler models found, also look for other models with function calling capabilities
-      if (models.length === 0) {
-        const functionCallingModels = allModels.filter(name => 
-          name.toLowerCase().includes('deepseek') || 
-          name.toLowerCase().includes('llama3') ||
-          name.toLowerCase().includes('llama-3') ||
-          name.toLowerCase().includes('mistral') ||
-          name.toLowerCase().includes('mixtral') ||
-          name.toLowerCase().includes('qwen')
-        );
-        models = functionCallingModels;
+      if (effectiveServerType === 'lmStudio') {
+        // Use LM Studio API
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to LM Studio API for Project Manager: ${apiUrl}/v1/models`));
+        
+        const response = await axios.get(`${apiUrl}/v1/models`, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+        
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Project Manager API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
+        
+        if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          models = response.data.data.map(model => model.id);
+          dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully extracted ${models.length} models from LM Studio for Project Manager`));
+        } else {
+          dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected LM Studio API response format for Project Manager: ${JSON.stringify(response.data).substring(0, 200)}`));
+          models = [];
+        }
+      } else {
+        // Use Ollama API
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to Ollama API for Project Manager: ${apiUrl}/api/tags`));
+        
+        const response = await axios.get(`${apiUrl}/api/tags`, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+        
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Project Manager API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
+        
+        if (response.data && response.data.models && Array.isArray(response.data.models)) {
+          const allModels = response.data.models.map(model => model.name);
+          dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Extracted ${allModels.length} total models from Ollama for Project Manager`));
+          
+          // Instead of filtering, use all available models
+          models = allModels;
+          dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Using all ${models.length} available models for Project Manager`));
+          
+          // For backward compatibility, still prioritize certain models if they exist
+          const preferredModels = allModels.filter(name => 
+            name.toLowerCase().includes('deepscaler') || 
+            name.toLowerCase().includes('deep-scaler') ||
+            name.toLowerCase().includes('deepseek') || 
+            name.toLowerCase().includes('llama3') ||
+            name.toLowerCase().includes('llama-3') ||
+            name.toLowerCase().includes('mistral') ||
+            name.toLowerCase().includes('mixtral') ||
+            name.toLowerCase().includes('qwen')
+          );
+          
+          // If we have preferred models, put them at the top of the list
+          if (preferredModels.length > 0) {
+            // Remove preferred models from the main list to avoid duplicates
+            const otherModels = allModels.filter(model => !preferredModels.includes(model));
+            // Combine preferred models first, then other models
+            models = [...preferredModels, ...otherModels];
+            dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Prioritized ${preferredModels.length} preferred models for Project Manager`));
+          }
+        } else {
+          dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected API response format for Project Manager: ${JSON.stringify(response.data).substring(0, 200)}`));
+          models = [];
+        }
       }
       
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} compatible models for Project Manager`));
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models for Project Manager`));
     }
     
     dispatch(fetchModelsSuccess(provider, models));
@@ -108,14 +197,24 @@ export const fetchModels = (provider, apiUrl) => async (dispatch, getState) => {
     
     return models;
   } catch (error) {
+    // Enhanced error logging
     const errorMessage = error.response?.data?.error || error.message;
-    dispatch(logError(LOG_CATEGORIES.SETTINGS, `Failed to fetch models from ${provider}: ${errorMessage}`, error));
+    const statusCode = error.response?.status || 'unknown';
+    const errorDetails = {
+      message: errorMessage,
+      status: statusCode,
+      url: `${apiUrl}/${provider === 'lmStudio' || (provider === 'projectManager' && serverType === 'lmStudio') ? 'v1/models' : 'api/tags'}`,
+      provider: provider,
+      serverType: serverType
+    };
+    
+    dispatch(logError(LOG_CATEGORIES.SETTINGS, `Failed to fetch models from ${provider}: ${errorMessage}`, errorDetails));
     dispatch(fetchModelsFailure(provider, errorMessage));
     
-    // Notify user
+    // Notify user with more details
     dispatch(addNotification({
       type: 'error',
-      message: `Failed to connect to ${provider}: ${errorMessage}`
+      message: `Failed to connect to ${provider} (${statusCode}): ${errorMessage}`
     }));
     
     return [];
@@ -156,7 +255,8 @@ export const loadConfigFromFile = (retryCount = 0) => async (dispatch) => {
         },
         projectManager: {
           apiUrl: config.projectManager?.apiUrl,
-          model: config.projectManager?.model
+          model: config.projectManager?.model,
+          serverType: config.projectManager?.serverType || 'ollama'
         },
         nodeEnv: config.nodeEnv,
         port: config.port
@@ -204,6 +304,7 @@ const loadFromLocalStorage = (dispatch) => {
   const defaultOllamaModel = localStorage.getItem('defaultOllamaModel') || '';
   const projectManagerApiUrl = localStorage.getItem('projectManagerApiUrl') || 'http://localhost:11434';
   const projectManagerModel = localStorage.getItem('projectManagerModel') || 'deepscaler:7b';
+  const projectManagerServerType = localStorage.getItem('projectManagerServerType') || 'ollama';
   
   // Try to load parameters from localStorage
   let projectManagerParameters = {
@@ -239,6 +340,7 @@ const loadFromLocalStorage = (dispatch) => {
     projectManager: {
       apiUrl: projectManagerApiUrl,
       model: projectManagerModel,
+      serverType: projectManagerServerType,
       parameters: projectManagerParameters
     },
     nodeEnv,
@@ -281,6 +383,10 @@ export const saveSettings = (settings) => async (dispatch) => {
       localStorage.setItem('projectManagerModel', settings.projectManager.model);
     }
     
+    if (settings.projectManager?.serverType) {
+      localStorage.setItem('projectManagerServerType', settings.projectManager.serverType);
+    }
+    
     if (settings.projectManager?.parameters) {
       localStorage.setItem('projectManagerParameters', JSON.stringify(settings.projectManager.parameters));
     }
@@ -309,6 +415,7 @@ export const saveSettings = (settings) => async (dispatch) => {
       projectManager: {
         apiUrl: settings.projectManager?.apiUrl,
         model: settings.projectManager?.model,
+        serverType: settings.projectManager?.serverType,
         parameters: settings.projectManager?.parameters
       },
       nodeEnv: settings.nodeEnv,
