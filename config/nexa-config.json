@@ -8,8 +8,16 @@
     "defaultModel": "deepseek-r1:1.5b"
   },
   "projectManager": {
-    "apiUrl": "http://localhost:11434",
-    "model": "deepscaler:latest"
+    "apiUrl": "http://localhost:1234",
+    "model": "deepscaler:latest",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "repeatPenalty": 1.1,
+      "maxTokens": 1024,
+      "contextLength": 4096
+    }
   },
   "nodeEnv": "development",
   "port": "3001"
