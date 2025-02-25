@@ -6,11 +6,17 @@ import { clearNotifications } from '../store/actions/systemActions';
 /**
  * NotificationsSystem - Displays system notifications as toast messages
  * Retrieves notifications from Redux store and displays them as MUI Alerts
+ * with a limit on the number of simultaneous notifications
  */
 const NotificationsSystem = () => {
   const dispatch = useDispatch();
   const notifications = useSelector(state => state.system.notifications || []);
   const [visibleNotifications, setVisibleNotifications] = useState([]);
+  
+  // Maximum number of notifications to show at once
+  const MAX_VISIBLE_NOTIFICATIONS = 4;
+  // Maximum time (in ms) any notification can stay on screen
+  const ABSOLUTE_MAX_DURATION = 10000;
   
   // Process new notifications
   useEffect(() => {
@@ -20,18 +26,61 @@ const NotificationsSystem = () => {
       const newNotifications = notifications.filter(n => !currentIds.includes(n.id));
       
       if (newNotifications.length > 0) {
-        // Add new notifications to the visible list
-        setVisibleNotifications(prev => [
-          ...prev,
-          ...newNotifications.map(n => ({
-            ...n,
-            open: true,
-            autoHideDuration: getAutoDuration(n.type)
-          }))
-        ]);
+        // Add new notifications to the visible list, but respect the maximum limit
+        setVisibleNotifications(prev => {
+          // Process the new notifications
+          const updatedNotifications = [
+            ...prev,
+            ...newNotifications.map(n => ({
+              ...n,
+              open: true,
+              addedAt: Date.now(),
+              autoHideDuration: Math.min(getAutoDuration(n.type), ABSOLUTE_MAX_DURATION)
+            }))
+          ];
+          
+          // If we have too many, close the oldest ones first (keeping MAX_VISIBLE_NOTIFICATIONS newest)
+          if (updatedNotifications.length > MAX_VISIBLE_NOTIFICATIONS) {
+            // Mark old notifications as closed but keep them in the array for animation
+            return updatedNotifications.map((n, index) => {
+              if (index < updatedNotifications.length - MAX_VISIBLE_NOTIFICATIONS) {
+                return { ...n, open: false };
+              }
+              return n;
+            });
+          }
+          
+          return updatedNotifications;
+        });
+        
+        // Clear the original notifications from Redux store to prevent reprocessing
+        if (newNotifications.length > 0) {
+          setTimeout(() => {
+            dispatch(clearNotifications());
+          }, 500);
+        }
       }
     }
-  }, [notifications]);
+  }, [notifications, dispatch]);
+  
+  // Clean up closed notifications after animation completes
+  useEffect(() => {
+    // Remove closed notifications from state after animation completes
+    const cleanupTimer = setTimeout(() => {
+      setVisibleNotifications(prev => prev.filter(n => n.open));
+    }, 600);
+    
+    // Clean up auto-expired notifications
+    const now = Date.now();
+    visibleNotifications.forEach(notification => {
+      const expirationTime = notification.addedAt + notification.autoHideDuration;
+      if (now > expirationTime && notification.open) {
+        handleClose(notification.id);
+      }
+    });
+    
+    return () => clearTimeout(cleanupTimer);
+  }, [visibleNotifications]);
   
   /**
    * Get the appropriate duration for a notification based on its type
@@ -58,11 +107,6 @@ const NotificationsSystem = () => {
     setVisibleNotifications(prev => 
       prev.map(n => n.id === id ? { ...n, open: false } : n)
     );
-    
-    // Remove from state after animation completes
-    setTimeout(() => {
-      setVisibleNotifications(prev => prev.filter(n => n.id !== id));
-    }, 500);
   };
   
   /**
@@ -73,37 +117,36 @@ const NotificationsSystem = () => {
       prev.map(n => ({ ...n, open: false }))
     );
     
-    // Remove all after animation completes
-    setTimeout(() => {
-      setVisibleNotifications([]);
-      dispatch(clearNotifications());
-    }, 500);
+    dispatch(clearNotifications());
   };
   
   return (
     <Stack spacing={2} sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 2000 }}>
-      {visibleNotifications.map((notification) => (
-        <Snackbar
-          key={notification.id}
-          open={notification.open}
-          autoHideDuration={notification.autoHideDuration}
-          onClose={() => handleClose(notification.id)}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          sx={{ position: 'relative', bottom: 'auto', right: 'auto' }}
-        >
-          <Alert
+      {visibleNotifications
+        .filter(notification => notification.open)
+        .slice(-MAX_VISIBLE_NOTIFICATIONS)
+        .map((notification) => (
+          <Snackbar
+            key={notification.id}
+            open={notification.open}
+            autoHideDuration={notification.autoHideDuration}
             onClose={() => handleClose(notification.id)}
-            severity={notification.type || 'info'}
-            variant="filled"
-            sx={{ 
-              minWidth: '250px',
-              boxShadow: 3
-            }}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            sx={{ position: 'relative', bottom: 'auto', right: 'auto' }}
           >
-            {notification.message}
-          </Alert>
-        </Snackbar>
-      ))}
+            <Alert
+              onClose={() => handleClose(notification.id)}
+              severity={notification.type || 'info'}
+              variant="filled"
+              sx={{ 
+                minWidth: '250px',
+                boxShadow: 3
+              }}
+            >
+              {notification.message}
+            </Alert>
+          </Snackbar>
+        ))}
     </Stack>
   );
 };
