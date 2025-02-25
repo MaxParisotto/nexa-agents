@@ -6,6 +6,7 @@ const initialState = {
     activeAgents: 0,
     pendingTasks: 0
   },
+  metricsHistory: [], // Array to store metrics history for charts
   websocketStatus: 'disconnected', // connected, disconnected, connecting
   notifications: [],
   errors: [],
@@ -21,12 +22,25 @@ const systemReducer = (state = initialState, action) => {
         lastUpdated: new Date().toISOString()
       };
     case 'UPDATE_METRICS':
+      // Create a metrics data point with timestamp
+      const newMetricsPoint = {
+        ...action.payload,
+        timestamp: new Date().toISOString()
+      };
+
+      // Keep only the last 50 data points for performance
+      const updatedHistory = [
+        newMetricsPoint,
+        ...state.metricsHistory
+      ].slice(0, 50);
+
       return {
         ...state,
         metrics: {
           ...state.metrics,
           ...action.payload
         },
+        metricsHistory: updatedHistory,
         lastUpdated: new Date().toISOString()
       };
     case 'UPDATE_WEBSOCKET_STATUS':

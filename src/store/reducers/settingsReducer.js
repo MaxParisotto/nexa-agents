@@ -24,16 +24,22 @@ const settingsReducer = (state = initialState, action) => {
         ...state,
         lmStudio: {
           ...state.lmStudio,
-          apiUrl: action.payload.lmStudio.apiUrl,
-          defaultModel: action.payload.lmStudio.defaultModel
+          apiUrl: action.payload.lmStudio?.apiUrl || state.lmStudio.apiUrl,
+          defaultModel: action.payload.lmStudio?.defaultModel || state.lmStudio.defaultModel,
+          models: state.lmStudio.models,
+          loading: state.lmStudio.loading,
+          error: state.lmStudio.error
         },
         ollama: {
           ...state.ollama,
-          apiUrl: action.payload.ollama.apiUrl,
-          defaultModel: action.payload.ollama.defaultModel
+          apiUrl: action.payload.ollama?.apiUrl || state.ollama.apiUrl,
+          defaultModel: action.payload.ollama?.defaultModel || state.ollama.defaultModel,
+          models: state.ollama.models,
+          loading: state.ollama.loading,
+          error: state.ollama.error
         },
-        nodeEnv: action.payload.nodeEnv,
-        port: action.payload.port
+        nodeEnv: action.payload.nodeEnv || state.nodeEnv,
+        port: action.payload.port || state.port
       };
     case 'FETCH_MODELS_REQUEST':
       return {
@@ -50,7 +56,8 @@ const settingsReducer = (state = initialState, action) => {
         [action.payload.provider]: {
           ...state[action.payload.provider],
           loading: false,
-          models: action.payload.models
+          models: action.payload.models,
+          error: null
         }
       };
     case 'FETCH_MODELS_FAILURE':

@@ -4,6 +4,11 @@ export const FETCH_MODELS_REQUEST = 'FETCH_MODELS_REQUEST';
 export const FETCH_MODELS_SUCCESS = 'FETCH_MODELS_SUCCESS';
 export const FETCH_MODELS_FAILURE = 'FETCH_MODELS_FAILURE';
 
+// Track connection attempt timestamps to avoid repeated attempts
+const connectionAttempts = {
+  lmStudio: 0,
+  ollama: 0
+};
 
 // Action Creators
 export const updateSettings = (settings) => ({
@@ -27,7 +32,22 @@ export const fetchModelsFailure = (provider, error) => ({
 });
 
 // Thunk Actions
-export const fetchModels = (provider, apiUrl) => async (dispatch) => {
+export const fetchModels = (provider, apiUrl) => async (dispatch, getState) => {
+  // Check if we've attempted a connection recently (within 30 seconds)
+  const now = Date.now();
+  const lastAttempt = connectionAttempts[provider] || 0;
+  const timeSinceLastAttempt = now - lastAttempt;
+  
+  // If we tried to connect recently and got an error, don't try again immediately
+  const currentError = getState().settings[provider].error;
+  if (currentError && timeSinceLastAttempt < 30000) {
+    console.log(`Skipping ${provider} connection attempt - tried ${timeSinceLastAttempt}ms ago`);
+    return;
+  }
+  
+  // Update last attempt timestamp
+  connectionAttempts[provider] = now;
+  
   dispatch(fetchModelsRequest(provider));
   try {
     let url = '';
@@ -39,14 +59,18 @@ export const fetchModels = (provider, apiUrl) => async (dispatch) => {
 
     console.log(`Attempting to fetch models from ${url}`);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
       },
-      // Set a short timeout to avoid long waits
-      signal: AbortSignal.timeout(2000)
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

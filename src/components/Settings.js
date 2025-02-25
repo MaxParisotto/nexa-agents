@@ -15,7 +15,9 @@ const Settings = () => {
     ollama: {
       apiUrl: settings.ollama.apiUrl,
       defaultModel: settings.ollama.defaultModel
-    }
+    },
+    nodeEnv: settings.nodeEnv || 'development',
+    port: settings.port || 5000
   });
   
   const [validationErrors, setValidationErrors] = useState({
@@ -23,20 +25,24 @@ const Settings = () => {
     ollama: { apiUrl: '', defaultModel: '' }
   });
 
-  useEffect(() => {
-    console.log('LM Studio Address:', localStorage.getItem('lmStudioAddress'));
-    console.log('Ollama Address:', localStorage.getItem('ollamaAddress'));
-  }, []);
+  // Check if services were manually loaded (via user interaction)
+  const [servicesManuallyLoaded, setServicesManuallyLoaded] = useState({
+    lmStudio: false,
+    ollama: false
+  });
 
-  useEffect(() => {
-    // Fetch models on component mount and when URLs change
-    if (formData.lmStudio.apiUrl) {
-      dispatch(fetchModels('lmStudio', formData.lmStudio.apiUrl));
+  // Don't fetch models on initial component mount
+  // This prevents the connection errors on page load
+
+  const handleTestConnection = (provider) => {
+    if (formData[provider].apiUrl) {
+      setServicesManuallyLoaded(prev => ({
+        ...prev,
+        [provider]: true
+      }));
+      dispatch(fetchModels(provider, formData[provider].apiUrl));
     }
-    if (formData.ollama.apiUrl) {
-      dispatch(fetchModels('ollama', formData.ollama.apiUrl));
-    }
-  }, [dispatch, formData.lmStudio.apiUrl, formData.ollama.apiUrl]);
+  };
 
   const validateForm = () => {
     const errors = {
@@ -85,6 +91,7 @@ const Settings = () => {
     const isLoading = providerData.loading;
     const error = providerData.error;
     const models = providerData.models || [];
+    const hasTestedConnection = servicesManuallyLoaded[provider];
 
     return (
       <Card sx={{ mb: 3 }}>
@@ -103,6 +110,25 @@ const Settings = () => {
                 error={!!validationErrors[provider].apiUrl}
                 helperText={validationErrors[provider].apiUrl}
               />
+            </Grid>
+
+            <Grid item xs={12} sx={{ display: 'flex', alignItems: 'center' }}>
+              <Button 
+                variant="outlined" 
+                onClick={() => handleTestConnection(provider)}
+                sx={{ mr: 2 }}
+                disabled={isLoading}
+              >
+                {isLoading ? 'Testing...' : 'Test Connection'}
+              </Button>
+              
+              {isLoading && <CircularProgress size={20} sx={{ mr: 1 }} />}
+              
+              {!isLoading && hasTestedConnection && !error && (
+                <Typography variant="body2" color="success.main">
+                  Connection successful
+                </Typography>
+              )}
             </Grid>
 
             <Grid item xs={12}>
@@ -125,15 +151,6 @@ const Settings = () => {
                 <FormHelperText>{validationErrors[provider].defaultModel}</FormHelperText>
               </FormControl>
             </Grid>
-
-            {isLoading && (
-              <Grid item xs={12}>
-                <Box display="flex" alignItems="center">
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  <Typography variant="body2">Fetching models...</Typography>
-                </Box>
-              </Grid>
-            )}
 
             {error && (
               <Grid item xs={12}>
@@ -164,8 +181,7 @@ const Settings = () => {
       
       <Box sx={{ mb: 3 }}>
         <Typography variant="body1" color="text.secondary" paragraph>
-          Configure your LLM providers below. If you don't have LM Studio or Ollama running locally, 
-          you'll see connection errors, but the application will still function with fallback models.
+          Configure your LLM providers below. You need to test the connection for each provider to load available models.
         </Typography>
         <Typography variant="body2" color="info.main" paragraph>
           • LM Studio typically runs on port 1234 (http://localhost:1234)

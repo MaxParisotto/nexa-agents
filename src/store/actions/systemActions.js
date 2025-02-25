@@ -46,20 +46,51 @@ export const clearErrors = () => ({
 
 // Thunk action creators for async operations
 export const startSystemMonitoring = () => {
-  return async (dispatch) => {
+  return async (dispatch, getState) => {
     try {
       dispatch(updateSystemStatus('running'));
       
-      // Start periodic metrics collection
+      // Initial mock values
+      let mockCpuUsage = Math.random() * 40 + 10; // 10-50% initial value
+      let mockMemoryUsage = Math.random() * 30 + 20; // 20-50% initial value
+      let mockActiveAgents = Math.floor(Math.random() * 5) + 2; // 2-7 agents
+      let mockPendingTasks = Math.floor(Math.random() * 10); // 0-10 tasks
+      
+      // Set initial metrics
+      dispatch(updateMetrics({
+        cpuUsage: mockCpuUsage,
+        memoryUsage: mockMemoryUsage,
+        activeAgents: mockActiveAgents,
+        pendingTasks: mockPendingTasks
+      }));
+      
+      // Start periodic metrics collection with realistic fluctuations
       const metricsInterval = setInterval(() => {
-        const metrics = {
-          cpuUsage: null, // Replace with actual metrics
-          memoryUsage: null,
-          activeAgents: null,
-          pendingTasks: null
-        };
-        dispatch(updateMetrics(metrics));
-      }, 5000);
+        // Get agents and tasks from state if available
+        const state = getState();
+        const agentsCount = state.agents?.agents?.length || 0;
+        const tasksCount = state.tasks?.tasks?.filter(t => t.status === 'pending')?.length || 0;
+        
+        // Fluctuate mock values for realism (±5% variation)
+        mockCpuUsage = Math.max(2, Math.min(95, mockCpuUsage + (Math.random() * 10 - 5)));
+        mockMemoryUsage = Math.max(5, Math.min(90, mockMemoryUsage + (Math.random() * 6 - 3)));
+        
+        // Use actual counts if available, otherwise fluctuate mock values
+        const activeAgents = agentsCount > 0 ? 
+          agentsCount : 
+          Math.max(0, Math.floor(mockActiveAgents + (Math.random() > 0.8 ? Math.random() * 2 - 1 : 0)));
+        
+        const pendingTasks = tasksCount > 0 ? 
+          tasksCount : 
+          Math.max(0, Math.floor(mockPendingTasks + (Math.random() > 0.7 ? Math.random() * 3 - 1 : 0)));
+        
+        dispatch(updateMetrics({
+          cpuUsage: mockCpuUsage,
+          memoryUsage: mockMemoryUsage,
+          activeAgents,
+          pendingTasks
+        }));
+      }, 3000); // Update every 3 seconds for more responsive charts
 
       // Store interval ID for cleanup
       return metricsInterval;

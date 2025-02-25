@@ -9,6 +9,7 @@ import Agents from './components/Agents';
 import Tasks from './components/Tasks';
 import Settings from './components/Settings';
 import Logs from './components/Logs';
+import Metrics from './components/Metrics';
 import { updateSettings } from './store/actions/settingsActions';
 import websocketService from './services/websocket';
 
@@ -49,6 +50,7 @@ const App = () => {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/logs" element={<Logs />} />
+            <Route path="/metrics" element={<Metrics />} />
           </Routes>
         </DashboardLayout>
       </BrowserRouter>
