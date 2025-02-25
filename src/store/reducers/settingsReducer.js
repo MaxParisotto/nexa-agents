@@ -140,6 +140,17 @@ const settingsReducer = (state = initialState, action) => {
           error: action.payload.error
         }
       };
+    case 'LOAD_MODELS_FROM_STORAGE':
+      const savedModels = localStorage.getItem(`${action.payload}Models`);
+      return {
+        ...state,
+        [action.payload]: {
+          ...state[action.payload],
+          models: savedModels ? JSON.parse(savedModels) : state[action.payload].models,
+          loading: false,
+          error: null
+        }
+      };
     default:
       return state;
   }

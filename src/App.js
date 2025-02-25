@@ -20,7 +20,7 @@ import ProjectManager from './components/ProjectManager';
 import NotificationsSystem from './components/NotificationsSystem';
 
 // Actions
-import { loadConfigFromFile } from './store/actions/settingsActions';
+import { loadConfigFromFile, loadPersistedModels } from './store/actions/settingsActions';
 
 // Services
 import configService from './services/configService';
@@ -46,14 +46,17 @@ function AppContent() {
     error: state.settings.configError
   }));
 
-  // Load configuration from file on startup
+  // Load configuration and models from storage on startup
   useEffect(() => {
     const loadConfig = async () => {
       try {
         dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Initializing application configuration'));
         
-        // Use the Redux action which will update state and handle errors
-        dispatch(loadConfigFromFile());
+        // Load config first
+        await dispatch(loadConfigFromFile());
+        
+        // Then load persisted models
+        dispatch(loadPersistedModels());
         
         setIsConfigLoaded(true);
       } catch (error) {

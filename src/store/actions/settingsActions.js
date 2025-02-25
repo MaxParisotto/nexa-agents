@@ -6,6 +6,7 @@ export const FETCH_MODELS_FAILURE = 'FETCH_MODELS_FAILURE';
 export const LOAD_CONFIG_REQUEST = 'LOAD_CONFIG_REQUEST';
 export const LOAD_CONFIG_SUCCESS = 'LOAD_CONFIG_SUCCESS';
 export const LOAD_CONFIG_FAILURE = 'LOAD_CONFIG_FAILURE';
+export const LOAD_MODELS_FROM_STORAGE = 'LOAD_MODELS_FROM_STORAGE';
 
 import axios from 'axios';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from './logActions';
@@ -51,6 +52,11 @@ export const loadConfigSuccess = (config) => ({
 export const loadConfigFailure = (error) => ({
   type: LOAD_CONFIG_FAILURE,
   payload: error
+});
+
+export const loadModelsFromStorage = (provider) => ({
+  type: LOAD_MODELS_FROM_STORAGE,
+  payload: provider
 });
 
 // Thunk Actions
@@ -399,6 +405,17 @@ export const saveSettings = (settings) => async (dispatch) => {
       localStorage.setItem('port', settings.port);
     }
     
+    // Also save models to localStorage if they exist
+    if (settings.lmStudio?.models?.length) {
+      localStorage.setItem('lmStudioModels', JSON.stringify(settings.lmStudio.models));
+    }
+    if (settings.ollama?.models?.length) {
+      localStorage.setItem('ollamaModels', JSON.stringify(settings.ollama.models));
+    }
+    if (settings.projectManager?.models?.length) {
+      localStorage.setItem('projectManagerModels', JSON.stringify(settings.projectManager.models));
+    }
+    
     // Update Redux store
     dispatch(updateSettings(settings));
     
@@ -441,5 +458,27 @@ export const saveSettings = (settings) => async (dispatch) => {
     }));
     
     return false;
+  }
+};
+
+/**
+ * Load models from localStorage on startup
+ */
+export const loadPersistedModels = () => (dispatch) => {
+  try {
+    // Load models for each provider
+    const providers = ['lmStudio', 'ollama', 'projectManager'];
+    
+    providers.forEach(provider => {
+      const savedModels = localStorage.getItem(`${provider}Models`);
+      if (savedModels) {
+        const models = JSON.parse(savedModels);
+        dispatch(fetchModelsSuccess(provider, models));
+      }
+    });
+    
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Loaded persisted models from storage'));
+  } catch (error) {
+    dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to load persisted models', error));
   }
 };

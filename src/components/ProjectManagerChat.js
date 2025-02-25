@@ -220,7 +220,27 @@ const ProjectManagerChat = () => {
         if (event.detail?.target !== 'project-manager') {
           return;
         }
-        handleProjectManagerMessage(event);
+
+        const { messageId, content, isError } = event.detail;
+
+        // Create the new message
+        const newMessage = {
+          role: 'assistant',
+          content,
+          messageId,
+          timestamp: event.detail.timestamp,
+          isError
+        };
+
+        // Update conversation, keeping all messages
+        setConversation(prev => [...prev, newMessage]);
+
+        // Auto-scroll to bottom after a short delay to ensure content is rendered
+        setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 100);
       };
       
       window.addEventListener('project-manager-message', handleProjectManagerMessageEvent);
@@ -232,24 +252,10 @@ const ProjectManagerChat = () => {
     }
   }, [messageListenerAdded]);
   
-  // Add listener for project manager requests
+  // Remove the separate listener for cleanup since we're handling it in the main listener
   useEffect(() => {
     if (!projectManagerRequestListenerAdded) {
-      // Remove any existing thinking messages when a new response comes in
-      const cleanupThinkingMessages = (event) => {
-        // Only handle events specifically meant for ProjectManagerChat
-        if (event.detail?.target !== 'project-manager') {
-          return;
-        }
-        setConversation(prev => prev.filter(msg => !msg.isThinking));
-      };
-      
-      window.addEventListener('project-manager-message', cleanupThinkingMessages);
       setProjectManagerRequestListenerAdded(true);
-      
-      return () => {
-        window.removeEventListener('project-manager-message', cleanupThinkingMessages);
-      };
     }
   }, [projectManagerRequestListenerAdded]);
 
@@ -272,58 +278,6 @@ const ProjectManagerChat = () => {
   }, []);
 
   /**
-   * Handle messages from the ProjectManager agent
-   */
-  const handleProjectManagerMessage = (event) => {
-    // Extract message content from event detail
-    const { 
-      content,
-      messageId,
-      isThinking,
-      temporary,
-      replaces,
-      isError
-    } = event.detail;
-    
-    if (!content) {
-      console.error('Received empty message from ProjectManager');
-      return;
-    }
-    
-    // Create new message object
-    const newMessage = {
-      role: 'assistant',
-      content,
-      messageId,
-      timestamp: new Date().toISOString(),
-      isThinking,
-      temporary,
-      isError
-    };
-    
-    setConversation(prev => {
-      // If this message replaces another, remove the one being replaced
-      const filtered = replaces ? 
-        prev.filter(msg => msg.messageId !== replaces) : 
-        prev;
-      
-      // If temporary, remove other temporary messages
-      const withoutTemporary = temporary ?
-        filtered.filter(msg => !msg.temporary) :
-        filtered;
-      
-      return [...withoutTemporary, newMessage];
-    });
-    
-    // Auto-scroll to bottom after a short delay to ensure content is rendered
-    setTimeout(() => {
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-      }
-    }, 100);
-  };
-
-  /**
    * Send a message to the chat
    */
   const handleSendMessage = async () => {
@@ -340,24 +294,13 @@ const ProjectManagerChat = () => {
       timestamp: new Date().toISOString()
     };
     
+    // Update conversation with just the user message
     setConversation(prev => [...prev, userMessage]);
     
     // Auto-scroll to bottom
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-    
-    // Add thinking message
-    const thinkingMessage = {
-      role: 'assistant',
-      content: 'Thinking...',
-      messageId: `thinking-${messageId}`,
-      timestamp: new Date().toISOString(),
-      isThinking: true,
-      temporary: true
-    };
-    
-    setConversation(prev => [...prev, thinkingMessage]);
     
     // Dispatch custom event to notify ProjectManager
     const event = new CustomEvent('project-manager-request', {
@@ -366,7 +309,7 @@ const ProjectManagerChat = () => {
         message: message.trim(),
         messageId,
         timestamp: new Date().toISOString(),
-        settings: projectManagerSettings // Include the current settings
+        settings: projectManagerSettings
       }
     });
     window.dispatchEvent(event);
@@ -588,82 +531,37 @@ const ProjectManagerChat = () => {
    */
   const handleTest = async () => {
     try {
-      // Show testing message
-      const testingMessage = {
-        role: 'assistant',
-        content: 'Testing LLM connection...',
-        messageId: `test-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        isThinking: true
-      };
-      setConversation(prev => [...prev, testingMessage]);
+      // Generate a unique message ID for the test
+      const messageId = `test-${Date.now()}`;
 
-      // Format API URL
-      let apiUrl = projectManagerSettings.apiUrl;
-      if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-        apiUrl = `http://${apiUrl}`;
-      }
-      apiUrl = apiUrl.replace(/\/+$/, '');
-
-      // Test models endpoint
-      const modelsResponse = await fetch(`${apiUrl}/v1/models`);
-      if (!modelsResponse.ok) {
-        throw new Error(`Failed to connect to LLM server: ${modelsResponse.statusText}`);
-      }
-
-      const models = await modelsResponse.json();
-      if (!models?.data?.some(model => model.id === projectManagerSettings.model)) {
-        throw new Error(`Model ${projectManagerSettings.model} not found on server`);
-      }
-
-      // Test chat completion
-      const completionResponse = await fetch(`${apiUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: projectManagerSettings.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful assistant.'
-            },
-            {
-              role: 'user',
-              content: 'Test message'
-            }
-          ],
-          max_tokens: 5
-        })
+      // Dispatch test request to ProjectManager
+      const event = new CustomEvent('project-manager-request', {
+        detail: {
+          target: 'project-manager',
+          message: 'Hi! Please respond with a short greeting.',
+          messageId,
+          timestamp: new Date().toISOString(),
+          settings: projectManagerSettings
+        }
       });
 
-      if (!completionResponse.ok) {
-        throw new Error(`Chat completion test failed: ${completionResponse.statusText}`);
-      }
-
-      const completion = await completionResponse.json();
-      if (!completion?.choices?.[0]?.message) {
-        throw new Error('Invalid response format from test completion');
-      }
-
-      // Show success message
-      const successMessage = {
-        role: 'assistant',
-        content: '✅ Connection test successful!\n\n' +
-                `• Server: ${apiUrl}\n` +
-                `• Model: ${projectManagerSettings.model}\n` +
-                `• Available models: ${models.data.map(m => m.id).join(', ')}`,
-        messageId: `test-success-${Date.now()}`,
+      // Add user test message to conversation
+      const testMessage = {
+        role: 'user',
+        content: '🔄 Testing connection...',
+        messageId,
         timestamp: new Date().toISOString()
       };
-
-      setConversation(prev => [...prev.filter(msg => !msg.isThinking), successMessage]);
       
-      // Log success
+      setConversation(prev => [...prev, testMessage]);
+      
+      // Send test request
+      window.dispatchEvent(event);
+
+      // Log test attempt
       dispatch(logInfo(
         LOG_CATEGORIES.AGENT,
-        'Project Manager connection test successful',
+        'Initiating Project Manager connection test',
         { settings: projectManagerSettings }
       ));
 
@@ -677,7 +575,7 @@ const ProjectManagerChat = () => {
         isError: true
       };
 
-      setConversation(prev => [...prev.filter(msg => !msg.isThinking), errorMessage]);
+      setConversation(prev => [...prev, errorMessage]);
       
       // Log error
       dispatch(logError(
