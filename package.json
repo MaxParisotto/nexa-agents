@@ -24,6 +24,7 @@
     "date-fns": "^2.29.3",
     "dotenv": "^16.4.4",
     "express": "5.0.1",
+    "mermaid": "^11.4.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-draggable": "^4.4.6",
