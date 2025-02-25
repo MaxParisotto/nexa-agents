@@ -10,7 +10,10 @@ const initialState = {
   websocketStatus: 'disconnected', // connected, disconnected, connecting
   notifications: [],
   errors: [],
-  lastUpdated: null
+  lastUpdated: null,
+  workflows: [], // List of saved workflows
+  activeWorkflow: null, // Currently active workflow
+  workflowStatuses: {} // Map of workflow IDs to statuses
 };
 
 const systemReducer = (state = initialState, action) => {
@@ -71,6 +74,68 @@ const systemReducer = (state = initialState, action) => {
       return {
         ...state,
         errors: [],
+        lastUpdated: new Date().toISOString()
+      };
+    // Workflow action handlers
+    case 'SAVE_WORKFLOW':
+      const existingIndex = state.workflows.findIndex(w => w.id === action.payload.id);
+      let updatedWorkflows;
+
+      if (existingIndex >= 0) {
+        // Update existing workflow
+        updatedWorkflows = [
+          ...state.workflows.slice(0, existingIndex),
+          action.payload,
+          ...state.workflows.slice(existingIndex + 1)
+        ];
+      } else {
+        // Add new workflow
+        updatedWorkflows = [...state.workflows, action.payload];
+      }
+
+      return {
+        ...state,
+        workflows: updatedWorkflows,
+        lastUpdated: new Date().toISOString()
+      };
+    case 'LOAD_WORKFLOW':
+      return {
+        ...state,
+        activeWorkflow: action.payload,
+        lastUpdated: new Date().toISOString()
+      };
+    case 'DELETE_WORKFLOW':
+      return {
+        ...state,
+        workflows: state.workflows.filter(w => w.id !== action.payload),
+        activeWorkflow: state.activeWorkflow?.id === action.payload ? null : state.activeWorkflow,
+        lastUpdated: new Date().toISOString()
+      };
+    case 'RUN_WORKFLOW':
+      return {
+        ...state,
+        workflowStatuses: {
+          ...state.workflowStatuses,
+          [action.payload.id]: 'running'
+        },
+        lastUpdated: new Date().toISOString()
+      };
+    case 'STOP_WORKFLOW':
+      return {
+        ...state,
+        workflowStatuses: {
+          ...state.workflowStatuses,
+          [action.payload]: 'stopped'
+        },
+        lastUpdated: new Date().toISOString()
+      };
+    case 'UPDATE_WORKFLOW_STATUS':
+      return {
+        ...state,
+        workflowStatuses: {
+          ...state.workflowStatuses,
+          [action.payload.workflowId]: action.payload.status
+        },
         lastUpdated: new Date().toISOString()
       };
     default:

@@ -44,6 +44,190 @@ export const clearErrors = () => ({
   type: 'CLEAR_ERRORS'
 });
 
+// Workflow Actions
+export const saveWorkflow = (workflow) => ({
+  type: 'SAVE_WORKFLOW',
+  payload: workflow
+});
+
+export const loadWorkflow = (workflowId) => ({
+  type: 'LOAD_WORKFLOW',
+  payload: workflowId
+});
+
+export const listWorkflows = () => ({
+  type: 'LIST_WORKFLOWS'
+});
+
+export const deleteWorkflow = (workflowId) => ({
+  type: 'DELETE_WORKFLOW',
+  payload: workflowId
+});
+
+export const runWorkflow = (workflow) => ({
+  type: 'RUN_WORKFLOW',
+  payload: workflow
+});
+
+export const stopWorkflow = (workflowId) => ({
+  type: 'STOP_WORKFLOW',
+  payload: workflowId
+});
+
+export const updateWorkflowStatus = (workflowId, status) => ({
+  type: 'UPDATE_WORKFLOW_STATUS',
+  payload: { workflowId, status }
+});
+
+// Thunk action creators for workflows
+export const saveWorkflowThunk = (workflow) => {
+  return async (dispatch) => {
+    try {
+      // Save workflow to localStorage
+      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
+      
+      // Update existing or add new
+      const existingIndex = workflows.findIndex(w => w.id === workflow.id);
+      if (existingIndex >= 0) {
+        workflows[existingIndex] = workflow;
+      } else {
+        // Generate a unique ID if not present
+        if (!workflow.id) {
+          workflow.id = `workflow-${Date.now()}`;
+        }
+        workflows.push(workflow);
+      }
+      
+      localStorage.setItem('workflows', JSON.stringify(workflows));
+      dispatch(saveWorkflow(workflow));
+      
+      dispatch(addNotification({
+        type: 'success',
+        message: `Workflow "${workflow.name}" saved successfully.`
+      }));
+      
+      return workflow;
+    } catch (error) {
+      dispatch(addError({
+        type: 'workflow',
+        message: 'Failed to save workflow',
+        error: error.message
+      }));
+      throw error;
+    }
+  };
+};
+
+export const loadWorkflowThunk = (workflowId) => {
+  return async (dispatch) => {
+    try {
+      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
+      const workflow = workflows.find(w => w.id === workflowId);
+      
+      if (!workflow) {
+        throw new Error(`Workflow with ID ${workflowId} not found`);
+      }
+      
+      dispatch(loadWorkflow(workflow));
+      
+      dispatch(addNotification({
+        type: 'info',
+        message: `Workflow "${workflow.name}" loaded.`
+      }));
+      
+      return workflow;
+    } catch (error) {
+      dispatch(addError({
+        type: 'workflow',
+        message: 'Failed to load workflow',
+        error: error.message
+      }));
+      throw error;
+    }
+  };
+};
+
+export const listWorkflowsThunk = () => {
+  return async (dispatch) => {
+    try {
+      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
+      return workflows;
+    } catch (error) {
+      dispatch(addError({
+        type: 'workflow',
+        message: 'Failed to list workflows',
+        error: error.message
+      }));
+      return [];
+    }
+  };
+};
+
+export const deleteWorkflowThunk = (workflowId) => {
+  return async (dispatch) => {
+    try {
+      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
+      const filteredWorkflows = workflows.filter(w => w.id !== workflowId);
+      
+      localStorage.setItem('workflows', JSON.stringify(filteredWorkflows));
+      dispatch(deleteWorkflow(workflowId));
+      
+      dispatch(addNotification({
+        type: 'success',
+        message: `Workflow deleted successfully.`
+      }));
+      
+      return true;
+    } catch (error) {
+      dispatch(addError({
+        type: 'workflow',
+        message: 'Failed to delete workflow',
+        error: error.message
+      }));
+      return false;
+    }
+  };
+};
+
+export const runWorkflowThunk = (workflow) => {
+  return async (dispatch) => {
+    try {
+      // Set workflow as running
+      dispatch(updateWorkflowStatus(workflow.id, 'running'));
+      
+      dispatch(addNotification({
+        type: 'info',
+        message: `Workflow "${workflow.name}" execution started.`
+      }));
+      
+      // Simulate workflow execution - this would be replaced with actual API calls
+      // to execute the workflow steps based on node types and connections
+      
+      // For demo: Simulate a delay and mark workflow as completed
+      setTimeout(() => {
+        dispatch(updateWorkflowStatus(workflow.id, 'completed'));
+        
+        dispatch(addNotification({
+          type: 'success',
+          message: `Workflow "${workflow.name}" completed successfully.`
+        }));
+      }, 5000);
+      
+      return true;
+    } catch (error) {
+      dispatch(updateWorkflowStatus(workflow.id, 'error'));
+      
+      dispatch(addError({
+        type: 'workflow',
+        message: `Failed to execute workflow "${workflow.name}"`,
+        error: error.message
+      }));
+      
+      return false;
+    }
+  };
+};
+
 // Thunk action creators for async operations
 export const startSystemMonitoring = () => {
   return async (dispatch, getState) => {
