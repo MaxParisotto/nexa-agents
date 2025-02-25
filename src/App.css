@@ -1,0 +1,38 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-container {
+  display: flex;
+  flex: 1;
+}
+
+.content {
+  flex-grow: 1;
+  padding: 0;
+  margin-left: 240px; /* Same as drawer width */
+  min-height: calc(100vh - 64px); /* Full height minus app bar */
+  overflow-x: auto;
+  background-color: #f5f5f5;
+}
+
+/* Handle dark mode background */
+.dark-mode .content {
+  background-color: #121212;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .content {
+    margin-left: 0;
+    padding-left: 56px; /* Width of mini drawer */
+  }
+} 

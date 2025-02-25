@@ -10,11 +10,18 @@ import {
   Typography,
   IconButton,
   Paper,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  Avatar,
 } from '@mui/material';
-import { Minimize as MinimizeIcon, OpenInFull as OpenInFullIcon, Send as SendIcon } from '@mui/icons-material';
+import { Minimize as MinimizeIcon, OpenInFull as OpenInFullIcon, Send as SendIcon, Maximize as MaximizeIcon, Close as CloseIcon } from '@mui/icons-material';
 import { Resizable } from 'react-resizable';
 import Draggable from 'react-draggable';
 import axios from 'axios';
+import PersonIcon from '@mui/icons-material/Person';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 
 import 'react-resizable/css/styles.css';
 
@@ -35,6 +42,14 @@ const ChatWidget = () => {
   const [height, setHeight] = useState(400);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [minimized, setMinimized] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStartDimensions, setResizeStartDimensions] = useState({ width: 0, height: 0 });
+  const [resizeStartPosition, setResizeStartPosition] = useState({ x: 0, y: 0 });
+  const chatContainerRef = useRef(null);
+  const [messageListenerAdded, setMessageListenerAdded] = useState(false);
 
   // Store last position before collapse to restore it when expanding
   const [expandedPosition, setExpandedPosition] = useState({ x: 0, y: 0 });
@@ -140,6 +155,80 @@ const ChatWidget = () => {
     fetchModels();
   }, [lmStudioAddress, ollamaAddress, server]);
 
+  useEffect(() => {
+    // Let ProjectManager handle the welcome message, don't add our own
+    
+    // Setup event listeners for project manager messages
+    if (!messageListenerAdded) {
+      window.addEventListener('project-manager-message', handleProjectManagerMessage);
+      setMessageListenerAdded(true);
+      
+      console.log('Added project-manager-message event listener');
+    }
+    
+    return () => {
+      if (messageListenerAdded) {
+        window.removeEventListener('project-manager-message', handleProjectManagerMessage);
+        console.log('Removed project-manager-message event listener');
+      }
+    };
+  }, [messageListenerAdded]);
+  
+  // Auto-scroll to bottom when chat history updates
+  useEffect(() => {
+    if (chatContainerRef.current && !isCollapsed) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversation, isCollapsed]);
+  
+  /**
+   * Handle messages from the ProjectManager agent
+   */
+  const handleProjectManagerMessage = (event) => {
+    console.log('Received project-manager-message:', event.detail);
+    const { content, role } = event.detail;
+    
+    setConversation(prev => [
+      ...prev,
+      {
+        role,
+        content,
+        timestamp: new Date().toISOString(),
+      }
+    ]);
+  };
+  
+  /**
+   * Send a message to the chat
+   */
+  const handleSendMessage = async () => {
+    if (!message.trim()) return;
+    
+    // Add user message to chat history
+    const userMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+    
+    setConversation(prev => [...prev, userMessage]);
+    
+    console.log('Dispatching chat-message event with content:', message);
+    
+    // Dispatch custom event to notify ProjectManager
+    const event = new CustomEvent('chat-message', {
+      detail: {
+        content: message,
+        role: 'user',
+        timestamp: new Date().toISOString(),
+      }
+    });
+    window.dispatchEvent(event);
+    
+    // Clear input field
+    setMessage('');
+  };
+
   const handleServerChange = (event) => {
     setServer(event.target.value);
   };
@@ -156,76 +245,6 @@ const ChatWidget = () => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSendMessage();
-    }
-  };
-
-  const handleSendMessage = async () => {
-    // Always add the user message to the conversation
-    setConversation([
-      ...conversation,
-      { role: 'user', content: message }
-    ]);
-    
-    try {
-      let response;
-      let url = '';
-      
-      if (server === 'lmstudio') {
-        url = `${lmStudioAddress}/v1/chat/completions`;
-        console.log(`Sending message to LM Studio at ${url}`);
-        response = await axios.post(url, {
-          model: model,
-          messages: [{ role: 'user', content: message }],
-          stream: false
-        }, {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // 10 second timeout
-        });
-      } else if (server === 'ollama') {
-        url = `${ollamaAddress}/api/generate`;
-        console.log(`Sending message to Ollama at ${url}`);
-        response = await axios.post(url, {
-          model: model,
-          prompt: message,
-          stream: false
-        }, {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // 10 second timeout
-        });
-      }
-
-      const responseText = server === 'lmstudio'
-        ? response.data.choices[0].message.content
-        : response.data.response;
-
-      // Update conversation with the assistant's response
-      setConversation(prev => [
-        ...prev,
-        { role: 'assistant', content: responseText }
-      ]);
-      
-      // Clear the message input
-      setMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
-      
-      // Add an error message to the conversation
-      let errorMessage = 'Failed to get a response.';
-      
-      if (error.code === 'ECONNABORTED') {
-        errorMessage = 'Request timed out. The server may be busy or not responding.';
-      } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-        errorMessage = `Cannot connect to ${server} service. Please ensure it is running.`;
-      }
-      
-      setConversation(prev => [
-        ...prev,
-        { role: 'assistant', content: `Error: ${errorMessage}` }
-      ]);
     }
   };
 
@@ -267,6 +286,220 @@ const ChatWidget = () => {
     }
     
     setIsCollapsed(!isCollapsed);
+  };
+
+  /**
+   * Handle mouse down event for dragging the widget
+   */
+  const handleMouseDown = (e) => {
+    if (e.target.closest('.resize-handle')) return;
+    if (e.target.closest('.chat-controls')) return;
+    
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX,
+      y: e.clientY,
+    });
+  };
+
+  /**
+   * Handle mouse move event for dragging or resizing the widget
+   */
+  const handleMouseMove = (e) => {
+    if (isDragging) {
+      const deltaX = e.clientX - dragStart.x;
+      const deltaY = e.clientY - dragStart.y;
+      
+      setPosition({
+        x: position.x - deltaX,
+        y: position.y - deltaY,
+      });
+      
+      setDragStart({
+        x: e.clientX,
+        y: e.clientY,
+      });
+    } else if (isResizing) {
+      const deltaX = e.clientX - resizeStartPosition.x;
+      const deltaY = e.clientY - resizeStartPosition.y;
+      
+      setWidth(Math.max(300, resizeStartDimensions.width + deltaX));
+      setHeight(Math.max(400, resizeStartDimensions.height + deltaY));
+    }
+  };
+
+  /**
+   * Handle mouse up event to end dragging or resizing
+   */
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsResizing(false);
+  };
+
+  /**
+   * Handle resize initialization
+   */
+  const handleResizeStart = (e) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStartDimensions({
+      width: width,
+      height: height,
+    });
+    setResizeStartPosition({
+      x: e.clientX,
+      y: e.clientY,
+    });
+  };
+
+  /**
+   * Toggle minimized state of the chat widget
+   */
+  const toggleMinimize = () => {
+    setMinimized(!minimized);
+  };
+
+  /**
+   * Close the chat widget
+   */
+  const closeChat = () => {
+    // Hide the chat widget by setting it off-screen
+    setPosition({ x: -1000, y: -1000 });
+  };
+
+  /**
+   * Render a chat message
+   */
+  const renderMessage = (msg, index) => {
+    const isUser = msg.role === 'user';
+    
+    return (
+      <ListItem
+        key={index}
+        sx={{
+          justifyContent: isUser ? 'flex-end' : 'flex-start',
+          padding: '8px 16px',
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            maxWidth: '85%',
+            flexDirection: isUser ? 'row-reverse' : 'row',
+            alignItems: 'flex-start',
+          }}
+        >
+          <Avatar 
+            sx={{ 
+              bgcolor: isUser ? 'primary.main' : 'secondary.main',
+              width: 36,
+              height: 36,
+              marginRight: isUser ? 0 : 1,
+              marginLeft: isUser ? 1 : 0,
+            }}
+          >
+            {isUser ? <PersonIcon /> : <SmartToyIcon />}
+          </Avatar>
+          
+          <Paper
+            elevation={2}
+            sx={{
+              padding: '8px 16px',
+              borderRadius: '12px',
+              bgcolor: isUser ? 'primary.light' : 'background.paper',
+              color: isUser ? 'primary.contrastText' : 'text.primary',
+              '& pre': {
+                overflowX: 'auto',
+                backgroundColor: '#f5f5f5',
+                padding: '8px',
+                borderRadius: '4px',
+                color: '#333',
+              },
+              '& code': {
+                fontFamily: 'monospace',
+                backgroundColor: '#f5f5f5',
+                padding: '2px 4px',
+                borderRadius: '4px',
+                color: '#333',
+              },
+            }}
+          >
+            <Typography variant="body1" component="div">
+              {formatMessageContent(msg.content)}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="textSecondary" 
+              sx={{ 
+                display: 'block', 
+                textAlign: isUser ? 'right' : 'left',
+                fontSize: '0.7rem',
+                mt: 0.5
+              }}
+            >
+              {formatTimestamp(msg.timestamp)}
+            </Typography>
+          </Paper>
+        </Box>
+      </ListItem>
+    );
+  };
+
+  /**
+   * Format message content with Markdown-like syntax
+   */
+  const formatMessageContent = (content) => {
+    if (!content) return null;
+    
+    // Split by newlines to handle them properly
+    const lines = content.split('\n');
+    
+    return (
+      <>
+        {lines.map((line, index) => {
+          // Convert **bold** to bold text
+          line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+          
+          // Convert *italic* to italic text
+          line = line.replace(/\*(.*?)\*/g, '<em>$1</em>');
+          
+          // Convert `code` to code formatting
+          line = line.replace(/`(.*?)`/g, '<code>$1</code>');
+          
+          // Check if line starts with - or * for list items
+          const isListItem = line.trim().match(/^[-*]\s/);
+          
+          // Handle list items
+          if (isListItem) {
+            line = line.replace(/^[-*]\s/, '');
+            return (
+              <Box key={index} sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                <Box component="span" sx={{ mr: 1, minWidth: '8px' }}>•</Box>
+                <Box component="span" dangerouslySetInnerHTML={{ __html: line }} />
+              </Box>
+            );
+          }
+          
+          // Handle regular lines with a line break if not the last line
+          return (
+            <React.Fragment key={index}>
+              <span dangerouslySetInnerHTML={{ __html: line }} />
+              {index < lines.length - 1 && <br />}
+            </React.Fragment>
+          );
+        })}
+      </>
+    );
+  };
+
+  /**
+   * Format timestamp to display time in a user-friendly format
+   */
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -371,25 +604,7 @@ const ChatWidget = () => {
                   backgroundColor: '#f5f5f5',
                   borderRadius: 1
                 }}>
-                  {conversation.map((msg, index) => (
-                    <Box 
-                      key={index} 
-                      sx={{ 
-                        backgroundColor: msg.role === 'user' ? 'primary.light' : 'white',
-                        color: msg.role === 'user' ? 'white' : 'text.primary',
-                        p: 1,
-                        borderRadius: 1,
-                        maxWidth: '80%',
-                        mb: 1,
-                        wordBreak: 'break-word',
-                        marginLeft: msg.role === 'user' ? 'auto' : '0'
-                      }}
-                    >
-                      <Typography variant="body2">
-                        {msg.content}
-                      </Typography>
-                    </Box>
-                  ))}
+                  {conversation.map((msg, index) => renderMessage(msg, index))}
                 </Box>
                 
                 <Box sx={{ display: 'flex', gap: 1 }}>

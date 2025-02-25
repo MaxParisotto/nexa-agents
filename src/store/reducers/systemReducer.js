@@ -1,143 +1,185 @@
+import {
+  ADD_NOTIFICATION,
+  CLEAR_NOTIFICATIONS,
+  ADD_ERROR,
+  CLEAR_ERRORS,
+  SET_LOADING,
+  UPDATE_SYSTEM_STATUS,
+  UPDATE_METRICS,
+  SET_WORKSPACE_PATH,
+  SET_MODELS,
+  UPDATE_PREFERENCE,
+  LIST_WORKFLOWS,
+  SAVE_WORKFLOW,
+  RUN_WORKFLOW,
+  DELETE_WORKFLOW,
+} from '../actions/systemActions';
+
 const initialState = {
-  status: 'idle', // idle, running, paused, error
-  metrics: {
-    cpuUsage: 0,
-    memoryUsage: 0,
-    activeAgents: 0,
-    pendingTasks: 0
-  },
-  metricsHistory: [], // Array to store metrics history for charts
-  websocketStatus: 'disconnected', // connected, disconnected, connecting
   notifications: [],
   errors: [],
+  isLoading: false,
+  status: 'idle',
+  systemMetrics: null,
+  websocketStatus: 'disconnected',
   lastUpdated: null,
-  workflows: [], // List of saved workflows
-  activeWorkflow: null, // Currently active workflow
-  workflowStatuses: {} // Map of workflow IDs to statuses
+  workspacePath: null,
+  models: [],
+  preferences: {
+    theme: 'light',
+    fontSize: 14,
+    language: 'en',
+    apiEndpoints: {
+      lmstudio: 'http://localhost:1234',
+      ollama: 'http://localhost:11434'
+    }
+  },
+  workflows: []
 };
 
+/**
+ * System reducer handles application-wide state like notifications, 
+ * system status, preferences, and workflow management.
+ */
 const systemReducer = (state = initialState, action) => {
   switch (action.type) {
-    case 'UPDATE_SYSTEM_STATUS':
+    case ADD_NOTIFICATION:
+      return {
+        ...state,
+        notifications: [
+          ...state.notifications,
+          {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            ...action.payload
+          }
+        ]
+      };
+      
+    case CLEAR_NOTIFICATIONS:
+      return {
+        ...state,
+        notifications: []
+      };
+      
+    case ADD_ERROR:
+      return {
+        ...state,
+        errors: [
+          ...state.errors,
+          {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            ...action.payload
+          }
+        ]
+      };
+      
+    case CLEAR_ERRORS:
+      return {
+        ...state,
+        errors: []
+      };
+      
+    case SET_LOADING:
+      return {
+        ...state,
+        isLoading: action.payload
+      };
+      
+    case UPDATE_SYSTEM_STATUS:
       return {
         ...state,
         status: action.payload,
         lastUpdated: new Date().toISOString()
       };
-    case 'UPDATE_METRICS':
-      // Create a metrics data point with timestamp
-      const newMetricsPoint = {
-        ...action.payload,
-        timestamp: new Date().toISOString()
-      };
-
-      // Keep only the last 50 data points for performance
-      const updatedHistory = [
-        newMetricsPoint,
-        ...state.metricsHistory
-      ].slice(0, 50);
-
+      
+    case UPDATE_METRICS:
       return {
         ...state,
-        metrics: {
-          ...state.metrics,
+        systemMetrics: action.payload,
+        lastUpdated: new Date().toISOString()
+      };
+      
+    case SET_WORKSPACE_PATH:
+      return {
+        ...state,
+        workspacePath: action.payload
+      };
+      
+    case SET_MODELS:
+      return {
+        ...state,
+        models: action.payload
+      };
+      
+    case UPDATE_PREFERENCE:
+      return {
+        ...state,
+        preferences: {
+          ...state.preferences,
           ...action.payload
-        },
-        metricsHistory: updatedHistory,
-        lastUpdated: new Date().toISOString()
+        }
       };
-    case 'UPDATE_WEBSOCKET_STATUS':
+    
+    // Project Manager workflow actions
+    case LIST_WORKFLOWS:
       return {
         ...state,
-        websocketStatus: action.payload,
-        lastUpdated: new Date().toISOString()
+        workflows: action.payload
       };
-    case 'ADD_NOTIFICATION':
-      return {
-        ...state,
-        notifications: [action.payload, ...state.notifications].slice(0, 100), // Keep last 100 notifications
-        lastUpdated: new Date().toISOString()
-      };
-    case 'CLEAR_NOTIFICATIONS':
-      return {
-        ...state,
-        notifications: [],
-        lastUpdated: new Date().toISOString()
-      };
-    case 'ADD_ERROR':
-      return {
-        ...state,
-        errors: [action.payload, ...state.errors],
-        lastUpdated: new Date().toISOString()
-      };
-    case 'CLEAR_ERRORS':
-      return {
-        ...state,
-        errors: [],
-        lastUpdated: new Date().toISOString()
-      };
-    // Workflow action handlers
-    case 'SAVE_WORKFLOW':
-      const existingIndex = state.workflows.findIndex(w => w.id === action.payload.id);
-      let updatedWorkflows;
-
+      
+    case SAVE_WORKFLOW:
+      // Update existing workflow or add new one
+      const existingIndex = state.workflows.findIndex(
+        w => w.id === action.payload.id
+      );
+      
       if (existingIndex >= 0) {
         // Update existing workflow
-        updatedWorkflows = [
-          ...state.workflows.slice(0, existingIndex),
-          action.payload,
-          ...state.workflows.slice(existingIndex + 1)
-        ];
+        const updatedWorkflows = [...state.workflows];
+        updatedWorkflows[existingIndex] = {
+          ...action.payload,
+          modified: new Date().toISOString()
+        };
+        
+        return {
+          ...state,
+          workflows: updatedWorkflows
+        };
       } else {
         // Add new workflow
-        updatedWorkflows = [...state.workflows, action.payload];
+        return {
+          ...state,
+          workflows: [
+            ...state.workflows,
+            {
+              ...action.payload,
+              created: new Date().toISOString(),
+              modified: new Date().toISOString()
+            }
+          ]
+        };
       }
-
+      
+    case RUN_WORKFLOW:
+      // Update workflow status to 'running'
       return {
         ...state,
-        workflows: updatedWorkflows,
-        lastUpdated: new Date().toISOString()
+        workflows: state.workflows.map(workflow => 
+          workflow.id === action.payload.id
+            ? { ...workflow, status: 'running', lastRun: new Date().toISOString() }
+            : workflow
+        )
       };
-    case 'LOAD_WORKFLOW':
+      
+    case DELETE_WORKFLOW:
+      // Remove workflow from state
       return {
         ...state,
-        activeWorkflow: action.payload,
-        lastUpdated: new Date().toISOString()
+        workflows: state.workflows.filter(w => w.id !== action.payload)
       };
-    case 'DELETE_WORKFLOW':
-      return {
-        ...state,
-        workflows: state.workflows.filter(w => w.id !== action.payload),
-        activeWorkflow: state.activeWorkflow?.id === action.payload ? null : state.activeWorkflow,
-        lastUpdated: new Date().toISOString()
-      };
-    case 'RUN_WORKFLOW':
-      return {
-        ...state,
-        workflowStatuses: {
-          ...state.workflowStatuses,
-          [action.payload.id]: 'running'
-        },
-        lastUpdated: new Date().toISOString()
-      };
-    case 'STOP_WORKFLOW':
-      return {
-        ...state,
-        workflowStatuses: {
-          ...state.workflowStatuses,
-          [action.payload]: 'stopped'
-        },
-        lastUpdated: new Date().toISOString()
-      };
-    case 'UPDATE_WORKFLOW_STATUS':
-      return {
-        ...state,
-        workflowStatuses: {
-          ...state.workflowStatuses,
-          [action.payload.workflowId]: action.payload.status
-        },
-        lastUpdated: new Date().toISOString()
-      };
+      
     default:
       return state;
   }

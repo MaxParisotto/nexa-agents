@@ -128,7 +128,7 @@ const DashboardLayout = ({ children }) => {
         <Divider />
         <List>
           {menuItems.map((item) => (
-            <ListItem button="true" key={item.text}>
+            <ListItem button key={item.text}>
               <ListItemIcon>{item.icon}</ListItemIcon>
               <Link to={item.path} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <ListItemText primary={item.text} />

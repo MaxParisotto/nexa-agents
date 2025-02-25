@@ -17,7 +17,8 @@ import {
   Paper,
   Chip,
   ListItemIcon,
-  CircularProgress
+  CircularProgress,
+  Stack
 } from '@mui/material';
 import { 
   Delete as DeleteIcon, 
@@ -188,14 +189,14 @@ const WorkflowList = ({ onWorkflowSelect, currentWorkflowId }) => {
     }
   };
   
-  // Render workflow item secondary content - fixes HTML nesting issues
-  const renderWorkflowSecondary = (workflow) => (
+  // Custom component for workflow item content that avoids invalid nesting
+  const WorkflowItemContent = ({ workflow }) => (
     <>
-      <Typography variant="body2" color="textSecondary" noWrap>
-        {workflow.description || 'No description'}
-      </Typography>
-      
-      <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+      <ListItemText 
+        primary={workflow.name}
+        secondary={workflow.description || 'No description'}
+      />
+      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
         <Chip 
           label={`${workflow.nodes?.length || 0} nodes`} 
           size="small" 
@@ -254,67 +255,105 @@ const WorkflowList = ({ onWorkflowSelect, currentWorkflowId }) => {
             </Typography>
           </Box>
         ) : (
-          <List>
+          <List sx={{ p: 0 }}>
             {workflows.map((workflow, index) => (
               <React.Fragment key={workflow.id}>
                 {index > 0 && <Divider component="li" />}
                 <ListItem 
                   selected={currentWorkflowId === workflow.id}
                   onClick={() => handleWorkflowSelect(workflow)}
-                  sx={{ cursor: 'pointer' }}
+                  sx={{ 
+                    cursor: 'pointer',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    py: 1.5
+                  }}
                 >
-                  <ListItemIcon>
-                    {currentWorkflowId === workflow.id ? (
-                      <CheckIcon color="primary" />
-                    ) : (
-                      <></>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    width: '100%', 
+                    alignItems: 'center'
+                  }}>
+                    <ListItemIcon>
+                      {currentWorkflowId === workflow.id ? (
+                        <CheckIcon color="primary" />
+                      ) : (
+                        <></>
+                      )}
+                    </ListItemIcon>
+                    
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="subtitle2" fontWeight="medium">
+                        {workflow.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {workflow.description || 'No description'}
+                      </Typography>
+                    </Box>
+                    
+                    <Box>
+                      <IconButton 
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (runningWorkflows[workflow.id]) {
+                            console.log('Stopping workflow:', workflow.id);
+                          } else {
+                            handleRunWorkflow(workflow);
+                          }
+                        }}
+                        disabled={!workflow.nodes?.length}
+                      >
+                        {runningWorkflows[workflow.id] ? <StopIcon /> : <RunIcon />}
+                      </IconButton>
+                      
+                      <IconButton 
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedWorkflow(workflow);
+                          setExportDialogOpen(true);
+                        }}
+                      >
+                        <ExportIcon />
+                      </IconButton>
+                      
+                      <IconButton 
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedWorkflow(workflow);
+                          setDeleteDialogOpen(true);
+                        }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                  
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: 0.5, 
+                    ml: 7, 
+                    mt: 0.5 
+                  }}>
+                    <Chip 
+                      label={`${workflow.nodes?.length || 0} nodes`} 
+                      size="small" 
+                    />
+                    <Chip 
+                      label={`${workflow.edges?.length || 0} connections`} 
+                      size="small" 
+                    />
+                    {workflow.imported && (
+                      <Chip 
+                        label="Imported" 
+                        size="small"
+                        color="info"
+                      />
                     )}
-                  </ListItemIcon>
-                  
-                  <ListItemText
-                    primary={workflow.name}
-                    secondary={renderWorkflowSecondary(workflow)}
-                  />
-                  
-                  <ListItemSecondaryAction>
-                    <IconButton 
-                      edge="end" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (runningWorkflows[workflow.id]) {
-                          // Would handle stop logic here
-                          console.log('Stopping workflow:', workflow.id);
-                        } else {
-                          handleRunWorkflow(workflow);
-                        }
-                      }}
-                      disabled={!workflow.nodes?.length}
-                    >
-                      {runningWorkflows[workflow.id] ? <StopIcon /> : <RunIcon />}
-                    </IconButton>
-                    
-                    <IconButton 
-                      edge="end" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedWorkflow(workflow);
-                        setExportDialogOpen(true);
-                      }}
-                    >
-                      <ExportIcon />
-                    </IconButton>
-                    
-                    <IconButton 
-                      edge="end" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedWorkflow(workflow);
-                        setDeleteDialogOpen(true);
-                      }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </ListItemSecondaryAction>
+                  </Box>
                 </ListItem>
               </React.Fragment>
             ))}

@@ -1,38 +1,33 @@
 // System Status Actions
+export const UPDATE_SYSTEM_STATUS = 'UPDATE_SYSTEM_STATUS';
 export const updateSystemStatus = (status) => ({
-  type: 'UPDATE_SYSTEM_STATUS',
+  type: UPDATE_SYSTEM_STATUS,
   payload: status
 });
 
 // WebSocket Status Actions
+export const UPDATE_WEBSOCKET_STATUS = 'UPDATE_WEBSOCKET_STATUS';
 export const updateWebsocketStatus = (status) => ({
-  type: 'UPDATE_WEBSOCKET_STATUS',
+  type: UPDATE_WEBSOCKET_STATUS,
   payload: status
 });
 
 // Metrics Actions
+export const UPDATE_METRICS = 'UPDATE_METRICS';
 export const updateMetrics = (metrics) => ({
-  type: 'UPDATE_METRICS',
+  type: UPDATE_METRICS,
   payload: metrics
 });
 
 // Notification Actions
-export const addNotification = (notification) => ({
-  type: 'ADD_NOTIFICATION',
-  payload: {
-    id: Date.now(),
-    timestamp: new Date().toISOString(),
-    ...notification
-  }
-});
-
-export const clearNotifications = () => ({
-  type: 'CLEAR_NOTIFICATIONS'
-});
+export const ADD_NOTIFICATION = 'ADD_NOTIFICATION';
+export const CLEAR_NOTIFICATIONS = 'CLEAR_NOTIFICATIONS';
 
 // Error Actions
+export const ADD_ERROR = 'ADD_ERROR';
+export const CLEAR_ERRORS = 'CLEAR_ERRORS';
 export const addError = (error) => ({
-  type: 'ADD_ERROR',
+  type: ADD_ERROR,
   payload: {
     id: Date.now(),
     timestamp: new Date().toISOString(),
@@ -41,12 +36,24 @@ export const addError = (error) => ({
 });
 
 export const clearErrors = () => ({
-  type: 'CLEAR_ERRORS'
+  type: CLEAR_ERRORS
 });
+
+// Loading State Actions
+export const SET_LOADING = 'SET_LOADING';
+
+// Workspace Path Actions
+export const SET_WORKSPACE_PATH = 'SET_WORKSPACE_PATH';
+
+// Models Actions
+export const SET_MODELS = 'SET_MODELS';
+
+// Preferences Actions
+export const UPDATE_PREFERENCE = 'UPDATE_PREFERENCE';
 
 // Workflow Actions
 export const saveWorkflow = (workflow) => ({
-  type: 'SAVE_WORKFLOW',
+  type: SAVE_WORKFLOW,
   payload: workflow
 });
 
@@ -56,16 +63,16 @@ export const loadWorkflow = (workflowId) => ({
 });
 
 export const listWorkflows = () => ({
-  type: 'LIST_WORKFLOWS'
+  type: LIST_WORKFLOWS
 });
 
 export const deleteWorkflow = (workflowId) => ({
-  type: 'DELETE_WORKFLOW',
+  type: DELETE_WORKFLOW,
   payload: workflowId
 });
 
 export const runWorkflow = (workflow) => ({
-  type: 'RUN_WORKFLOW',
+  type: RUN_WORKFLOW,
   payload: workflow
 });
 
@@ -79,148 +86,169 @@ export const updateWorkflowStatus = (workflowId, status) => ({
   payload: { workflowId, status }
 });
 
-// Thunk action creators for workflows
-export const saveWorkflowThunk = (workflow) => {
-  return async (dispatch) => {
-    try {
-      // Save workflow to localStorage
-      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
-      
-      // Update existing or add new
-      const existingIndex = workflows.findIndex(w => w.id === workflow.id);
-      if (existingIndex >= 0) {
-        workflows[existingIndex] = workflow;
-      } else {
-        // Generate a unique ID if not present
-        if (!workflow.id) {
-          workflow.id = `workflow-${Date.now()}`;
-        }
-        workflows.push(workflow);
-      }
-      
-      localStorage.setItem('workflows', JSON.stringify(workflows));
-      dispatch(saveWorkflow(workflow));
-      
-      dispatch(addNotification({
-        type: 'success',
-        message: `Workflow "${workflow.name}" saved successfully.`
-      }));
-      
-      return workflow;
-    } catch (error) {
-      dispatch(addError({
-        type: 'workflow',
-        message: 'Failed to save workflow',
-        error: error.message
-      }));
-      throw error;
-    }
-  };
-};
+// Project Manager actions
+export const LIST_WORKFLOWS = 'LIST_WORKFLOWS';
+export const SAVE_WORKFLOW = 'SAVE_WORKFLOW';
+export const RUN_WORKFLOW = 'RUN_WORKFLOW';
+export const DELETE_WORKFLOW = 'DELETE_WORKFLOW';
 
-export const loadWorkflowThunk = (workflowId) => {
-  return async (dispatch) => {
-    try {
-      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
-      const workflow = workflows.find(w => w.id === workflowId);
-      
-      if (!workflow) {
-        throw new Error(`Workflow with ID ${workflowId} not found`);
-      }
-      
-      dispatch(loadWorkflow(workflow));
-      
-      dispatch(addNotification({
-        type: 'info',
-        message: `Workflow "${workflow.name}" loaded.`
-      }));
-      
-      return workflow;
-    } catch (error) {
-      dispatch(addError({
-        type: 'workflow',
-        message: 'Failed to load workflow',
-        error: error.message
-      }));
-      throw error;
-    }
-  };
-};
-
+/**
+ * List all workflows from local storage
+ */
 export const listWorkflowsThunk = () => {
-  return async (dispatch) => {
+  return (dispatch) => {
     try {
-      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
+      // Get workflows from local storage
+      const workflowsJson = localStorage.getItem('workflows');
+      const workflows = workflowsJson ? JSON.parse(workflowsJson) : [];
+      
+      dispatch({
+        type: LIST_WORKFLOWS,
+        payload: workflows
+      });
+      
       return workflows;
     } catch (error) {
-      dispatch(addError({
-        type: 'workflow',
-        message: 'Failed to list workflows',
-        error: error.message
+      console.error('Error listing workflows:', error);
+      
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to list workflows: ${error.message}`
       }));
+      
       return [];
     }
   };
 };
 
-export const deleteWorkflowThunk = (workflowId) => {
-  return async (dispatch) => {
+/**
+ * Save a workflow to local storage
+ */
+export const saveWorkflowThunk = (workflow) => {
+  return (dispatch) => {
     try {
-      const workflows = JSON.parse(localStorage.getItem('workflows') || '[]');
-      const filteredWorkflows = workflows.filter(w => w.id !== workflowId);
+      // Get existing workflows
+      const workflowsJson = localStorage.getItem('workflows');
+      const workflows = workflowsJson ? JSON.parse(workflowsJson) : [];
       
-      localStorage.setItem('workflows', JSON.stringify(filteredWorkflows));
-      dispatch(deleteWorkflow(workflowId));
+      // Check if workflow exists
+      const existingIndex = workflows.findIndex(w => w.id === workflow.id);
+      
+      if (existingIndex >= 0) {
+        // Update existing workflow
+        workflows[existingIndex] = {
+          ...workflow,
+          modified: new Date().toISOString()
+        };
+      } else {
+        // Add new workflow
+        workflows.push({
+          ...workflow,
+          created: new Date().toISOString(),
+          modified: new Date().toISOString()
+        });
+      }
+      
+      // Save to local storage
+      localStorage.setItem('workflows', JSON.stringify(workflows));
+      
+      dispatch({
+        type: SAVE_WORKFLOW,
+        payload: workflow
+      });
       
       dispatch(addNotification({
         type: 'success',
-        message: `Workflow deleted successfully.`
+        message: `Workflow "${workflow.name}" saved successfully`
       }));
       
-      return true;
+      return workflow;
     } catch (error) {
-      dispatch(addError({
-        type: 'workflow',
-        message: 'Failed to delete workflow',
-        error: error.message
+      console.error('Error saving workflow:', error);
+      
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to save workflow: ${error.message}`
       }));
-      return false;
+      
+      return null;
     }
   };
 };
 
+/**
+ * Run a workflow
+ */
 export const runWorkflowThunk = (workflow) => {
   return async (dispatch) => {
     try {
-      // Set workflow as running
-      dispatch(updateWorkflowStatus(workflow.id, 'running'));
+      dispatch({
+        type: RUN_WORKFLOW,
+        payload: workflow
+      });
       
       dispatch(addNotification({
         type: 'info',
-        message: `Workflow "${workflow.name}" execution started.`
+        message: `Started workflow "${workflow.name}"`
       }));
       
-      // Simulate workflow execution - this would be replaced with actual API calls
-      // to execute the workflow steps based on node types and connections
+      // TODO: Implement actual workflow execution logic
       
-      // For demo: Simulate a delay and mark workflow as completed
+      // For now, just simulate a successful run
       setTimeout(() => {
-        dispatch(updateWorkflowStatus(workflow.id, 'completed'));
-        
         dispatch(addNotification({
           type: 'success',
-          message: `Workflow "${workflow.name}" completed successfully.`
+          message: `Workflow "${workflow.name}" completed successfully`
         }));
-      }, 5000);
+      }, 2000);
+      
+      return workflow;
+    } catch (error) {
+      console.error('Error running workflow:', error);
+      
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to run workflow: ${error.message}`
+      }));
+      
+      return null;
+    }
+  };
+};
+
+/**
+ * Delete a workflow
+ */
+export const deleteWorkflowThunk = (workflowId) => {
+  return (dispatch) => {
+    try {
+      // Get existing workflows
+      const workflowsJson = localStorage.getItem('workflows');
+      const workflows = workflowsJson ? JSON.parse(workflowsJson) : [];
+      
+      // Filter out the workflow to delete
+      const filteredWorkflows = workflows.filter(w => w.id !== workflowId);
+      
+      // Save to local storage
+      localStorage.setItem('workflows', JSON.stringify(filteredWorkflows));
+      
+      dispatch({
+        type: DELETE_WORKFLOW,
+        payload: workflowId
+      });
+      
+      dispatch(addNotification({
+        type: 'success',
+        message: 'Workflow deleted successfully'
+      }));
       
       return true;
     } catch (error) {
-      dispatch(updateWorkflowStatus(workflow.id, 'error'));
+      console.error('Error deleting workflow:', error);
       
-      dispatch(addError({
-        type: 'workflow',
-        message: `Failed to execute workflow "${workflow.name}"`,
-        error: error.message
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to delete workflow: ${error.message}`
       }));
       
       return false;
@@ -295,3 +323,18 @@ export const stopSystemMonitoring = (metricsInterval) => {
     dispatch(updateSystemStatus('idle'));
   };
 };
+
+/**
+ * Add a notification to the system
+ */
+export const addNotification = (notification) => ({
+  type: ADD_NOTIFICATION,
+  payload: notification
+});
+
+/**
+ * Clear all notifications
+ */
+export const clearNotifications = () => ({
+  type: CLEAR_NOTIFICATIONS
+});

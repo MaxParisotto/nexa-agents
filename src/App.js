@@ -1,61 +1,103 @@
-import React, { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { Route, Routes, BrowserRouter } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import DashboardLayout from './components/Layout/DashboardLayout';
-import Dashboard from './components/Dashboard/Dashboard';
+import { Provider } from 'react-redux';
+import store from './store';
+
+// Components
+import Header from './components/Header';
+import Sidebar from './components/Sidebar';
+import Dashboard from './components/Dashboard';
 import Agents from './components/Agents';
 import Tasks from './components/Tasks';
-import Settings from './components/Settings';
-import Logs from './components/Logs';
 import Metrics from './components/Metrics';
-import { updateSettings } from './store/actions/settingsActions';
-import websocketService from './services/websocket';
+import Logs from './components/Logs';
+import Settings from './components/Settings';
+import ChatWidget from './components/ChatWidget';
+import ProjectManager from './components/ProjectManager';
+import NotificationsSystem from './components/NotificationsSystem';
 
-const App = () => {
-  const dispatch = useDispatch();
-  const settings = useSelector(state => state.settings);
+// Styling
+import './App.css';
 
-  useEffect(() => {
-    // Load settings from localStorage
-    const storedSettings = localStorage.getItem('settings');
-    if (storedSettings) {
-      dispatch(updateSettings(JSON.parse(storedSettings)));
-    }
+/**
+ * Main Application component
+ * Sets up the theme, routes, and global components
+ */
+function App() {
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
 
-    // Initialize WebSocket connection
-    websocketService.connect();
-
-    // Clean up WebSocket connection on unmount
-    return () => {
-      websocketService.disconnect();
-    };
-  }, [dispatch]);
-
+  // Create theme based on dark mode preference
   const theme = createTheme({
     palette: {
-      mode: 'light',
+      mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: '#3f51b5',
+      },
+      secondary: {
+        main: '#f50057',
+      },
+      background: {
+        default: darkMode ? '#121212' : '#f5f5f5',
+        paper: darkMode ? '#1e1e1e' : '#ffffff',
+      },
+    },
+    typography: {
+      fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    },
+    components: {
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            textTransform: 'none',
+          },
+        },
+      },
     },
   });
 
+  // Toggle dark mode
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', newDarkMode.toString());
+  };
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BrowserRouter>
-        <DashboardLayout>
-          <Routes>
-            <Route exact path="/" element={<Dashboard />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/metrics" element={<Metrics />} />
-          </Routes>
-        </DashboardLayout>
-      </BrowserRouter>
-    </ThemeProvider>
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Router>
+          <div className="app">
+            <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+            <div className="app-container">
+              <Sidebar />
+              <main className="content">
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/agents" element={<Agents />} />
+                  <Route path="/tasks" element={<Tasks />} />
+                  <Route path="/metrics" element={<Metrics />} />
+                  <Route path="/logs" element={<Logs />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </main>
+            </div>
+            
+            {/* ChatWidget component for interaction */}
+            <ChatWidget />
+            
+            {/* ProjectManager is a non-visual component that manages agent workflows */}
+            <ProjectManager />
+            
+            {/* Notifications system */}
+            <NotificationsSystem />
+          </div>
+        </Router>
+      </ThemeProvider>
+    </Provider>
   );
-};
+}
 
 export default App;
