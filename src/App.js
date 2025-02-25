@@ -7,7 +7,7 @@ import store from './store';
 
 // Components
 import Header from './components/Header';
-import Sidebar from './components/Sidebar';
+import Dock from './components/Dock';
 import Dashboard from './components/Dashboard';
 import Agents from './components/Agents';
 import Tasks from './components/Tasks';
@@ -72,8 +72,7 @@ function App() {
           <div className="app">
             <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
             <div className="app-container">
-              <Sidebar />
-              <main className="content">
+              <main className="content-full">
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/agents" element={<Agents />} />
@@ -84,6 +83,9 @@ function App() {
                 </Routes>
               </main>
             </div>
+            
+            {/* Add the dock */}
+            <Dock />
             
             {/* ChatWidget component for interaction */}
             <ChatWidget />

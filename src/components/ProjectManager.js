@@ -695,6 +695,111 @@ const ProjectManager = () => {
     try {
       log('info', `Calling OpenAI-compatible API at ${apiUrl} with model ${modelName}`);
       
+      // Define available functions/tools for the model to call
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "create_workflow",
+            description: "Create a new workflow with a specified name and description",
+            parameters: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "The name for the workflow"
+                },
+                description: {
+                  type: "string",
+                  description: "A description of what the workflow does"
+                }
+              },
+              required: ["name"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "create_workflow_from_description",
+            description: "Generate a complete workflow based on a natural language description",
+            parameters: {
+              type: "object",
+              properties: {
+                description: {
+                  type: "string",
+                  description: "A natural language description of the workflow's purpose and components"
+                },
+                name: {
+                  type: "string",
+                  description: "Optional name for the workflow. If not provided, a name will be generated"
+                }
+              },
+              required: ["description"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "add_node",
+            description: "Add a node to an existing workflow",
+            parameters: {
+              type: "object",
+              properties: {
+                workflow_name: {
+                  type: "string",
+                  description: "The name of the workflow to add the node to"
+                },
+                node_type: {
+                  type: "string",
+                  enum: ["agent", "prompt", "output"],
+                  description: "The type of node to add"
+                },
+                node_name: {
+                  type: "string",
+                  description: "The name for the node"
+                },
+                configuration: {
+                  type: "object",
+                  description: "Optional configuration for the node",
+                  properties: {}
+                }
+              },
+              required: ["workflow_name", "node_type", "node_name"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "list_workflows",
+            description: "List all available workflows",
+            parameters: {
+              type: "object",
+              properties: {}
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "run_workflow",
+            description: "Run a specific workflow",
+            parameters: {
+              type: "object",
+              properties: {
+                workflow_name: {
+                  type: "string",
+                  description: "The name of the workflow to run"
+                }
+              },
+              required: ["workflow_name"]
+            }
+          }
+        }
+      ];
+      
       // Prepare the messages including context about available tools
       const messages = [
         {
@@ -702,18 +807,9 @@ const ProjectManager = () => {
           content: `You are an AI assistant that manages workflows and agents in a visual workflow editor. 
 
 CAPABILITIES:
-1. You can help users create, list, run, and manage workflows using commands like:
-   - list workflows
-   - create workflow [name]
-   - run workflow [name]
-   - describe workflow [name]
-   - delete workflow [name]
-
-2. You can directly create and manage agent nodes:
-   - add agent node [in workflow name]
-   - create agent node [in workflow name]
-   - add node named [name] [in workflow name]
-   - You can specify a workflow with "in workflow [name]", otherwise the default workflow will be used
+1. You can help users create, list, run, and manage workflows.
+2. You can directly create and manage nodes (agent nodes, prompt nodes, output nodes).
+3. You can generate complete workflows from natural language descriptions.
 
 ABOUT THE SYSTEM:
 This system helps users manage agent workflows consisting of AI agents, prompts, and outputs organized in a directed graph. The workflow editor allows users to visually connect these nodes to create automation pipelines.
@@ -722,7 +818,14 @@ This system helps users manage agent workflows consisting of AI agents, prompts,
 - Prompt nodes: Define templates that feed into agents
 - Output nodes: Handle the results from agent processing
 
-When users ask about creating nodes or managing workflows, you can both provide instructions and directly execute commands to create them as requested.`
+FUNCTION CALLING:
+When a user asks you to perform any action related to workflows, please use the appropriate function call. Prefer function calling over text responses for actions.
+
+For example:
+- If the user asks to create a workflow, use the create_workflow function
+- If the user describes a workflow they want to build, use create_workflow_from_description
+- If the user wants to add a node, use add_node
+- If the user asks to list workflows or run a workflow, use the appropriate function`
         },
         {
           role: "user",
@@ -749,25 +852,110 @@ When users ask about creating nodes or managing workflows, you can both provide 
         {
           model: modelName,
           messages,
+          tools,
           temperature: 0.7,
-          max_tokens: 500
+          max_tokens: 800
         },
         {
           headers: {
             'Content-Type': 'application/json'
           },
-          timeout: 20000 // 20 second timeout
+          timeout: 30000 // 30 second timeout
         }
       );
       
       log('info', 'Raw API response received');
       
-      // Extract the response content
-      const responseContent = response.data.choices[0].message.content;
-      log('info', 'API response content', { content: responseContent.substring(0, 100) + '...' });
+      const responseMessage = response.data.choices[0].message;
       
-      // Process the response to check for tool calls
-      return await processLLMResponse(responseContent, message);
+      // Check if the response contains a function call
+      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        log('info', 'Found function calls in response', responseMessage.tool_calls);
+        
+        // Process each function call
+        const firstToolCall = responseMessage.tool_calls[0];
+        const functionName = firstToolCall.function.name;
+        let functionArgs;
+        
+        try {
+          functionArgs = JSON.parse(firstToolCall.function.arguments);
+        } catch (error) {
+          log('error', 'Failed to parse function arguments', error);
+          functionArgs = {};
+        }
+        
+        // Execute the function based on the name
+        let result;
+        switch (functionName) {
+          case 'create_workflow':
+            result = await createWorkflow(functionArgs.name, functionArgs.description);
+            break;
+          case 'create_workflow_from_description':
+            result = await createWorkflowFromDescription(functionArgs.description, functionArgs.name);
+            break;
+          case 'add_node':
+            result = await addNodeToWorkflow(
+              functionArgs.workflow_name,
+              functionArgs.node_type,
+              functionArgs.node_name,
+              functionArgs.configuration
+            );
+            break;
+          case 'list_workflows':
+            result = await listWorkflows();
+            break;
+          case 'run_workflow':
+            result = await runWorkflow(functionArgs.workflow_name);
+            break;
+          default:
+            result = `Function ${functionName} not implemented`;
+        }
+        
+        return `I've executed your request. ${result}`;
+      } else if (responseMessage.content && responseMessage.content.includes('<tool_call>')) {
+        // Handle the <tool_call> format
+        const match = responseMessage.content.match(/<tool_call>\s*({.*?})\s*<\/tool_call>/s);
+        if (match && match[1]) {
+          try {
+            const toolCall = JSON.parse(match[1]);
+            log('info', 'Found tool call in response content', toolCall);
+            
+            // Execute the function based on the name
+            let result;
+            switch (toolCall.name) {
+              case 'create_workflow':
+                result = await createWorkflow(toolCall.arguments.name, toolCall.arguments.description);
+                break;
+              case 'create_workflow_from_description':
+                result = await createWorkflowFromDescription(toolCall.arguments.description, toolCall.arguments.name);
+                break;
+              case 'add_node':
+                result = await addNodeToWorkflow(
+                  toolCall.arguments.workflow_name,
+                  toolCall.arguments.node_type,
+                  toolCall.arguments.node_name,
+                  toolCall.arguments.configuration
+                );
+                break;
+              case 'list_workflows':
+                result = await listWorkflows();
+                break;
+              case 'run_workflow':
+                result = await runWorkflow(toolCall.arguments.workflow_name);
+                break;
+              default:
+                result = `Function ${toolCall.name} not implemented`;
+            }
+            
+            return `I've executed your request. ${result}`;
+          } catch (error) {
+            log('error', 'Failed to parse tool call JSON', error);
+          }
+        }
+      }
+      
+      // If no function calls were found, process the response as before
+      return await processLLMResponse(responseMessage.content, message);
     } catch (error) {
       log('error', 'Error calling OpenAI-compatible API', {
         message: error.message,
@@ -775,6 +963,358 @@ When users ask about creating nodes or managing workflows, you can both provide 
         data: error.response?.data
       });
       throw new Error(`Failed to connect to LM Studio: ${error.message}`);
+    }
+  };
+  
+  /**
+   * Create a workflow from a natural language description
+   */
+  const createWorkflowFromDescription = async (description, providedName = null) => {
+    try {
+      log('info', `Creating workflow from description: "${description}"`);
+      
+      // Generate a workflow name if not provided
+      const name = providedName || `Workflow-${Date.now()}`;
+      
+      // Create a notification
+      dispatch(addNotification({
+        type: 'info',
+        message: `Generating workflow "${name}" from description...`
+      }));
+      
+      // First, create the basic workflow
+      const newWorkflow = {
+        id: `workflow-${Date.now()}`,
+        name,
+        description,
+        nodes: [],
+        edges: [],
+        created: new Date().toISOString(),
+        modified: new Date().toISOString()
+      };
+      
+      // Save the initial workflow
+      await dispatch(saveWorkflowThunk(newWorkflow));
+      
+      // Get model information for agent nodes
+      let modelName = '';
+      let apiUrl = '';
+      
+      // Get model information from settings
+      if (llmProvider === 'lmStudio') {
+        const sessionUrl = sessionStorage.getItem('lmStudioUrl');
+        const sessionModel = sessionStorage.getItem('lmStudioModel');
+        
+        modelName = sessionModel || lmStudioSettings?.defaultModel || 'default model';
+        apiUrl = sessionUrl || lmStudioSettings?.apiUrl || 'http://localhost:1234';
+      } else if (llmProvider === 'ollama') {
+        const sessionUrl = sessionStorage.getItem('ollamaUrl');
+        const sessionModel = sessionStorage.getItem('ollamaModel');
+        
+        modelName = sessionModel || ollamaSettings?.defaultModel || 'default model';
+        apiUrl = sessionUrl || ollamaSettings?.apiUrl || 'http://localhost:11434';
+      } else {
+        // If no LLM provider is configured, use some default values
+        modelName = 'default model';
+        apiUrl = 'http://localhost:1234';
+      }
+      
+      // Add 1 second delay to ensure the workflow is saved before adding nodes
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Use a second LLM call to analyze the description and determine what nodes to create
+      const nodeDescriptions = await analyzeWorkflowDescription(description);
+      
+      // Create all nodes from the descriptions
+      let createdNodes = [];
+      
+      // Create each node from the descriptions
+      for (let nodeDesc of nodeDescriptions) {
+        const nodeId = `node-${nodeDesc.type}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        
+        // Calculate position - layout nodes in a logical flow
+        const x = 100 + (nodeDesc.position?.x || createdNodes.length * 300);
+        const y = 100 + (nodeDesc.position?.y || 0);
+        
+        // Create node data based on type
+        let nodeData = {
+          label: nodeDesc.name,
+          onEdit: null,
+          onDelete: null
+        };
+        
+        switch (nodeDesc.type.toLowerCase()) {
+          case 'agent':
+            nodeData = {
+              ...nodeData,
+              modelName: modelName,
+              apiAddress: apiUrl,
+              inferenceApi: llmProvider || 'lmstudio',
+              modelTemperature: nodeDesc.temperature || 0.7,
+              maxTokens: nodeDesc.maxTokens || 1024,
+              agentDescription: nodeDesc.description || `Agent node for ${nodeDesc.name}`
+            };
+            break;
+          case 'prompt':
+            nodeData = {
+              ...nodeData,
+              promptContent: nodeDesc.content || "Enter your prompt here. Use {{variable}} for dynamic content.",
+              promptVariables: nodeDesc.variables || [],
+              systemPrompt: nodeDesc.systemPrompt || "System instructions for the prompt."
+            };
+            break;
+          case 'output':
+            nodeData = {
+              ...nodeData,
+              outputType: nodeDesc.outputType || "ui",
+              saveToFile: nodeDesc.saveToFile || false,
+              outputFilePath: nodeDesc.filePath || ""
+            };
+            break;
+        }
+        
+        const newNode = {
+          id: nodeId,
+          type: nodeDesc.type.toLowerCase(),
+          position: { x, y },
+          data: nodeData
+        };
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        createdNodes.push(newNode);
+      }
+      
+      // Create edges based on the node descriptions
+      let createdEdges = [];
+      
+      for (let i = 0; i < nodeDescriptions.length; i++) {
+        const nodeDesc = nodeDescriptions[i];
+        
+        if (nodeDesc.connectsTo) {
+          for (let targetName of nodeDesc.connectsTo) {
+            // Find the target node by name
+            const targetNode = createdNodes.find(n => n.data.label === targetName);
+            if (targetNode) {
+              const edge = {
+                id: `edge-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                source: createdNodes[i].id,
+                target: targetNode.id,
+                type: 'default'
+              };
+              createdEdges.push(edge);
+            }
+          }
+        } else if (i < nodeDescriptions.length - 1) {
+          // By default, connect nodes in sequence if no explicit connections
+          const edge = {
+            id: `edge-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            source: createdNodes[i].id,
+            target: createdNodes[i + 1].id,
+            type: 'default'
+          };
+          createdEdges.push(edge);
+        }
+      }
+      
+      // Add all nodes and edges to the workflow
+      newWorkflow.nodes = createdNodes;
+      newWorkflow.edges = createdEdges;
+      
+      // Update the workflow with nodes and edges
+      log('info', `Saving workflow "${name}" with ${createdNodes.length} nodes and ${createdEdges.length} edges`);
+      await dispatch(saveWorkflowThunk(newWorkflow));
+      
+      // Give final confirmation
+      dispatch(addNotification({
+        type: 'success',
+        message: `Workflow "${name}" created with ${createdNodes.length} nodes and ${createdEdges.length} edges`
+      }));
+      
+      // Store the workflow ID to focus
+      sessionStorage.setItem('focusWorkflowId', newWorkflow.id);
+      
+      // Navigate to the workflow automatically
+      setTimeout(() => {
+        window.location.href = '/agents';
+      }, 1000);
+      
+      return `Successfully created workflow "${name}" based on your description. It has ${createdNodes.length} nodes connected in a logical flow. You are being redirected to the Agents page to view the workflow.`;
+    } catch (error) {
+      log('error', 'Error creating workflow from description', error);
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to create workflow: ${error.message}`
+      }));
+      throw new Error(`Failed to create workflow: ${error.message}`);
+    }
+  };
+  
+  /**
+   * Analyze a workflow description and determine what nodes to create
+   */
+  const analyzeWorkflowDescription = async (description) => {
+    try {
+      log('info', `Analyzing workflow description: "${description}"`);
+      
+      // Determine which LLM service to use
+      let apiUrl;
+      let modelName;
+      let useOpenAIFormat = false;
+      
+      if (lmStudioSettings?.defaultModel && lmStudioSettings?.apiUrl) {
+        apiUrl = lmStudioSettings.apiUrl;
+        modelName = lmStudioSettings.defaultModel;
+        useOpenAIFormat = true;
+      } else if (ollamaSettings?.defaultModel && ollamaSettings?.apiUrl) {
+        apiUrl = ollamaSettings.apiUrl;
+        modelName = ollamaSettings.defaultModel;
+        useOpenAIFormat = false;
+      } else {
+        // Try sessionStorage as fallback
+        const provider = sessionStorage.getItem('lastConfiguredProvider');
+        
+        if (provider === 'lmStudio') {
+          apiUrl = sessionStorage.getItem('lmStudioUrl');
+          modelName = sessionStorage.getItem('lmStudioModel');
+          useOpenAIFormat = true;
+        } else if (provider === 'ollama') {
+          apiUrl = sessionStorage.getItem('ollamaUrl');
+          modelName = sessionStorage.getItem('ollamaModel');
+          useOpenAIFormat = false;
+        } else {
+          throw new Error('No LLM model configured for workflow analysis');
+        }
+      }
+      
+      // LLM prompt to analyze the workflow description
+      const promptMessages = [
+        {
+          role: "system",
+          content: `You are a workflow design expert. Based on text descriptions, you identify the components needed for a workflow and their relationships. 
+
+Your task is to analyze a user's workflow description and return a JSON array of node objects with these properties:
+- name: Descriptive name for the node
+- type: One of "prompt", "agent", or "output"
+- description: What the node does
+- position: {x, y} coordinates (optional)
+- connectsTo: Array of node names this node connects to (optional)
+
+For prompt nodes, you can add:
+- content: The prompt template content
+- variables: Array of variable names used in the prompt
+- systemPrompt: System instructions for the prompt
+
+For agent nodes, you can add:
+- temperature: Value between 0 and 1 for randomness (default 0.7)
+- maxTokens: Maximum output tokens (default 1024)
+
+For output nodes, you can add:
+- outputType: "ui", "file", "api", etc.
+- saveToFile: Boolean indicating if output should be saved to file
+- filePath: Path to save the file if saveToFile is true
+
+The user will provide a description of a workflow they want to build. Your response must be a valid JSON array.`
+        },
+        {
+          role: "user",
+          content: `Analyze this workflow description and identify the necessary nodes, their types, and connections. Return a JSON array of node objects:\n\n${description}`
+        }
+      ];
+      
+      // Make the LLM call
+      const response = await axios.post(
+        `${apiUrl}/v1/chat/completions`,
+        {
+          model: modelName,
+          messages: promptMessages,
+          temperature: 0.2, // Lower temperature for more consistent results
+          max_tokens: 1000
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          timeout: 20000
+        }
+      );
+      
+      // Extract the content from the response
+      const content = response.data.choices[0].message.content;
+      log('info', 'LLM analysis result received', { content });
+      
+      // Parse the JSON response
+      // First, try to extract JSON if it's wrapped in backticks
+      let jsonMatch = content.match(/```(?:json)?([\s\S]*?)```/);
+      let nodeDescriptions;
+      
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          nodeDescriptions = JSON.parse(jsonMatch[1].trim());
+        } catch (error) {
+          log('error', 'Failed to parse JSON from markdown code block', error);
+          // Try parsing the whole content
+          nodeDescriptions = JSON.parse(content);
+        }
+      } else {
+        // If no markdown code blocks, try parsing the whole content
+        nodeDescriptions = JSON.parse(content);
+      }
+      
+      if (!Array.isArray(nodeDescriptions)) {
+        throw new Error('Invalid node descriptions format: expected an array');
+      }
+      
+      log('info', `Identified ${nodeDescriptions.length} nodes for the workflow`, nodeDescriptions);
+      
+      // If no nodes were identified, create some default ones
+      if (nodeDescriptions.length === 0) {
+        nodeDescriptions = [
+          {
+            name: "Input Prompt",
+            type: "prompt",
+            description: "User input prompt",
+            content: "Process the following input: {{input}}",
+            variables: ["input"]
+          },
+          {
+            name: "Processing Agent",
+            type: "agent",
+            description: "Processes the input data"
+          },
+          {
+            name: "Output Handler",
+            type: "output",
+            description: "Handles the processed output",
+            outputType: "ui"
+          }
+        ];
+      }
+      
+      return nodeDescriptions;
+    } catch (error) {
+      log('error', 'Error analyzing workflow description', error);
+      // Return default nodes if analysis fails
+      return [
+        {
+          name: "Input Prompt",
+          type: "prompt",
+          description: "User input prompt",
+          content: "Process the following input: {{input}}",
+          variables: ["input"]
+        },
+        {
+          name: "Processing Agent",
+          type: "agent",
+          description: "Processes the input data"
+        },
+        {
+          name: "Output Handler",
+          type: "output",
+          description: "Handles the processed output",
+          outputType: "ui"
+        }
+      ];
     }
   };
   
@@ -789,18 +1329,9 @@ When users ask about creating nodes or managing workflows, you can both provide 
       const systemPrompt = `You are an AI assistant that manages workflows and agents in a visual workflow editor. 
 
 CAPABILITIES:
-1. You can help users create, list, run, and manage workflows using commands like:
-   - list workflows
-   - create workflow [name]
-   - run workflow [name]
-   - describe workflow [name]
-   - delete workflow [name]
-
-2. You can directly create and manage agent nodes:
-   - add agent node [in workflow name]
-   - create agent node [in workflow name]
-   - add node named [name] [in workflow name]
-   - You can specify a workflow with "in workflow [name]", otherwise the default workflow will be used
+1. You can help users create, list, run, and manage workflows.
+2. You can directly create and manage agent nodes (prompt nodes, agent nodes, output nodes).
+3. You can generate complete workflows from natural language descriptions.
 
 ABOUT THE SYSTEM:
 This system helps users manage agent workflows consisting of AI agents, prompts, and outputs organized in a directed graph. The workflow editor allows users to visually connect these nodes to create automation pipelines.
@@ -809,7 +1340,38 @@ This system helps users manage agent workflows consisting of AI agents, prompts,
 - Prompt nodes: Define templates that feed into agents
 - Output nodes: Handle the results from agent processing
 
-When users ask about creating nodes or managing workflows, you can both provide instructions and directly execute commands to create them as requested.`;
+FUNCTION CALLING:
+When a user asks you to perform any action related to workflows, please use function calling by creating a JSON object inside <tool_call></tool_call> tags.
+
+The available functions are:
+1. create_workflow - Creates a new workflow with specified name
+   Parameters: 
+   - name: string (required) - The name for the workflow
+   - description: string - A description of what the workflow does
+
+2. create_workflow_from_description - Generates a complete workflow based on a description
+   Parameters:
+   - description: string (required) - Natural language description of the workflow
+   - name: string - Optional name for the workflow
+
+3. add_node - Adds a node to an existing workflow
+   Parameters:
+   - workflow_name: string (required) - Name of the workflow to add the node to
+   - node_type: string (required) - Type of node to add (agent, prompt, or output)
+   - node_name: string (required) - Name for the node
+   - configuration: object - Optional configuration details
+
+4. list_workflows - Lists all available workflows
+   Parameters: none
+
+5. run_workflow - Runs a specific workflow
+   Parameters:
+   - workflow_name: string (required) - Name of the workflow to run
+
+For example, to create a workflow your response should include:
+<tool_call>
+{"name": "create_workflow", "arguments": {"name": "My Workflow", "description": "This workflow processes data"}}
+</tool_call>`;
       
       // Add chat history context if available
       let historyContext = '';
@@ -833,13 +1395,13 @@ When users ask about creating nodes or managing workflows, you can both provide 
           model: modelName,
           prompt: fullPrompt,
           temperature: 0.7,
-          max_tokens: 500
+          max_tokens: 800
         },
         {
           headers: {
             'Content-Type': 'application/json'
           },
-          timeout: 20000 // 20 second timeout
+          timeout: 30000 // 30 second timeout
         }
       );
       
@@ -849,7 +1411,47 @@ When users ask about creating nodes or managing workflows, you can both provide 
       const responseContent = response.data.response;
       log('info', 'API response content', { content: responseContent.substring(0, 100) + '...' });
       
-      // Process the response to check for tool calls
+      // Check if the response contains a tool call
+      const toolCallMatch = responseContent.match(/<tool_call>\s*({.*?})\s*<\/tool_call>/s);
+      if (toolCallMatch && toolCallMatch[1]) {
+        try {
+          const toolCall = JSON.parse(toolCallMatch[1]);
+          log('info', 'Found tool call in response content', toolCall);
+          
+          // Execute the function based on the name
+          let result;
+          switch (toolCall.name) {
+            case 'create_workflow':
+              result = await createWorkflow(toolCall.arguments.name, toolCall.arguments.description);
+              break;
+            case 'create_workflow_from_description':
+              result = await createWorkflowFromDescription(toolCall.arguments.description, toolCall.arguments.name);
+              break;
+            case 'add_node':
+              result = await addNodeToWorkflow(
+                toolCall.arguments.workflow_name,
+                toolCall.arguments.node_type,
+                toolCall.arguments.node_name,
+                toolCall.arguments.configuration
+              );
+              break;
+            case 'list_workflows':
+              result = await listWorkflows();
+              break;
+            case 'run_workflow':
+              result = await runWorkflow(toolCall.arguments.workflow_name);
+              break;
+            default:
+              result = `Function ${toolCall.name} not implemented`;
+          }
+          
+          return `I've executed your request. ${result}`;
+        } catch (error) {
+          log('error', 'Failed to parse tool call JSON', error);
+        }
+      }
+      
+      // Process the response to check for tool calls in the standard pattern-matching way
       return await processLLMResponse(responseContent, message);
     } catch (error) {
       log('error', 'Error calling Ollama API', {
@@ -876,7 +1478,16 @@ When users ask about creating nodes or managing workflows, you can both provide 
       { pattern: /add (?:an?|another) agent node(?: in workflow ['""]?([^'""\n]+)['""]?)?/i, action: (workflowName) => addNodeToWorkflow(workflowName, 'agent', 'New Agent') },
       { pattern: /add (?:an?|another) node(?: in workflow ['""]?([^'""\n]+)['""]?)?/i, action: (workflowName) => addNodeToWorkflow(workflowName, 'agent', 'New Agent') },
       { pattern: /create (?:an?|another) node(?: in workflow ['""]?([^'""\n]+)['""]?)?/i, action: (workflowName) => addNodeToWorkflow(workflowName, 'agent', 'New Agent') },
+      { pattern: /add (?:an?|another) prompt node(?: in workflow ['""]?([^'""\n]+)['""]?)?/i, action: (workflowName) => addNodeToWorkflow(workflowName, 'prompt', 'Prompt Node') },
+      { pattern: /add (?:an?|another) output node(?: in workflow ['""]?([^'""\n]+)['""]?)?/i, action: (workflowName) => addNodeToWorkflow(workflowName, 'output', 'Output Node') },
+      { pattern: /add node named ['""]?([^'""\n]+)['""]?(?: in workflow ['""]?([^'""\n]+)['""]?)?/i, action: (nodeName, workflowName) => addNodeToWorkflow(workflowName, 'agent', nodeName) },
       { pattern: /create (?:a |an )?demo workflow/i, action: createDemoWorkflow },
+      { pattern: /add (?:a |an )?demo workflow/i, action: createDemoWorkflow },
+      { pattern: /show workflow ['""]?([^'""\n]+)['""]?/i, action: showWorkflow },
+      { pattern: /view workflow ['""]?([^'""\n]+)['""]?/i, action: showWorkflow },
+      { pattern: /go to (?:agents|workflows) page/i, action: navigateToAgentsPage },
+      { pattern: /show (?:agents|workflows) page/i, action: navigateToAgentsPage },
+      { pattern: /open (?:agents|workflows) page/i, action: navigateToAgentsPage },
       { pattern: /agent node/i, action: handleAgentNodeRequest }
     ];
     
@@ -888,14 +1499,19 @@ When users ask about creating nodes or managing workflows, you can both provide 
       if (match) {
         try {
           log('info', `Matched pattern: ${pattern}, executing action with param: ${match[1] || 'none'}`);
-          // Execute the appropriate action with the parameter (if any)
-          const result = await action(match[1] || null);
           
-          // Return the modified response with the tool result
-          return responseContent.replace(
-            pattern, 
-            `I've executed that command. ${result}`
-          );
+          // Special handling for node names and workflow names
+          if (pattern.toString().includes('node named')) {
+            // This pattern captures two groups: nodeName and workflowName
+            const result = await action(match[1], match[2]);
+            return responseContent.replace(pattern, `I've executed that command. ${result}`);
+          } else {
+            // Execute the appropriate action with the parameter (if any)
+            const result = await action(match[1] || null);
+            
+            // Return the modified response with the tool result
+            return responseContent.replace(pattern, `I've executed that command. ${result}`);
+          }
         } catch (error) {
           log('error', 'Error executing tool call', error);
         }
@@ -1033,31 +1649,78 @@ Note: You need to configure at least one LLM provider in Settings before creatin
   };
   
   /**
+   * Show a specific workflow by navigating to it
+   */
+  const showWorkflow = async (workflowName) => {
+    if (!workflowName) {
+      return "No workflow name was provided.";
+    }
+    
+    log('info', `Showing workflow: ${workflowName}`);
+    
+    // Find the workflow
+    const workflowList = await dispatch(listWorkflowsThunk());
+    const workflow = workflowList.find(wf => wf.name.toLowerCase() === workflowName.toLowerCase());
+    
+    if (!workflow) {
+      log('warn', `Workflow not found: ${workflowName}`);
+      return `Couldn't find a workflow named "${workflowName}".`;
+    }
+    
+    // Navigate to the Agents page and store the workflow ID to focus
+    sessionStorage.setItem('focusWorkflowId', workflow.id);
+    
+    // Navigate to the agents page
+    setTimeout(() => {
+      window.location.href = '/agents';
+    }, 500);
+    
+    return `Showing workflow "${workflow.name}" which has ${workflow.nodes?.length || 0} nodes and ${workflow.edges?.length || 0} connections.`;
+  };
+  
+  /**
    * Create a comprehensive demo workflow
    */
   const createDemoWorkflow = async () => {
     try {
       log('info', 'Creating demo workflow');
+      dispatch(addNotification({
+        type: 'info',
+        message: 'Creating demo workflow...'
+      }));
       
-      // First, delete any existing workflows to start fresh
+      // First, delete any existing "Demo" workflows to start fresh
       const workflowList = await dispatch(listWorkflowsThunk());
-      for (const workflow of workflowList) {
+      const existingDemos = workflowList.filter(wf => 
+        wf.name.toLowerCase().includes('demo') || 
+        wf.name.toLowerCase().includes('sentiment')
+      );
+      
+      for (const workflow of existingDemos) {
+        log('info', `Removing existing demo workflow: ${workflow.name}`);
         await dispatch(deleteWorkflowThunk(workflow.id));
       }
       
-      // Create a new workflow
+      // Create a new workflow with a unique timestamp to avoid conflicts
+      const timestamp = new Date().toISOString().slice(11, 19).replace(/:/g, '-');
       const demoWorkflow = {
-        id: `workflow-${Date.now()}`,
-        name: "Sentiment Analysis Pipeline",
-        description: "A complete workflow that analyzes text sentiment and generates a summary",
+        id: `workflow-demo-${Date.now()}`,
+        name: `Complete Demo Workflow`,
+        description: "A comprehensive demo workflow showing different node types and connections",
         nodes: [],
         edges: [],
         created: new Date().toISOString(),
         modified: new Date().toISOString()
       };
       
+      log('info', `Creating new demo workflow: ${demoWorkflow.name}`);
+      
       // Save the initial workflow
       await dispatch(saveWorkflowThunk(demoWorkflow));
+      dispatch(addNotification({
+        type: 'success',
+        message: `Created workflow "${demoWorkflow.name}"`
+      }));
       
       // Get model information for agent nodes
       let modelName = '';
@@ -1068,30 +1731,43 @@ Note: You need to configure at least one LLM provider in Settings before creatin
         const sessionUrl = sessionStorage.getItem('lmStudioUrl');
         const sessionModel = sessionStorage.getItem('lmStudioModel');
         
-        modelName = sessionModel || lmStudioSettings?.defaultModel || '';
-        apiUrl = sessionUrl || lmStudioSettings?.apiUrl || '';
+        modelName = sessionModel || lmStudioSettings?.defaultModel || 'default model';
+        apiUrl = sessionUrl || lmStudioSettings?.apiUrl || 'http://localhost:1234';
       } else if (llmProvider === 'ollama') {
         const sessionUrl = sessionStorage.getItem('ollamaUrl');
         const sessionModel = sessionStorage.getItem('ollamaModel');
         
-        modelName = sessionModel || ollamaSettings?.defaultModel || '';
-        apiUrl = sessionUrl || ollamaSettings?.apiUrl || '';
+        modelName = sessionModel || ollamaSettings?.defaultModel || 'default model';
+        apiUrl = sessionUrl || ollamaSettings?.apiUrl || 'http://localhost:11434';
+      } else {
+        // If no LLM provider is configured, use some default values
+        modelName = 'default model';
+        apiUrl = 'http://localhost:1234';
       }
       
-      // Create nodes with positions for better visualization
+      log('info', `Using model: ${modelName} at ${apiUrl} for demo nodes`);
       
-      // Input Prompt Node
-      const promptNode = {
+      // Add 1 second delay to ensure the workflow is saved before adding nodes
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Create nodes with positions for better visualization
+      // Each node has a unique timestamp to avoid ID conflicts
+      
+      // Input Prompt Node 1
+      const promptNode1 = {
         id: `node-prompt-${Date.now()}`,
         type: 'prompt',
         position: { x: 100, y: 100 },
         data: {
-          label: "Input Prompt",
+          label: "User Input Prompt",
           promptContent: "Analyze the sentiment of the following text: {{text}}",
           promptVariables: ["text"],
           systemPrompt: "You are a sentiment analysis expert. Provide detailed sentiment analysis of user input."
         }
       };
+      
+      // Add a slight delay between node creations to prevent race conditions
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       // Sentiment Analysis Agent Node
       const sentimentAgentNode = {
@@ -1109,40 +1785,46 @@ Note: You need to configure at least one LLM provider in Settings before creatin
         }
       };
       
-      // Summary Prompt Node
-      const summaryPromptNode = {
-        id: `node-prompt-summary-${Date.now()}`,
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Input Prompt Node 2
+      const promptNode2 = {
+        id: `node-prompt2-${Date.now()}`,
         type: 'prompt',
-        position: { x: 100, y: 300 },
+        position: { x: 100, y: 250 },
         data: {
           label: "Summary Prompt",
-          promptContent: "Generate a concise summary of the following text, highlighting the key points and sentiment: {{text}}",
+          promptContent: "Create a concise summary of this text: {{text}}",
           promptVariables: ["text"],
-          systemPrompt: "You are a summarization expert. Generate clear, concise summaries."
+          systemPrompt: "You are a summarization expert. Create concise and informative summaries."
         }
       };
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       // Summary Agent Node
       const summaryAgentNode = {
         id: `node-agent-summary-${Date.now()}`,
         type: 'agent',
-        position: { x: 400, y: 300 },
+        position: { x: 400, y: 250 },
         data: {
-          label: "Summarizer",
+          label: "Text Summarizer",
           modelName: modelName,
           apiAddress: apiUrl,
           inferenceApi: llmProvider || 'lmstudio',
-          agentDescription: "Generates concise summaries of text input",
+          agentDescription: "Creates concise summaries of longer text",
           modelTemperature: 0.7,
           maxTokens: 1024
         }
       };
       
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       // Output Node
       const outputNode = {
         id: `node-output-${Date.now()}`,
         type: 'output',
-        position: { x: 700, y: 200 },
+        position: { x: 700, y: 175 },
         data: {
           label: "Final Output",
           outputType: "ui",
@@ -1153,17 +1835,21 @@ Note: You need to configure at least one LLM provider in Settings before creatin
       // Create edges to connect the nodes
       const edge1 = {
         id: `edge-${Date.now()}-1`,
-        source: promptNode.id,
+        source: promptNode1.id,
         target: sentimentAgentNode.id,
         type: 'default'
       };
       
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       const edge2 = {
         id: `edge-${Date.now()}-2`,
-        source: summaryPromptNode.id,
+        source: promptNode2.id,
         target: summaryAgentNode.id,
         type: 'default'
       };
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       const edge3 = {
         id: `edge-${Date.now()}-3`,
@@ -1171,6 +1857,8 @@ Note: You need to configure at least one LLM provider in Settings before creatin
         target: outputNode.id,
         type: 'default'
       };
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       const edge4 = {
         id: `edge-${Date.now()}-4`,
@@ -1180,17 +1868,55 @@ Note: You need to configure at least one LLM provider in Settings before creatin
       };
       
       // Add all nodes and edges to the workflow
-      demoWorkflow.nodes = [promptNode, sentimentAgentNode, summaryPromptNode, summaryAgentNode, outputNode];
+      demoWorkflow.nodes = [promptNode1, sentimentAgentNode, promptNode2, summaryAgentNode, outputNode];
       demoWorkflow.edges = [edge1, edge2, edge3, edge4];
       
-      // Save the complete workflow
+      // Update the workflow with nodes and edges
+      log('info', 'Saving demo workflow with nodes and edges');
       await dispatch(saveWorkflowThunk(demoWorkflow));
       
-      return `Created a demo workflow "${demoWorkflow.name}" with 5 nodes (2 prompts, 2 agents, 1 output) all properly connected. You can now view and edit it in the Agents page.`;
+      // Give final confirmation
+      dispatch(addNotification({
+        type: 'success',
+        message: `Demo workflow "${demoWorkflow.name}" created with ${demoWorkflow.nodes.length} nodes`
+      }));
+      
+      // Force a refresh of workflows
+      await dispatch(listWorkflowsThunk());
+      
+      // Store the workflow ID to focus
+      sessionStorage.setItem('focusWorkflowId', demoWorkflow.id);
+      
+      // Go to Agents page automatically
+      setTimeout(() => {
+        window.location.href = '/agents';
+      }, 1000);
+      
+      return `Successfully created comprehensive demo workflow "${demoWorkflow.name}" with ${demoWorkflow.nodes.length} nodes (2 prompts, 2 agents, 1 output) all properly connected.
+
+You are being redirected to the Agents page to view the workflow.`;
     } catch (error) {
       log('error', 'Error creating demo workflow', error);
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to create demo workflow: ${error.message}`
+      }));
       throw new Error(`Failed to create demo workflow: ${error.message}`);
     }
+  };
+  
+  /**
+   * Navigate to the Agents page
+   */
+  const navigateToAgentsPage = async () => {
+    log('info', 'Navigating to Agents page');
+    
+    // Use window.location to navigate to the Agents page
+    setTimeout(() => {
+      window.location.href = '/agents';
+    }, 500);
+    
+    return `I'm taking you to the Agents page where you can see all workflows and nodes.`;
   };
   
   /**
@@ -1212,12 +1938,100 @@ Note: You need to configure at least one LLM provider in Settings before creatin
 - **run workflow [name]**: Executes the specified workflow
 - **describe workflow [name]**: Shows details about a workflow
 - **delete workflow [name]**: Deletes the specified workflow
-- **add agent node [in workflow name]**: Creates a new agent node programmatically 
+- **add agent node [in workflow name]**: Creates a new agent node programmatically
+- **add prompt node [in workflow name]**: Creates a new prompt node programmatically
+- **add output node [in workflow name]**: Creates a new output node programmatically
 - **create demo workflow**: Creates a complete demo workflow with multiple connected nodes
-- **export workflow [name]**: Creates a downloadable file of the workflow
+- **create workflow from [description]**: Creates a custom workflow from a natural language description
+- **go to agents page**: Opens the Agents page to see workflows and nodes
 - **status**: Shows the current system status
 - **debug**: Shows detailed debug information
-- **diagnose**: Runs diagnostics on LLM configuration and reports results`;
+- **diagnose**: Runs diagnostics on LLM configuration and reports results
+
+You can also just describe what kind of workflow you want to create in natural language, and I'll build it for you!`;
+    }
+    
+    // Create workflow from description
+    if (lowerMessage.includes('create') && 
+        (lowerMessage.includes('workflow from') || 
+         lowerMessage.includes('workflow based on') || 
+         lowerMessage.includes('workflow using'))) {
+      // Extract the description
+      let description = message;
+      
+      const prefixes = [
+        'create workflow from',
+        'create a workflow from',
+        'create workflow based on',
+        'create a workflow based on',
+        'create workflow using',
+        'create a workflow using',
+        'build workflow from',
+        'build a workflow from',
+        'generate workflow from',
+        'generate a workflow from'
+      ];
+      
+      for (const prefix of prefixes) {
+        if (message.toLowerCase().startsWith(prefix)) {
+          description = message.substring(prefix.length).trim();
+          break;
+        }
+      }
+      
+      if (description === message) {
+        // If we didn't find a prefix, use the entire message as the description
+        description = message;
+      }
+      
+      try {
+        const result = await createWorkflowFromDescription(description);
+        return result;
+      } catch (error) {
+        return `Failed to create workflow from description: ${error.message}. Please try again with a clearer description.`;
+      }
+    }
+    
+    // Check if message seems to be describing a workflow without explicit command
+    // This is a more advanced feature that uses the LLM to interpret the message
+    if (message.length > 30 && 
+        (lowerMessage.includes('workflow') || 
+         lowerMessage.includes('process') || 
+         lowerMessage.includes('node') || 
+         lowerMessage.includes('automate'))) {
+      
+      // It seems like a workflow description - ask for confirmation
+      sendMessageToChat(`Your message seems to be describing a workflow. Would you like me to create a workflow based on this description? If so, type "yes" or "create workflow from this".`);
+      
+      // We'll handle the confirmation response in the next message
+      return null;
+    }
+    
+    // Confirmation for creating a workflow
+    if (lowerMessage === 'yes' || 
+        lowerMessage === 'create workflow from this' || 
+        lowerMessage === 'yes, create workflow' || 
+        lowerMessage === 'create workflow' || 
+        lowerMessage === 'create a workflow') {
+      
+      // Find the previous message that might contain the workflow description
+      const previousMessages = chatHistory.slice(-3).reverse();
+      const descriptionMessage = previousMessages.find(msg => 
+        msg.role === 'user' && 
+        msg.content.length > 30 && 
+        msg.content.toLowerCase() !== lowerMessage
+      );
+      
+      if (descriptionMessage) {
+        try {
+          const result = await createWorkflowFromDescription(descriptionMessage.content);
+          return result;
+        } catch (error) {
+          return `Failed to create workflow from description: ${error.message}. Please try again with a clearer description.`;
+        }
+      } else {
+        return `I couldn't find a recent message with a workflow description. Please describe the workflow you'd like to create in detail.`;
+      }
     }
     
     // Create Demo Workflow Command
@@ -1230,8 +2044,20 @@ Note: You need to configure at least one LLM provider in Settings before creatin
       }
     }
     
-    // Add Node Command
-    if (lowerMessage.includes('add') && (lowerMessage.includes('node') || lowerMessage.includes('agent'))) {
+    // Navigate to Agents page
+    if (lowerMessage.includes('go to') || lowerMessage.includes('open') || lowerMessage.includes('show')) {
+      if (lowerMessage.includes('agent') || lowerMessage.includes('workflow')) {
+        return await navigateToAgentsPage();
+      }
+    }
+    
+    // Add Node Command - match node types more specifically
+    if (lowerMessage.includes('add') && 
+        (lowerMessage.includes('node') || 
+         lowerMessage.includes('agent') || 
+         lowerMessage.includes('prompt') || 
+         lowerMessage.includes('output'))) {
+      
       // Extract workflow name if provided
       let workflowName = null;
       const workflowMatch = message.match(/(?:in|to) workflow ['""]?([^'""\n]+)['""]?/i);
@@ -1240,14 +2066,24 @@ Note: You need to configure at least one LLM provider in Settings before creatin
       }
       
       // Extract node name if provided
-      let nodeName = "New Agent";
+      let nodeName = "New Node";
       const nodeNameMatch = message.match(/(?:named|called) ['""]?([^'""\n]+)['""]?/i);
       if (nodeNameMatch && nodeNameMatch[1]) {
         nodeName = nodeNameMatch[1];
       }
       
+      // Determine node type
+      let nodeType = "agent"; // default
+      if (lowerMessage.includes('prompt node')) {
+        nodeType = "prompt";
+      } else if (lowerMessage.includes('output node')) {
+        nodeType = "output";
+      } else if (lowerMessage.includes('agent node')) {
+        nodeType = "agent";
+      }
+      
       try {
-        const result = await addNodeToWorkflow(workflowName, 'agent', nodeName);
+        const result = await addNodeToWorkflow(workflowName, nodeType, nodeName);
         return result;
       } catch (error) {
         return `Failed to add node: ${error.message}. Please try again or check the logs for more details.`;
@@ -1270,7 +2106,7 @@ I've tested the LLM configuration and everything is working properly.
 **Active Provider:** ${llmProvider === 'lmStudio' ? 'LM Studio' : 'Ollama'}
 **Model:** ${llmProvider === 'lmStudio' ? lmStudioSettings.defaultModel : ollamaSettings.defaultModel}
 
-The LLM is properly configured and I can now provide intelligent responses.`;
+The LLM is properly configured and I can now provide intelligent responses and generate workflows using natural language.`;
         } else {
           let response = `## LLM Diagnostics: Failed ❌
 
@@ -1315,14 +2151,14 @@ ${results.ollama.chat ? `- Chat Test: ${results.ollama.chat.success ? '✅ Succe
     if (lowerMessage === 'list workflows') {
       const workflowList = await dispatch(listWorkflowsThunk());
       if (!workflowList || workflowList.length === 0) {
-        return "You don't have any workflows yet. You can create one with 'create workflow [name]'.";
+        return "You don't have any workflows yet. You can create one with 'create workflow [name]' or describe a workflow you'd like me to build.";
       }
       
       return `Here are your workflows:\n${workflowList.map(wf => `- ${wf.name}`).join('\n')}`;
     }
     
     // Create workflow command
-    if (lowerMessage.startsWith('create workflow ')) {
+    if (lowerMessage.startsWith('create workflow ') && !lowerMessage.includes('from')) {
       const name = message.substring('create workflow '.length).trim();
       if (!name) {
         return "Please provide a name for the workflow, e.g., 'create workflow My Workflow'";
@@ -1338,7 +2174,7 @@ ${results.ollama.chat ? `- Chat Test: ${results.ollama.chat.success ? '✅ Succe
       };
       
       dispatch(saveWorkflowThunk(newWorkflow));
-      return `Created a new workflow named "${name}". You can now add nodes and edges to it.`;
+      return `Created a new workflow named "${name}". You can now add nodes and edges to it, or just tell me what this workflow should do and I'll build it for you.`;
     }
     
     // Run workflow command
@@ -1359,22 +2195,20 @@ ${results.ollama.chat ? `- Chat Test: ${results.ollama.chat.success ? '✅ Succe
     
     // Handle specific queries about agent nodes
     if (lowerMessage.includes('agent node') || lowerMessage.includes('create node')) {
-      return `To create or add an agent node to your workflow, follow these steps:
+      return `To create or add a node to your workflow, you can use these commands:
 
-1. Go to the Agents page by clicking "Agents" in the sidebar
-2. Select an existing workflow or create a new one if needed
-3. Click the "Add Node" button in the top right corner
-4. Select "Agent" as the node type
-5. Configure the node settings with these options:
-   - Agent Name: Give your agent a descriptive name
-   - API Endpoint: Choose between LM Studio or Ollama
-   - Select a model to power your agent
-   - Set temperature, max tokens, and other parameters
-6. Click "Create Node" to add it to your workflow
+1. Add specific node types:
+   - "add agent node in workflow [name]"
+   - "add prompt node in workflow [name]"
+   - "add output node in workflow [name]"
 
-Would you like me to help you create a workflow first? You can use the command "create workflow [name]" to get started.
+2. Create a complete workflow:
+   - "create workflow from [description]" - I'll build the entire workflow for you based on your description
+   - "create demo workflow" - Creates a pre-configured demo workflow
 
-Note: You need to configure at least one LLM provider in Settings before creating agent nodes.`;
+3. Or simply describe what you want to automate, and I'll analyze your description to build an appropriate workflow!
+
+Note: You need to configure at least one LLM provider in Settings for advanced features.`;
     }
     
     // Status command
@@ -1404,6 +2238,11 @@ Note: You need to configure at least one LLM provider in Settings before creatin
 - LM Studio URL: ${lmStudioSettings?.apiUrl || 'Not set'}
 - Ollama Model: ${ollamaSettings?.defaultModel || 'Not set'}
 - Ollama URL: ${ollamaSettings?.apiUrl || 'Not set'}
+
+**Enhanced Features**
+- Function Calling: ${llmConfigured ? '✓ Available' : '✗ Unavailable'} 
+- Workflow Generation: ${llmConfigured ? '✓ Available' : '✗ Unavailable'}
+- Natural Language Interface: ${llmConfigured ? '✓ Available' : '✗ Unavailable'}
       `;
     }
     
@@ -1411,7 +2250,7 @@ Note: You need to configure at least one LLM provider in Settings before creatin
     if (!llmConfigured) {
       return "I'm your Project Manager assistant. I can help you manage agent workflows, but I currently don't have an LLM configured. Please go to Settings to configure an LLM model. For now, I can only respond to basic commands. Type 'help' to see what commands I support or 'status' to check configuration details.";
     } else {
-      return "I'm your Project Manager assistant. I can help you manage agent workflows. Type 'help' to see what I can do.";
+      return "I'm your Project Manager assistant. I can help you manage agent workflows. Type 'help' to see what I can do, or simply describe a workflow you'd like me to create!";
     }
   };
   
@@ -1710,7 +2549,7 @@ Note: You need to configure at least one LLM provider in Settings before creatin
    */
   const addNodeToWorkflow = async (workflowName, nodeType = 'agent', nodeName = 'New Agent') => {
     try {
-      log('info', `Adding a ${nodeType} node to workflow ${workflowName || 'default'}`);
+      log('info', `Adding a ${nodeType} node named "${nodeName}" to workflow ${workflowName || 'default'}`);
       
       let workflow;
       // Find workflow or create a new one
@@ -1739,11 +2578,15 @@ Note: You need to configure at least one LLM provider in Settings before creatin
           
           log('info', `Creating new workflow: ${newWorkflowName}`);
           await dispatch(saveWorkflowThunk(workflow));
+          dispatch(addNotification({
+            type: 'success',
+            message: `Created new workflow "${newWorkflowName}"`
+          }));
         }
       }
       
       // Create a new node
-      const nodeId = `node-${Date.now()}`;
+      const nodeId = `node-${nodeType}-${Date.now()}`;
       let modelName = '';
       let apiUrl = '';
       
@@ -1762,20 +2605,60 @@ Note: You need to configure at least one LLM provider in Settings before creatin
         apiUrl = sessionUrl || ollamaSettings?.apiUrl || '';
       }
       
+      // Calculate position based on existing nodes
+      const existingNodeCount = workflow.nodes?.length || 0;
+      const posX = 100 + (existingNodeCount % 3) * 300;
+      const posY = 100 + Math.floor(existingNodeCount / 3) * 150;
+      
+      // Create node data based on type
+      let nodeData = {};
+      
+      switch(nodeType.toLowerCase()) {
+        case 'agent':
+          nodeData = {
+            label: nodeName,
+            modelName: modelName,
+            apiAddress: apiUrl,
+            inferenceApi: llmProvider || 'lmstudio',
+            modelTemperature: 0.7,
+            maxTokens: 1024,
+            agentDescription: `Agent node for ${nodeName}`,
+            onEdit: null,
+            onDelete: null
+          };
+          break;
+        case 'prompt':
+          nodeData = {
+            label: nodeName,
+            promptContent: "Enter your prompt here. Use {{variable}} for dynamic content.",
+            promptVariables: [],
+            systemPrompt: "System instructions for the prompt.",
+            onEdit: null,
+            onDelete: null
+          };
+          break;
+        case 'output':
+          nodeData = {
+            label: nodeName,
+            outputType: "ui",
+            saveToFile: false,
+            onEdit: null,
+            onDelete: null
+          };
+          break;
+        default:
+          nodeData = {
+            label: nodeName,
+            onEdit: null,
+            onDelete: null
+          };
+      }
+      
       const newNode = {
         id: nodeId,
-        type: nodeType,
-        position: { x: 100, y: 100 },
-        data: {
-          label: nodeName,
-          modelName: modelName,
-          apiAddress: apiUrl,
-          inferenceApi: llmProvider || 'lmstudio',
-          modelTemperature: 0.7,
-          maxTokens: 1024,
-          onEdit: null, // These will be set by the Agents component when loaded
-          onDelete: null
-        }
+        type: nodeType.toLowerCase(),
+        position: { x: posX, y: posY },
+        data: nodeData
       };
       
       // Add the node to the workflow
@@ -1785,8 +2668,18 @@ Note: You need to configure at least one LLM provider in Settings before creatin
       // Save the workflow
       await dispatch(saveWorkflowThunk(workflow));
       
+      // Notify user of success
+      dispatch(addNotification({
+        type: 'success',
+        message: `Added ${nodeType} node "${nodeName}" to workflow "${workflow.name}"`
+      }));
+      
       log('info', `Added ${nodeType} node to workflow ${workflow.name}`);
-      return `Successfully added a ${nodeType} node named "${nodeName}" to workflow "${workflow.name}". You can now view and edit it in the Agents page.`;
+      
+      // Store the workflow ID to focus
+      sessionStorage.setItem('focusWorkflowId', workflow.id);
+      
+      return `Successfully added a ${nodeType} node named "${nodeName}" to workflow "${workflow.name}". You can view and edit it in the Agents page by following this link: [view workflow](javascript:window.location.href='/agents')`;
     } catch (error) {
       log('error', 'Error adding node to workflow', error);
       throw new Error(`Failed to add node: ${error.message}`);

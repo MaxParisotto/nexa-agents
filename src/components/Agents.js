@@ -13,7 +13,7 @@ import {
 } from 'reactflow';
 import { Save as SaveIcon, PlayArrow as RunIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { useDispatch } from 'react-redux';
-import { addNotification, saveWorkflowThunk } from '../store/actions/systemActions';
+import { addNotification, saveWorkflowThunk, listWorkflowsThunk } from '../store/actions/systemActions';
 
 import 'reactflow/dist/style.css';
 import NodeConfigurationWizard from './NodeConfigurationWizard';
@@ -54,26 +54,52 @@ const Agents = () => {
     setLmStudioAddress(storedLmStudioAddress);
     setOllamaAddress(storedOllamaAddress);
     
-    // Try to load workflow from localStorage
-    const savedWorkflow = localStorage.getItem('lastWorkflow');
-    if (savedWorkflow) {
-      try {
-        const workflow = JSON.parse(savedWorkflow);
-        setNodes(workflow.nodes || []);
-        setEdges(workflow.edges || []);
-        setCurrentWorkflow({
-          ...workflow,
-          modified: new Date().toISOString()
-        });
+    // Check if we should focus on a specific workflow (from ProjectManager)
+    const focusWorkflowId = sessionStorage.getItem('focusWorkflowId');
+    
+    // Load workflows to find the focused one if applicable
+    dispatch(listWorkflowsThunk()).then(workflowList => {
+      if (focusWorkflowId) {
+        // Find the workflow to focus on
+        const workflowToFocus = workflowList.find(wf => wf.id === focusWorkflowId);
         
-        dispatch(addNotification({
-          type: 'info',
-          message: 'Previous workflow loaded successfully.'
-        }));
-      } catch (error) {
-        console.error('Error loading workflow:', error);
+        if (workflowToFocus) {
+          // Load the focused workflow
+          setCurrentWorkflow(workflowToFocus);
+          setNodes(workflowToFocus.nodes || []);
+          setEdges(workflowToFocus.edges || []);
+          
+          dispatch(addNotification({
+            type: 'info',
+            message: `Loaded workflow "${workflowToFocus.name}"`
+          }));
+          
+          // Clear the focus ID so it doesn't persist on page refresh
+          sessionStorage.removeItem('focusWorkflowId');
+        }
+      } else {
+        // Try to load last workflow from localStorage if no focus workflow
+        const savedWorkflow = localStorage.getItem('lastWorkflow');
+        if (savedWorkflow) {
+          try {
+            const workflow = JSON.parse(savedWorkflow);
+            setNodes(workflow.nodes || []);
+            setEdges(workflow.edges || []);
+            setCurrentWorkflow({
+              ...workflow,
+              modified: new Date().toISOString()
+            });
+            
+            dispatch(addNotification({
+              type: 'info',
+              message: 'Previous workflow loaded successfully.'
+            }));
+          } catch (error) {
+            console.error('Error loading workflow:', error);
+          }
+        }
       }
-    }
+    });
   }, [dispatch]);
 
   const onConnect = useCallback(

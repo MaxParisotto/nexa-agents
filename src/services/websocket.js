@@ -71,7 +71,7 @@ class WebSocketService {
         
         store.dispatch(addError({
           type: 'connection',
-          message: `${errorMessage} The application will continue to function with limited capabilities. To resolve this issue, ensure the server is running on port 5000.`,
+          message: `${errorMessage} The application will continue to function with limited capabilities. To resolve this issue, ensure the server is running on port 3001.`,
           error: error.message
         }));
       }

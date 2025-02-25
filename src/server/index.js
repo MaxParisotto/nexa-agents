@@ -29,7 +29,7 @@ const io = socketIo(server, {
   }
 });
 
-const PORT = 5000;
+const PORT = 3001;
 
 io.on('connection', (socket) => {
   logger.info('New client connected');

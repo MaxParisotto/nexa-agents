@@ -14,7 +14,7 @@ const initialState = {
     models: []
   },
   nodeEnv: 'development',
-  port: 5000
+  port: 3001
 };
 
 const settingsReducer = (state = initialState, action) => {

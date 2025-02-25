@@ -107,7 +107,8 @@ export const listWorkflowsThunk = () => {
         payload: workflows
       });
       
-      return workflows;
+      // Return a Promise that resolves with the workflows
+      return Promise.resolve(workflows);
     } catch (error) {
       console.error('Error listing workflows:', error);
       
@@ -116,7 +117,8 @@ export const listWorkflowsThunk = () => {
         message: `Failed to list workflows: ${error.message}`
       }));
       
-      return [];
+      // Return a Promise that resolves with an empty array
+      return Promise.resolve([]);
     }
   };
 };
@@ -162,7 +164,8 @@ export const saveWorkflowThunk = (workflow) => {
         message: `Workflow "${workflow.name}" saved successfully`
       }));
       
-      return workflow;
+      // Return a Promise that resolves with the workflow
+      return Promise.resolve(workflow);
     } catch (error) {
       console.error('Error saving workflow:', error);
       
@@ -171,7 +174,8 @@ export const saveWorkflowThunk = (workflow) => {
         message: `Failed to save workflow: ${error.message}`
       }));
       
-      return null;
+      // Return a Promise that resolves with null
+      return Promise.resolve(null);
     }
   };
 };
@@ -202,7 +206,8 @@ export const runWorkflowThunk = (workflow) => {
         }));
       }, 2000);
       
-      return workflow;
+      // Return a Promise that resolves with the workflow
+      return Promise.resolve(workflow);
     } catch (error) {
       console.error('Error running workflow:', error);
       
@@ -211,7 +216,8 @@ export const runWorkflowThunk = (workflow) => {
         message: `Failed to run workflow: ${error.message}`
       }));
       
-      return null;
+      // Return a Promise that resolves with null
+      return Promise.resolve(null);
     }
   };
 };
@@ -242,7 +248,8 @@ export const deleteWorkflowThunk = (workflowId) => {
         message: 'Workflow deleted successfully'
       }));
       
-      return true;
+      // Return a Promise that resolves with true
+      return Promise.resolve(true);
     } catch (error) {
       console.error('Error deleting workflow:', error);
       
@@ -251,7 +258,8 @@ export const deleteWorkflowThunk = (workflowId) => {
         message: `Failed to delete workflow: ${error.message}`
       }));
       
-      return false;
+      // Return a Promise that resolves with false
+      return Promise.resolve(false);
     }
   };
 };
@@ -321,6 +329,9 @@ export const stopSystemMonitoring = (metricsInterval) => {
   return (dispatch) => {
     clearInterval(metricsInterval);
     dispatch(updateSystemStatus('idle'));
+    
+    // Return a Promise for consistency
+    return Promise.resolve();
   };
 };
 

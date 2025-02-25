@@ -42,7 +42,7 @@ const ChatWidget = () => {
   const [height, setHeight] = useState(400);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [minimized, setMinimized] = useState(false);
+  const [minimized, setMinimized] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isResizing, setIsResizing] = useState(false);
@@ -57,16 +57,36 @@ const ChatWidget = () => {
   const [expandedDimensions, setExpandedDimensions] = useState({ width: 300, height: 400 });
 
   useEffect(() => {
+    // Setup event listener for dock toggling
+    const handleDockToggle = (event) => {
+      const { isOpen } = event.detail;
+      setMinimized(!isOpen);
+      
+      // If opening from dock, position near the dock
+      if (isOpen) {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Position above the dock button in the center-bottom of the screen
+        setPosition({
+          x: (viewportWidth / 2) - (width / 2),
+          y: viewportHeight - height - 80 // Position above the dock
+        });
+      }
+    };
+    
+    window.addEventListener('toggle-chat-widget', handleDockToggle);
+    
     // Initialize position to bottom right
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     setPosition({ 
       x: viewportWidth - width - 20, 
-      y: viewportHeight - height - 20 
+      y: viewportHeight - height - 80 // Position higher to account for the dock 
     });
     setExpandedPosition({ 
       x: viewportWidth - width - 20, 
-      y: viewportHeight - height - 20 
+      y: viewportHeight - height - 80 
     });
 
     const storedLmStudioAddress = localStorage.getItem('lmStudioAddress') || '';
@@ -153,7 +173,11 @@ const ChatWidget = () => {
     };
 
     fetchModels();
-  }, [lmStudioAddress, ollamaAddress, server]);
+
+    return () => {
+      window.removeEventListener('toggle-chat-widget', handleDockToggle);
+    };
+  }, [width, height, lmStudioAddress, ollamaAddress, server]);
 
   useEffect(() => {
     // Let ProjectManager handle the welcome message, don't add our own
@@ -356,7 +380,14 @@ const ChatWidget = () => {
    * Toggle minimized state of the chat widget
    */
   const toggleMinimize = () => {
-    setMinimized(!minimized);
+    const newMinimized = !minimized;
+    setMinimized(newMinimized);
+    
+    // Dispatch event to update dock state
+    const event = new CustomEvent('chat-widget-state-change', {
+      detail: { isOpen: !newMinimized }
+    });
+    window.dispatchEvent(event);
   };
 
   /**
@@ -505,6 +536,11 @@ const ChatWidget = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // If minimized, don't render the widget
+  if (minimized) {
+    return null;
+  }
+
   return (
     <Draggable 
       handle=".chat-header" 
@@ -512,7 +548,28 @@ const ChatWidget = () => {
       position={position}
       onDrag={handleDrag}
     >
-      <div ref={nodeRef} style={{ position: 'fixed', zIndex: 1000 }}>
+      <div ref={nodeRef} style={{ 
+        position: 'fixed', 
+        zIndex: 1000,
+        animation: 'pop-in 0.3s ease-out',
+      }}>
+        <style>
+          {`
+            @keyframes pop-in {
+              0% {
+                transform: scale(0.5);
+                opacity: 0;
+              }
+              70% {
+                transform: scale(1.05);
+              }
+              100% {
+                transform: scale(1);
+                opacity: 1;
+              }
+            }
+          `}
+        </style>
         <Resizable
           width={width}
           height={height}

@@ -13,6 +13,7 @@ body {
 .app-container {
   display: flex;
   flex: 1;
+  padding-bottom: 72px; /* Height of the dock */
 }
 
 .content {
@@ -24,8 +25,22 @@ body {
   background-color: #f5f5f5;
 }
 
+/* New full-width content without sidebar */
+.content-full {
+  flex-grow: 1;
+  padding: 16px;
+  margin-left: 0;
+  min-height: calc(100vh - 64px - 72px); /* Full height minus app bar and dock height */
+  overflow-x: auto;
+  background-color: #f5f5f5;
+}
+
 /* Handle dark mode background */
 .dark-mode .content {
+  background-color: #121212;
+}
+
+.dark-mode .content-full {
   background-color: #121212;
 }
 
@@ -34,5 +49,9 @@ body {
   .content {
     margin-left: 0;
     padding-left: 56px; /* Width of mini drawer */
+  }
+  
+  .content-full {
+    padding: 8px;
   }
 } 
