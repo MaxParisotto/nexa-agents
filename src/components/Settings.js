@@ -31,7 +31,7 @@ import {
   Paper
 } from '@mui/material';
 import { HelpOutline, Info, ErrorOutline, CheckCircle, Code, Download, ContentCopy, Assessment, Close as CloseIcon } from '@mui/icons-material';
-import { addNotification } from '../store/actions/systemActions';
+import { addNotification, addBenchmarkResult } from '../store/actions/systemActions';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from '../store/actions/logActions';
 
 const DEFAULT_URLS = {
@@ -318,6 +318,44 @@ const Settings = () => {
       );
       
       setBenchmarkResults(results);
+      
+      // Save benchmark results to localStorage and Redux store
+      try {
+        // Add timestamp to results
+        const resultsWithTimestamp = {
+          ...results,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Dispatch to Redux store
+        dispatch(addBenchmarkResult(resultsWithTimestamp));
+        
+        // Save to localStorage
+        const storedBenchmarks = localStorage.getItem('benchmarkResults');
+        let benchmarks = [];
+        
+        if (storedBenchmarks) {
+          try {
+            benchmarks = JSON.parse(storedBenchmarks);
+            if (!Array.isArray(benchmarks)) benchmarks = [];
+          } catch (e) {
+            benchmarks = [];
+          }
+        }
+        
+        // Add new result to the beginning of the array
+        benchmarks.unshift(resultsWithTimestamp);
+        
+        // Keep only the last 10 results
+        benchmarks = benchmarks.slice(0, 10);
+        
+        // Save back to localStorage
+        localStorage.setItem('benchmarkResults', JSON.stringify(benchmarks));
+        
+        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Benchmark results saved to localStorage and Redux store'));
+      } catch (saveError) {
+        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, 'Failed to save benchmark results', saveError));
+      }
       
       // Write final results to terminal
       if (terminalInstance.current) {

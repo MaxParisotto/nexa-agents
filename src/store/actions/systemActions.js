@@ -264,6 +264,20 @@ export const deleteWorkflowThunk = (workflowId) => {
   };
 };
 
+// Token Metrics Actions
+export const UPDATE_TOKEN_METRICS = 'UPDATE_TOKEN_METRICS';
+export const ADD_BENCHMARK_RESULT = 'ADD_BENCHMARK_RESULT';
+
+export const updateTokenMetrics = (metrics) => ({
+  type: UPDATE_TOKEN_METRICS,
+  payload: metrics
+});
+
+export const addBenchmarkResult = (result) => ({
+  type: ADD_BENCHMARK_RESULT,
+  payload: result
+});
+
 // Thunk action creators for async operations
 export const startSystemMonitoring = () => {
   return async (dispatch, getState) => {
@@ -276,12 +290,32 @@ export const startSystemMonitoring = () => {
       let mockActiveAgents = Math.floor(Math.random() * 5) + 2; // 2-7 agents
       let mockPendingTasks = Math.floor(Math.random() * 10); // 0-10 tasks
       
+      // Initial token metrics
+      let totalTokensGenerated = localStorage.getItem('totalTokensGenerated') 
+        ? parseInt(localStorage.getItem('totalTokensGenerated')) 
+        : Math.floor(Math.random() * 50000);
+      let totalTokensProcessed = localStorage.getItem('totalTokensProcessed')
+        ? parseInt(localStorage.getItem('totalTokensProcessed'))
+        : Math.floor(Math.random() * 100000);
+      let tokensPerSecond = localStorage.getItem('averageTokensPerSecond')
+        ? parseFloat(localStorage.getItem('averageTokensPerSecond'))
+        : Math.random() * 20 + 5;
+      
       // Set initial metrics
       dispatch(updateMetrics({
         cpuUsage: mockCpuUsage,
         memoryUsage: mockMemoryUsage,
         activeAgents: mockActiveAgents,
-        pendingTasks: mockPendingTasks
+        pendingTasks: mockPendingTasks,
+        timestamp: new Date().toISOString()
+      }));
+      
+      // Set initial token metrics
+      dispatch(updateTokenMetrics({
+        totalTokensGenerated,
+        totalTokensProcessed,
+        averageTokensPerSecond: tokensPerSecond,
+        timestamp: new Date().toISOString()
       }));
       
       // Start periodic metrics collection with realistic fluctuations
@@ -304,11 +338,40 @@ export const startSystemMonitoring = () => {
           tasksCount : 
           Math.max(0, Math.floor(mockPendingTasks + (Math.random() > 0.7 ? Math.random() * 3 - 1 : 0)));
         
+        // Update token metrics with realistic increments
+        const newTokensGenerated = Math.floor(Math.random() * 100) + 10;
+        const newTokensProcessed = Math.floor(Math.random() * 200) + 20;
+        totalTokensGenerated += newTokensGenerated;
+        totalTokensProcessed += newTokensProcessed;
+        
+        // Calculate tokens per second with some variation
+        const currentTokensPerSecond = Math.max(1, Math.min(50, tokensPerSecond + (Math.random() * 4 - 2)));
+        tokensPerSecond = (tokensPerSecond * 0.7) + (currentTokensPerSecond * 0.3); // Smooth changes
+        
+        // Save to localStorage for persistence
+        localStorage.setItem('totalTokensGenerated', totalTokensGenerated.toString());
+        localStorage.setItem('totalTokensProcessed', totalTokensProcessed.toString());
+        localStorage.setItem('averageTokensPerSecond', tokensPerSecond.toString());
+        
+        const timestamp = new Date().toISOString();
+        
+        // Update system metrics
         dispatch(updateMetrics({
           cpuUsage: mockCpuUsage,
           memoryUsage: mockMemoryUsage,
           activeAgents,
-          pendingTasks
+          pendingTasks,
+          timestamp
+        }));
+        
+        // Update token metrics
+        dispatch(updateTokenMetrics({
+          totalTokensGenerated,
+          totalTokensProcessed,
+          averageTokensPerSecond: tokensPerSecond,
+          recentTokensGenerated: newTokensGenerated,
+          recentTokensProcessed: newTokensProcessed,
+          timestamp
         }));
       }, 3000); // Update every 3 seconds for more responsive charts
 

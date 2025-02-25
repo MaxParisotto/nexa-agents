@@ -6,6 +6,8 @@ import {
   SET_LOADING,
   UPDATE_SYSTEM_STATUS,
   UPDATE_METRICS,
+  UPDATE_TOKEN_METRICS,
+  ADD_BENCHMARK_RESULT,
   SET_WORKSPACE_PATH,
   SET_MODELS,
   UPDATE_PREFERENCE,
@@ -33,7 +35,21 @@ const initialState = {
   errors: [],
   isLoading: false,
   status: 'idle',
-  systemMetrics: null,
+  metrics: {
+    cpuUsage: 0,
+    memoryUsage: 0,
+    activeAgents: 0,
+    pendingTasks: 0
+  },
+  metricsHistory: [],
+  tokenMetrics: {
+    totalTokensGenerated: 0,
+    totalTokensProcessed: 0,
+    averageTokensPerSecond: 0,
+    tokenHistory: [],
+    modelUsage: {},
+    benchmarkResults: []
+  },
   websocketStatus: 'disconnected',
   lastUpdated: null,
   workspacePath: null,
@@ -108,9 +124,22 @@ const systemReducer = (state = initialState, action) => {
       };
       
     case UPDATE_METRICS:
+      // Add timestamp if not provided
+      const metricsWithTimestamp = {
+        ...action.payload,
+        timestamp: action.payload.timestamp || new Date().toISOString()
+      };
+      
+      // Keep only the last 50 data points for performance
+      const updatedHistory = [
+        ...state.metricsHistory,
+        metricsWithTimestamp
+      ].slice(-50);
+      
       return {
         ...state,
-        systemMetrics: action.payload,
+        metrics: metricsWithTimestamp,
+        metricsHistory: updatedHistory,
         lastUpdated: new Date().toISOString()
       };
       
@@ -192,6 +221,59 @@ const systemReducer = (state = initialState, action) => {
       return {
         ...state,
         workflows: state.workflows.filter(w => w.id !== action.payload)
+      };
+      
+    case UPDATE_TOKEN_METRICS:
+      // Add timestamp if not provided
+      const tokenMetricsWithTimestamp = {
+        ...action.payload,
+        timestamp: action.payload.timestamp || new Date().toISOString()
+      };
+      
+      // Keep only the last 50 data points for performance
+      const updatedTokenHistory = [
+        ...state.tokenMetrics.tokenHistory,
+        tokenMetricsWithTimestamp
+      ].slice(-50);
+      
+      // Update model usage if model info is provided
+      let updatedModelUsage = { ...state.tokenMetrics.modelUsage };
+      if (action.payload.model) {
+        const model = action.payload.model;
+        const tokensGenerated = action.payload.recentTokensGenerated || 0;
+        
+        updatedModelUsage[model] = {
+          ...updatedModelUsage[model],
+          totalTokens: (updatedModelUsage[model]?.totalTokens || 0) + tokensGenerated,
+          lastUsed: new Date().toISOString()
+        };
+      }
+      
+      return {
+        ...state,
+        tokenMetrics: {
+          ...state.tokenMetrics,
+          totalTokensGenerated: action.payload.totalTokensGenerated || state.tokenMetrics.totalTokensGenerated,
+          totalTokensProcessed: action.payload.totalTokensProcessed || state.tokenMetrics.totalTokensProcessed,
+          averageTokensPerSecond: action.payload.averageTokensPerSecond || state.tokenMetrics.averageTokensPerSecond,
+          tokenHistory: updatedTokenHistory,
+          modelUsage: updatedModelUsage
+        },
+        lastUpdated: new Date().toISOString()
+      };
+    
+    case ADD_BENCHMARK_RESULT:
+      // Add the benchmark result to the array, keeping the most recent 10
+      return {
+        ...state,
+        tokenMetrics: {
+          ...state.tokenMetrics,
+          benchmarkResults: [
+            action.payload,
+            ...state.tokenMetrics.benchmarkResults
+          ].slice(0, 10)
+        },
+        lastUpdated: new Date().toISOString()
       };
       
     default:
