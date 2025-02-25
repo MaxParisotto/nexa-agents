@@ -26,11 +26,11 @@ export const CLEAR_NOTIFICATIONS = 'CLEAR_NOTIFICATIONS';
 // Error Actions
 export const ADD_ERROR = 'ADD_ERROR';
 export const CLEAR_ERRORS = 'CLEAR_ERRORS';
+
+// We don't need to add an ID here since the reducer will add it
 export const addError = (error) => ({
   type: ADD_ERROR,
   payload: {
-    id: Date.now(),
-    timestamp: new Date().toISOString(),
     ...error
   }
 });

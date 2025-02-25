@@ -39,6 +39,19 @@ const logRateLimiter = {
   cleanupInterval: null
 };
 
+// Counter to ensure unique IDs even when created at the same millisecond
+let logIdCounter = 0;
+
+/**
+ * Generate a unique ID for logs
+ * @returns {string} A unique ID combining timestamp and counter
+ */
+const generateUniqueId = () => {
+  const timestamp = Date.now();
+  logIdCounter = (logIdCounter + 1) % 1000; // Reset counter after 999 to keep IDs short
+  return `${timestamp}-${logIdCounter}`;
+};
+
 /**
  * Clean up old entries from the rate limiter
  */
@@ -105,7 +118,7 @@ export const addLog = (log) => ({
   payload: {
     ...log,
     timestamp: new Date().toISOString(),
-    id: Date.now().toString()
+    id: generateUniqueId()
   }
 });
 
@@ -125,7 +138,7 @@ export const createLog = (level, category, message, details = null) => ({
   message,
   details,
   timestamp: new Date().toISOString(),
-  id: Date.now().toString()
+  id: generateUniqueId()
 });
 
 // Thunk Actions

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -19,7 +19,8 @@ import {
   Switch,
   FormControlLabel,
   Tooltip,
-  useTheme
+  useTheme,
+  CircularProgress
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -28,12 +29,14 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   ContentCopy as ContentCopyIcon,
-  TextFormat as TextFormatIcon
+  TextFormat as TextFormatIcon,
+  Code as CodeIcon
 } from '@mui/icons-material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
 import { clearLogs, setLogFilter, LOG_LEVELS, LOG_CATEGORIES } from '../store/actions/logActions';
 import { getFilteredLogs } from '../store/reducers/logsReducer';
+import Editor from '@monaco-editor/react';
 
 const levelColors = {
   [LOG_LEVELS.ERROR]: '#f44336',
@@ -104,6 +107,21 @@ const LogEntry = ({ log }) => {
   );
 };
 
+// Simple loading component for Monaco editor
+const EditorLoading = () => (
+  <Box 
+    sx={{ 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      height: '100%',
+      width: '100%'
+    }}
+  >
+    <CircularProgress size={40} />
+  </Box>
+);
+
 const Logs = () => {
   const dispatch = useDispatch();
   const logs = useSelector(state => getFilteredLogs(state.logs));
@@ -111,6 +129,17 @@ const Logs = () => {
   const [showFilters, setShowFilters] = useState(true);
   const [textView, setTextView] = useState(false);
   const theme = useTheme();
+  
+  const [editorOptions] = useState({
+    readOnly: true,
+    minimap: { enabled: true },
+    scrollBeyondLastLine: false,
+    fontSize: 13,
+    wordWrap: 'on',
+    lineNumbers: 'on',
+    folding: true,
+    automaticLayout: true
+  });
 
   const handleFilterChange = (filterType, value) => {
     dispatch(setLogFilter({ [filterType]: value }));
@@ -128,7 +157,7 @@ const Logs = () => {
    */
   const getPlainTextLogs = () => {
     if (!logs || logs.length === 0) {
-      return "No logs available";
+      return "// No logs available";
     }
     
     return logs.map(log => {
@@ -180,7 +209,52 @@ const Logs = () => {
    * Toggles between text view and card view
    */
   const handleToggleTextView = (e) => {
-    setTextView(e.target.checked);
+    const newValue = typeof e === 'boolean' ? e : e.target.checked;
+    setTextView(newValue);
+  };
+
+  /**
+   * Handles editor mounting
+   * @param {Object} editor - Monaco editor instance
+   * @param {Object} monaco - Monaco API
+   */
+  const handleEditorDidMount = (editor, monaco) => {
+    // Configure editor when it mounts
+    setTimeout(() => {
+      // Add custom syntax highlighting for log levels
+      monaco.editor.defineTheme('logTheme', {
+        base: theme.palette.mode === 'dark' ? 'vs-dark' : 'vs',
+        inherit: true,
+        rules: [
+          { token: 'error', foreground: levelColors[LOG_LEVELS.ERROR].substring(1), fontStyle: 'bold' },
+          { token: 'warn', foreground: levelColors[LOG_LEVELS.WARN].substring(1), fontStyle: 'bold' },
+          { token: 'info', foreground: levelColors[LOG_LEVELS.INFO].substring(1) },
+          { token: 'debug', foreground: levelColors[LOG_LEVELS.DEBUG].substring(1) },
+        ],
+        colors: {}
+      });
+      
+      monaco.editor.setTheme('logTheme');
+      
+      // Register a simple language for logs
+      monaco.languages.register({ id: 'logs' });
+      monaco.languages.setMonarchTokensProvider('logs', {
+        tokenizer: {
+          root: [
+            [/\[ERROR\]/, 'error'],
+            [/\[WARN\]/, 'warn'],
+            [/\[INFO\]/, 'info'],
+            [/\[DEBUG\]/, 'debug'],
+            [/\[\d{1,2}\/\d{1,2}\/\d{4}.*?\]/, 'date'],
+            [/\[.*?\]/, 'category'],
+            [/".*?"/, 'string'],
+            [/\{|\}|\[|\]/, 'bracket'],
+            [/\b(true|false|null)\b/, 'keyword'],
+            [/\b\d+\b/, 'number'],
+          ]
+        }
+      });
+    }, 100);
   };
 
   return (
@@ -192,19 +266,35 @@ const Logs = () => {
               System Logs
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Tooltip title="Toggle text view for easy sharing">
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={textView}
-                      onChange={handleToggleTextView}
-                      color="primary"
-                    />
-                  }
-                  label={<TextFormatIcon />}
-                  sx={{ mr: 1 }}
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  bgcolor: textView ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                  borderRadius: 1,
+                  p: 0.5
+                }}
+              >
+                <Tooltip title={textView ? "Switch to card view" : "Switch to Monaco editor view"}>
+                  <IconButton 
+                    size="small" 
+                    sx={{ 
+                      mr: 0.5,
+                      color: textView ? 'primary.main' : 'action.active'
+                    }}
+                    onClick={() => handleToggleTextView(!textView)}
+                  >
+                    {textView ? <CodeIcon /> : <TextFormatIcon />}
+                  </IconButton>
+                </Tooltip>
+                <Switch
+                  checked={textView}
+                  onChange={handleToggleTextView}
+                  color="primary"
+                  size="small"
+                  sx={{ mr: 0.5 }}
                 />
-              </Tooltip>
+              </Box>
               {textView && (
                 <Tooltip title="Copy logs to clipboard">
                   <IconButton onClick={copyLogsToClipboard} sx={{ mr: 1 }}>
@@ -212,7 +302,14 @@ const Logs = () => {
                   </IconButton>
                 </Tooltip>
               )}
-              <IconButton onClick={() => setShowFilters(!showFilters)} sx={{ mr: 1 }}>
+              <IconButton 
+                onClick={() => setShowFilters(!showFilters)} 
+                sx={{ 
+                  mr: 1,
+                  bgcolor: showFilters ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                  color: showFilters ? 'primary.main' : 'action.active'
+                }}
+              >
                 <FilterIcon />
               </IconButton>
               <IconButton onClick={handleClearLogs} color="error">
@@ -323,25 +420,35 @@ const Logs = () => {
                 No logs found
               </Typography>
             ) : textView ? (
-              <Paper 
-                elevation={0} 
+              <Box 
                 sx={{ 
-                  p: 2, 
-                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-                  color: theme.palette.text.primary,
-                  fontFamily: 'monospace',
-                  whiteSpace: 'pre-wrap',
-                  overflowX: 'auto',
-                  fontSize: '0.875rem',
-                  borderRadius: 1
+                  height: '500px', 
+                  border: `1px solid ${theme.palette.divider}`, 
+                  borderRadius: 1,
+                  overflow: 'hidden',
+                  transition: 'all 0.3s ease'
                 }}
               >
-                {getPlainTextLogs()}
-              </Paper>
+                <Editor
+                  height="500px"
+                  language="logs"
+                  value={getPlainTextLogs()}
+                  options={editorOptions}
+                  theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
+                  onMount={handleEditorDidMount}
+                  loading={<EditorLoading />}
+                />
+              </Box>
             ) : (
-              logs.map((log) => (
-                <LogEntry key={log.id} log={log} />
-              ))
+              <Box sx={{ 
+                maxHeight: '500px', 
+                overflowY: 'auto',
+                transition: 'all 0.3s ease'
+              }}>
+                {logs.map((log) => (
+                  <LogEntry key={log.id} log={log} />
+                ))}
+              </Box>
             )}
           </Box>
         </CardContent>

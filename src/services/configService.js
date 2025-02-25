@@ -10,11 +10,11 @@ import axios from 'axios';
 const DEFAULT_CONFIG = {
   lmStudio: {
     apiUrl: 'http://localhost:1234',
-    defaultModel: ''
+    defaultModel: 'qwen2.5-7b-instruct-1m'
   },
   ollama: {
     apiUrl: 'http://localhost:11434',
-    defaultModel: ''
+    defaultModel: 'deepseek-r1:1.5b'
   },
   nodeEnv: 'development',
   port: 3001
@@ -382,6 +382,20 @@ export const saveConfigToFile = async (config, format = 'json', retryCount = 0) 
  * @returns {object} - Configuration object from localStorage or defaults
  */
 export const loadConfigFromLocalStorage = () => {
+  // First try to get the settings from localStorage as a JSON object
+  const storedSettings = localStorage.getItem('settings');
+  if (storedSettings) {
+    try {
+      const parsedSettings = JSON.parse(storedSettings);
+      if (parsedSettings && parsedSettings.lmStudio && parsedSettings.ollama) {
+        return parsedSettings;
+      }
+    } catch (e) {
+      console.warn('Failed to parse settings from localStorage:', e);
+    }
+  }
+  
+  // Fall back to individual keys
   return {
     lmStudio: {
       apiUrl: localStorage.getItem('lmStudioApiUrl') || DEFAULT_CONFIG.lmStudio.apiUrl,

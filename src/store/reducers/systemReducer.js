@@ -15,6 +15,19 @@ import {
   DELETE_WORKFLOW,
 } from '../actions/systemActions';
 
+// Counter to ensure unique IDs even when created at the same millisecond
+let idCounter = 0;
+
+/**
+ * Generate a unique ID combining timestamp and counter
+ * @returns {string} A unique ID
+ */
+const generateUniqueId = () => {
+  const timestamp = Date.now();
+  idCounter = (idCounter + 1) % 1000; // Reset counter after 999 to keep IDs short
+  return `${timestamp}-${idCounter}`;
+};
+
 const initialState = {
   notifications: [],
   errors: [],
@@ -49,7 +62,7 @@ const systemReducer = (state = initialState, action) => {
         notifications: [
           ...state.notifications,
           {
-            id: Date.now(),
+            id: generateUniqueId(),
             timestamp: new Date().toISOString(),
             ...action.payload
           }
@@ -68,7 +81,7 @@ const systemReducer = (state = initialState, action) => {
         errors: [
           ...state.errors,
           {
-            id: Date.now(),
+            id: generateUniqueId(),
             timestamp: new Date().toISOString(),
             ...action.payload
           }
@@ -155,6 +168,7 @@ const systemReducer = (state = initialState, action) => {
             ...state.workflows,
             {
               ...action.payload,
+              id: action.payload.id || generateUniqueId(), // Use provided ID or generate a new one
               created: new Date().toISOString(),
               modified: new Date().toISOString()
             }
