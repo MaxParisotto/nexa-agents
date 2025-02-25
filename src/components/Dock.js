@@ -8,7 +8,8 @@ import {
   Timeline as MetricsIcon,
   Assessment as LogsIcon,
   Settings as SettingsIcon,
-  Chat as ChatIcon
+  Chat as ChatIcon,
+  ManageAccounts as ProjectManagerIcon
 } from '@mui/icons-material';
 
 /**
@@ -19,6 +20,7 @@ const Dock = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isProjectManagerChatOpen, setIsProjectManagerChatOpen] = useState(false);
   
   // Navigation items with their routes and icons
   const navItems = [
@@ -41,6 +43,17 @@ const Dock = () => {
     window.dispatchEvent(event);
   };
   
+  // Toggle Project Manager chat visibility
+  const handleProjectManagerChatToggle = () => {
+    setIsProjectManagerChatOpen(!isProjectManagerChatOpen);
+    
+    // Dispatch custom event to notify ProjectManagerChat
+    const event = new CustomEvent('toggle-project-manager-chat', {
+      detail: { isOpen: !isProjectManagerChatOpen, chatType: 'projectManager' }
+    });
+    window.dispatchEvent(event);
+  };
+  
   // Add effect to listen for chat widget state changes
   useEffect(() => {
     const handleChatStateChange = (event) => {
@@ -52,6 +65,20 @@ const Dock = () => {
     
     return () => {
       window.removeEventListener('chat-widget-state-change', handleChatStateChange);
+    };
+  }, []);
+  
+  // Add effect to listen for Project Manager chat state changes
+  useEffect(() => {
+    const handleProjectManagerChatStateChange = (event) => {
+      const { isVisible } = event.detail;
+      setIsProjectManagerChatOpen(isVisible);
+    };
+    
+    window.addEventListener('project-manager-chat-visibility-changed', handleProjectManagerChatStateChange);
+    
+    return () => {
+      window.removeEventListener('project-manager-chat-visibility-changed', handleProjectManagerChatStateChange);
     };
   }, []);
   
@@ -106,13 +133,24 @@ const Dock = () => {
           );
         })}
         
+        {/* Divider */}
+        <Box 
+          sx={{ 
+            width: '1px', 
+            bgcolor: 'divider', 
+            mx: 1, 
+            alignSelf: 'stretch',
+            my: 0.5
+          }} 
+        />
+        
         {/* Chat button */}
-        <Tooltip title="Chat" placement="top">
+        <Tooltip title="Chat with LLM" placement="top">
           <IconButton
             onClick={handleChatToggle}
             sx={{
               color: isChatOpen ? 'primary.main' : 'text.secondary',
-              backgroundColor: isChatOpen ?
+              backgroundColor: isChatOpen ? 
                 (theme) => 
                   theme.palette.mode === 'dark' 
                     ? 'rgba(80, 80, 80, 0.3)' 
@@ -125,24 +163,34 @@ const Dock = () => {
                 transform: 'translateY(-5px) scale(1.1)',
                 color: 'primary.main',
               },
-              ...(isChatOpen && {
-                animation: 'bounce 0.5s',
-                '@keyframes bounce': {
-                  '0%, 20%, 50%, 80%, 100%': {
-                    transform: 'translateY(0) scale(1)',
-                  },
-                  '40%': {
-                    transform: 'translateY(-20px) scale(1.2)',
-                  },
-                  '60%': {
-                    transform: 'translateY(-10px) scale(1.1)',
-                  }
-                },
-              }),
-              ml: 2, // Add some separation between navigation and chat
             }}
           >
             <ChatIcon />
+          </IconButton>
+        </Tooltip>
+        
+        {/* Project Manager Chat button */}
+        <Tooltip title="Project Manager" placement="top">
+          <IconButton
+            onClick={handleProjectManagerChatToggle}
+            sx={{
+              color: isProjectManagerChatOpen ? 'primary.main' : 'text.secondary',
+              backgroundColor: isProjectManagerChatOpen ? 
+                (theme) => 
+                  theme.palette.mode === 'dark' 
+                    ? 'rgba(80, 80, 80, 0.3)' 
+                    : 'rgba(230, 230, 230, 0.5)'
+                : 'transparent',
+              p: 1.5,
+              borderRadius: '12px',
+              transition: 'all 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-5px) scale(1.1)',
+                color: 'primary.main',
+              },
+            }}
+          >
+            <ProjectManagerIcon />
           </IconButton>
         </Tooltip>
       </Box>

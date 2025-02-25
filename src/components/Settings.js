@@ -27,7 +27,7 @@ import {
   Tabs,
   Paper
 } from '@mui/material';
-import { HelpOutline, Info, ErrorOutline, CheckCircle, Code, Download, ContentCopy } from '@mui/icons-material';
+import { HelpOutline, Info, ErrorOutline, CheckCircle, Code, Download, ContentCopy, Assessment } from '@mui/icons-material';
 import { addNotification } from '../store/actions/systemActions';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from '../store/actions/logActions';
 
@@ -40,6 +40,13 @@ const Settings = () => {
   const dispatch = useDispatch();
   const settings = useSelector(state => state.settings);
   
+  // Helper function to get color based on score
+  const getScoreColor = (score) => {
+    if (score >= 8) return 'success.main';
+    if (score >= 5) return 'warning.main';
+    return 'error.main';
+  };
+  
   const [formData, setFormData] = useState({
     lmStudio: {
       apiUrl: settings?.lmStudio?.apiUrl || DEFAULT_URLS.lmStudio,
@@ -49,19 +56,37 @@ const Settings = () => {
       apiUrl: settings?.ollama?.apiUrl || DEFAULT_URLS.ollama,
       defaultModel: settings?.ollama?.defaultModel || ''
     },
+    projectManager: {
+      apiUrl: settings?.projectManager?.apiUrl || DEFAULT_URLS.ollama,
+      model: settings?.projectManager?.model || 'deepscaler:7b',
+      parameters: settings?.projectManager?.parameters || {
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+        repeatPenalty: 1.1,
+        maxTokens: 1024,
+        contextLength: 4096
+      }
+    },
     nodeEnv: settings?.nodeEnv || 'development',
     port: settings?.port || 5000
   });
   
+  // State for benchmark functionality
+  const [isBenchmarking, setIsBenchmarking] = useState(false);
+  const [benchmarkResults, setBenchmarkResults] = useState(null);
+  
   const [validationErrors, setValidationErrors] = useState({
     lmStudio: { apiUrl: '', defaultModel: '' },
-    ollama: { apiUrl: '', defaultModel: '' }
+    ollama: { apiUrl: '', defaultModel: '' },
+    projectManager: { apiUrl: '', model: '' }
   });
 
   // Check if services were manually loaded (via user interaction)
   const [servicesManuallyLoaded, setServicesManuallyLoaded] = useState({
     lmStudio: false,
-    ollama: false
+    ollama: false,
+    projectManager: false
   });
 
   const [configFormat, setConfigFormat] = useState('json');
@@ -80,6 +105,177 @@ const Settings = () => {
     result: null
   });
   
+  // Handle benchmark button click
+  const handleBenchmark = async () => {
+    if (!formData.projectManager.model) {
+      dispatch(addNotification({
+        type: 'error',
+        message: 'Please select a model to benchmark'
+      }));
+      return;
+    }
+    
+    setIsBenchmarking(true);
+    setBenchmarkResults(null);
+    
+    try {
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Starting benchmark for model: ${formData.projectManager.model}`));
+      
+      // Notify user
+      dispatch(addNotification({
+        type: 'info',
+        message: `Benchmarking ${formData.projectManager.model}. This may take a minute...`
+      }));
+      
+      // Run benchmark tests
+      const results = await runModelBenchmark(
+        formData.projectManager.apiUrl, 
+        formData.projectManager.model,
+        formData.projectManager.parameters
+      );
+      
+      setBenchmarkResults(results);
+      
+      dispatch(addNotification({
+        type: 'success',
+        message: `Benchmark completed for ${formData.projectManager.model}`
+      }));
+    } catch (error) {
+      dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Benchmark failed', error));
+      dispatch(addNotification({
+        type: 'error',
+        message: `Benchmark failed: ${error.message}`
+      }));
+    } finally {
+      setIsBenchmarking(false);
+    }
+  };
+  
+  // Run model benchmark
+  const runModelBenchmark = async (apiUrl, modelName, parameters) => {
+    // Prepare benchmark tests
+    const tests = [
+      {
+        name: "Reasoning",
+        prompt: "If John has 5 apples and gives 2 to Mary, then buys 3 more and gives half of his apples to Tom, how many apples does John have left?",
+        evaluateFunc: (response) => {
+          // Check if the answer is correct (3 apples)
+          return response.toLowerCase().includes("3") ? 10 : 
+                 response.toLowerCase().includes("three") ? 10 : 0;
+        }
+      },
+      {
+        name: "Function Calling",
+        prompt: "Please call the create_workflow function to create a workflow named 'Test Workflow'",
+        evaluateFunc: (response) => {
+          // Check if response contains function call syntax
+          const hasFunctionCall = response.includes("create_workflow") && 
+                                 (response.includes("tool_call") || 
+                                  response.includes("function") || 
+                                  response.includes("arguments"));
+          return hasFunctionCall ? 10 : 0;
+        }
+      },
+      {
+        name: "Instruction Following",
+        prompt: "Respond with exactly one word: banana",
+        evaluateFunc: (response) => {
+          // Check if response is exactly "banana"
+          const cleaned = response.trim().toLowerCase();
+          if (cleaned === "banana") return 10;
+          if (cleaned.includes("banana")) return 5;
+          return 0;
+        }
+      }
+    ];
+    
+    const startTime = Date.now();
+    let totalTokens = 0;
+    const results = [];
+    
+    // Run each test
+    for (const test of tests) {
+      const testStartTime = Date.now();
+      try {
+        // Call Ollama API
+        const response = await axios.post(
+          `${apiUrl}/api/generate`,
+          {
+            model: modelName,
+            prompt: test.prompt,
+            temperature: parameters?.temperature || 0.7,
+            top_p: parameters?.topP || 0.9,
+            top_k: parameters?.topK || 40,
+            repeat_penalty: parameters?.repeatPenalty || 1.1,
+            max_tokens: parameters?.maxTokens || 1024
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000 // 30 second timeout
+          }
+        );
+        
+        const testEndTime = Date.now();
+        const responseText = response.data.response;
+        const tokensGenerated = response.data.eval_count || responseText.split(/\s+/).length;
+        totalTokens += tokensGenerated;
+        
+        // Calculate metrics
+        const latency = testEndTime - testStartTime;
+        const tokensPerSecond = tokensGenerated / (latency / 1000);
+        const score = test.evaluateFunc(responseText);
+        
+        results.push({
+          name: test.name,
+          score,
+          latency,
+          tokensPerSecond,
+          response: responseText.substring(0, 100) + (responseText.length > 100 ? '...' : '')
+        });
+      } catch (error) {
+        results.push({
+          name: test.name,
+          score: 0,
+          latency: 0,
+          tokensPerSecond: 0,
+          error: error.message
+        });
+      }
+    }
+    
+    const totalTime = Date.now() - startTime;
+    const averageScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+    const averageLatency = results.reduce((sum, r) => sum + r.latency, 0) / results.length;
+    const averageTokensPerSecond = results.reduce((sum, r) => sum + r.tokensPerSecond, 0) / results.length;
+    
+    return {
+      model: modelName,
+      timestamp: new Date().toISOString(),
+      totalTime,
+      totalTokens,
+      averageScore,
+      averageLatency,
+      averageTokensPerSecond,
+      tests: results
+    };
+  };
+  
+  // Handle parameter change
+  const handleParameterChange = (param, value) => {
+    setFormData(prev => ({
+      ...prev,
+      projectManager: {
+        ...prev.projectManager,
+        parameters: {
+          ...prev.projectManager.parameters,
+          [param]: value
+        }
+      }
+    }));
+  };
+
   useEffect(() => {
     // Log current settings on component mount - but only once
     dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings component mounted'));
@@ -125,6 +321,10 @@ const Settings = () => {
       ollama: {
         apiUrl: formData.ollama.apiUrl,
         defaultModel: formData.ollama.defaultModel
+      },
+      projectManager: {
+        apiUrl: formData.projectManager.apiUrl,
+        model: formData.projectManager.model
       },
       nodeEnv: formData.nodeEnv,
       port: formData.port
@@ -193,6 +393,11 @@ const Settings = () => {
       if (config.ollama.defaultModel) newFormData.ollama.defaultModel = config.ollama.defaultModel;
     }
     
+    if (config.projectManager) {
+      if (config.projectManager.apiUrl) newFormData.projectManager.apiUrl = config.projectManager.apiUrl;
+      if (config.projectManager.model) newFormData.projectManager.model = config.projectManager.model;
+    }
+    
     if (config.nodeEnv) newFormData.nodeEnv = config.nodeEnv;
     if (config.port) newFormData.port = config.port;
     
@@ -238,47 +443,97 @@ const Settings = () => {
   };
 
   const handleTestConnection = (provider) => {
-    if (formData[provider].apiUrl) {
-      // Log the connection attempt
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Testing connection to ${provider}`, {
-        apiUrl: formData[provider].apiUrl
-      }));
-      
-      setServicesManuallyLoaded(prev => ({
-        ...prev,
-        [provider]: true
-      }));
-      
-      dispatch(fetchModels(provider, formData[provider].apiUrl));
+    let apiUrl, modelName;
+    
+    if (provider === 'lmStudio') {
+      apiUrl = formData.lmStudio.apiUrl;
+      modelName = formData.lmStudio.defaultModel;
+    } else if (provider === 'ollama') {
+      apiUrl = formData.ollama.apiUrl;
+      modelName = formData.ollama.defaultModel;
+    } else if (provider === 'projectManager') {
+      apiUrl = formData.projectManager.apiUrl;
+      modelName = formData.projectManager.model;
     }
+    
+    if (!apiUrl) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [provider]: {
+          ...prev[provider],
+          apiUrl: 'API URL is required'
+        }
+      }));
+      return;
+    }
+    
+    // Dispatch the fetchModels action
+    dispatch(fetchModels(provider, apiUrl))
+      .then(models => {
+        if (models && models.length > 0) {
+          // Mark this service as manually loaded
+          setServicesManuallyLoaded(prev => ({
+            ...prev,
+            [provider]: true
+          }));
+          
+          // If no model is selected and we have models, select the first one
+          if (!modelName && models.length > 0) {
+            if (provider === 'projectManager') {
+              // For Project Manager, prefer deepseek-r1:7b if available
+              const deepseekModel = models.find(m => m === 'deepseek-r1:7b') || models[0];
+              handleInputChange(provider, 'model', deepseekModel);
+            } else {
+              handleInputChange(provider, 'defaultModel', models[0]);
+            }
+          }
+        }
+      });
   };
 
   const validateForm = () => {
     const errors = {
       lmStudio: { apiUrl: '', defaultModel: '' },
-      ollama: { apiUrl: '', defaultModel: '' }
+      ollama: { apiUrl: '', defaultModel: '' },
+      projectManager: { apiUrl: '', model: '' }
     };
     
-    // Validate LM Studio URL
-    if (formData.lmStudio.apiUrl && !formData.lmStudio.apiUrl.startsWith('http')) {
-      errors.lmStudio.apiUrl = 'Invalid URL format';
+    let isValid = true;
+    
+    // Validate LM Studio
+    if (!formData.lmStudio.apiUrl) {
+      errors.lmStudio.apiUrl = 'API URL is required';
+      isValid = false;
+    } else if (!formData.lmStudio.apiUrl.startsWith('http')) {
+      errors.lmStudio.apiUrl = 'API URL must start with http:// or https://';
+      isValid = false;
     }
     
-    // Validate Ollama URL
-    if (formData.ollama.apiUrl && !formData.ollama.apiUrl.startsWith('http')) {
-      errors.ollama.apiUrl = 'Invalid URL format';
+    // Validate Ollama
+    if (!formData.ollama.apiUrl) {
+      errors.ollama.apiUrl = 'API URL is required';
+      isValid = false;
+    } else if (!formData.ollama.apiUrl.startsWith('http')) {
+      errors.ollama.apiUrl = 'API URL must start with http:// or https://';
+      isValid = false;
     }
     
-    // Validate that at least one service has a model selected
-    if (!formData.lmStudio.defaultModel && !formData.ollama.defaultModel) {
-      errors.lmStudio.defaultModel = 'At least one service must have a model selected';
-      errors.ollama.defaultModel = 'At least one service must have a model selected';
+    // Validate Project Manager
+    if (!formData.projectManager.apiUrl) {
+      errors.projectManager.apiUrl = 'API URL is required';
+      isValid = false;
+    } else if (!formData.projectManager.apiUrl.startsWith('http')) {
+      errors.projectManager.apiUrl = 'API URL must start with http:// or https://';
+      isValid = false;
+    }
+    
+    if (!formData.projectManager.model) {
+      errors.projectManager.model = 'Model is required';
+      isValid = false;
     }
     
     setValidationErrors(errors);
-    return !Object.values(errors).some(provider => 
-      Object.values(provider).some(error => error !== '')
-    );
+    return isValid;
   };
 
   const handleInputChange = (provider, field, value) => {
@@ -287,6 +542,15 @@ const Settings = () => {
       [provider]: {
         ...prev[provider],
         [field]: value
+      }
+    }));
+    
+    // Clear validation errors when user types
+    setValidationErrors(prev => ({
+      ...prev,
+      [provider]: {
+        ...prev[provider],
+        [field]: ''
       }
     }));
   };
@@ -316,13 +580,31 @@ const Settings = () => {
   };
 
   const handleUseDefault = (provider) => {
-    setFormData(prev => ({
-      ...prev,
-      [provider]: {
-        ...prev[provider],
-        apiUrl: DEFAULT_URLS[provider]
-      }
-    }));
+    if (provider === 'lmStudio') {
+      setFormData(prev => ({
+        ...prev,
+        lmStudio: {
+          apiUrl: DEFAULT_URLS.lmStudio,
+          defaultModel: prev.lmStudio.defaultModel
+        }
+      }));
+    } else if (provider === 'ollama') {
+      setFormData(prev => ({
+        ...prev,
+        ollama: {
+          apiUrl: DEFAULT_URLS.ollama,
+          defaultModel: prev.ollama.defaultModel
+        }
+      }));
+    } else if (provider === 'projectManager') {
+      setFormData(prev => ({
+        ...prev,
+        projectManager: {
+          apiUrl: DEFAULT_URLS.ollama, // Uses the same URL as Ollama
+          model: 'deepscaler:7b'
+        }
+      }));
+    }
   };
 
   const loadConfigFromFile = async () => {
@@ -726,11 +1008,310 @@ const Settings = () => {
     );
   };
 
+  const renderProjectManagerCard = () => {
+    const projectManagerModels = settings?.projectManager?.models || [];
+    const isLoadingModels = settings?.projectManager?.loading || false;
+    
+    return (
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Project Manager Settings
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            Configure the dedicated LLM endpoint for the Project Manager agent. This agent is persistent across the project and uses a DeepScaler model with function calling capabilities.
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth error={!!validationErrors.projectManager.apiUrl} sx={{ mb: 2 }}>
+                <TextField
+                  label="API URL"
+                  value={formData.projectManager.apiUrl}
+                  onChange={(e) => handleInputChange('projectManager', 'apiUrl', e.target.value)}
+                  error={!!validationErrors.projectManager.apiUrl}
+                  helperText={validationErrors.projectManager.apiUrl}
+                  placeholder="http://localhost:11434"
+                  InputProps={{
+                    endAdornment: (
+                      <Tooltip title="The URL of your Ollama API endpoint">
+                        <IconButton size="small" edge="end">
+                          <HelpOutline fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ),
+                  }}
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth error={!!validationErrors.projectManager.model} sx={{ mb: 2 }}>
+                <InputLabel>Model</InputLabel>
+                <Select
+                  value={formData.projectManager.model}
+                  onChange={(e) => handleInputChange('projectManager', 'model', e.target.value)}
+                  label="Model"
+                  error={!!validationErrors.projectManager.model}
+                  disabled={isLoadingModels || projectManagerModels.length === 0}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {projectManagerModels.map((model, index) => (
+                    <MenuItem key={index} value={model}>
+                      {model}
+                    </MenuItem>
+                  ))}
+                  {projectManagerModels.length === 0 && (
+                    <MenuItem value="deepscaler:7b">
+                      deepscaler:7b (default)
+                    </MenuItem>
+                  )}
+                </Select>
+                <FormHelperText>
+                  {validationErrors.projectManager.model || 
+                  (projectManagerModels.length === 0 && !isLoadingModels && 'Test connection to load available models') ||
+                  (isLoadingModels && 'Loading models...') ||
+                  "Recommended: deepscaler:7b or deepscaler:14b"}
+                </FormHelperText>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+                Advanced Parameters
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <TextField
+                  label="Temperature"
+                  type="number"
+                  value={formData.projectManager.parameters?.temperature || 0.7}
+                  onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
+                  inputProps={{ 
+                    step: 0.1,
+                    min: 0,
+                    max: 2
+                  }}
+                  helperText="Controls randomness (0-2)"
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <TextField
+                  label="Top P"
+                  type="number"
+                  value={formData.projectManager.parameters?.topP || 0.9}
+                  onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
+                  inputProps={{ 
+                    step: 0.05,
+                    min: 0,
+                    max: 1
+                  }}
+                  helperText="Nucleus sampling (0-1)"
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <TextField
+                  label="Top K"
+                  type="number"
+                  value={formData.projectManager.parameters?.topK || 40}
+                  onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
+                  inputProps={{ 
+                    step: 1,
+                    min: 1,
+                    max: 100
+                  }}
+                  helperText="Limits vocabulary choices"
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <TextField
+                  label="Repeat Penalty"
+                  type="number"
+                  value={formData.projectManager.parameters?.repeatPenalty || 1.1}
+                  onChange={(e) => handleParameterChange('repeatPenalty', parseFloat(e.target.value))}
+                  inputProps={{ 
+                    step: 0.1,
+                    min: 1,
+                    max: 2
+                  }}
+                  helperText="Prevents repetition (1-2)"
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <TextField
+                  label="Max Tokens"
+                  type="number"
+                  value={formData.projectManager.parameters?.maxTokens || 1024}
+                  onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
+                  inputProps={{ 
+                    step: 128,
+                    min: 128,
+                    max: 8192
+                  }}
+                  helperText="Maximum output length"
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <TextField
+                  label="Context Length"
+                  type="number"
+                  value={formData.projectManager.parameters?.contextLength || 4096}
+                  onChange={(e) => handleParameterChange('contextLength', parseInt(e.target.value))}
+                  inputProps={{ 
+                    step: 1024,
+                    min: 2048,
+                    max: 32768
+                  }}
+                  helperText="Maximum context window"
+                />
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                <Box>
+                  <Button
+                    variant="outlined"
+                    onClick={() => handleTestConnection('projectManager')}
+                    startIcon={isLoadingModels ? <CircularProgress size={20} /> : <CheckCircle />}
+                    disabled={isLoadingModels}
+                    sx={{ mr: 2 }}
+                  >
+                    {isLoadingModels ? 'Loading Models...' : 'Test Connection'}
+                  </Button>
+                  
+                  <Button
+                    variant="outlined"
+                    onClick={handleBenchmark}
+                    startIcon={isBenchmarking ? <CircularProgress size={20} /> : <Assessment />}
+                    disabled={isBenchmarking || !formData.projectManager.model}
+                    color="info"
+                  >
+                    {isBenchmarking ? 'Benchmarking...' : 'Benchmark Model'}
+                  </Button>
+                </Box>
+                
+                <Button
+                  variant="outlined"
+                  onClick={() => handleUseDefault('projectManager')}
+                  color="secondary"
+                >
+                  Use Default
+                </Button>
+              </Box>
+              
+              {servicesManuallyLoaded.projectManager && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  Connection successful! {projectManagerModels.length > 0 ? 
+                    `Found ${projectManagerModels.length} compatible models.` : 
+                    'No compatible models found. Using default model.'}
+                </Alert>
+              )}
+              
+              {benchmarkResults && (
+                <Paper elevation={1} sx={{ mt: 3, p: 2, bgcolor: 'background.default' }}>
+                  <Typography variant="h6" gutterBottom>
+                    Benchmark Results: {benchmarkResults.model}
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                    <Box>
+                      <Typography variant="subtitle2">
+                        Overall Score: {benchmarkResults.averageScore.toFixed(1)}/10
+                      </Typography>
+                      <Box sx={{ width: '100%', mt: 1 }}>
+                        <Box sx={{ 
+                          height: 10, 
+                          width: `${benchmarkResults.averageScore * 10}%`, 
+                          bgcolor: getScoreColor(benchmarkResults.averageScore),
+                          borderRadius: 5
+                        }} />
+                      </Box>
+                    </Box>
+                    
+                    <Box>
+                      <Typography variant="body2">
+                        Avg. Latency: {benchmarkResults.averageLatency.toFixed(0)}ms
+                      </Typography>
+                      <Typography variant="body2">
+                        Tokens/sec: {benchmarkResults.averageTokensPerSecond.toFixed(1)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  
+                  <Divider sx={{ my: 2 }} />
+                  
+                  <Typography variant="subtitle2" gutterBottom>
+                    Test Results:
+                  </Typography>
+                  
+                  <Grid container spacing={2}>
+                    {benchmarkResults.tests.map((test, index) => (
+                      <Grid item xs={12} key={index}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 'bold', minWidth: 120 }}>
+                            {test.name}:
+                          </Typography>
+                          <Box sx={{ 
+                            height: 8, 
+                            width: `${test.score * 10}%`, 
+                            bgcolor: getScoreColor(test.score),
+                            borderRadius: 4,
+                            ml: 2,
+                            mr: 2,
+                            flexGrow: 1
+                          }} />
+                          <Typography variant="body2">
+                            {test.score}/10
+                          </Typography>
+                        </Box>
+                        {test.error ? (
+                          <Typography variant="body2" color="error.main" sx={{ ml: 2, fontSize: '0.8rem' }}>
+                            Error: {test.error}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ ml: 2, fontSize: '0.8rem' }}>
+                            {test.response}
+                          </Typography>
+                        )}
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              )}
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <Box sx={{ p: 3, maxWidth: 800, margin: '0 auto' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab label="LLM Settings" />
+          <Tab label="LLM Providers" />
+          <Tab label="Project Manager" />
           <Tab label="Configuration" />
         </Tabs>
       </Box>
@@ -738,7 +1319,7 @@ const Settings = () => {
       {activeTab === 0 ? (
         <>
           <Typography variant="h4" gutterBottom>
-            LLM Settings
+            LLM Providers
           </Typography>
           
           <Alert severity="info" sx={{ mb: 3 }}>
@@ -759,6 +1340,10 @@ const Settings = () => {
             'Ollama allows you to run open-source large language models locally using its own API format. Make sure Ollama is installed and running on your computer before testing the connection.'
           )}
         </>
+      ) : activeTab === 1 ? (
+        <>
+          {renderProjectManagerCard()}
+        </>
       ) : (
         <>
           <Typography variant="h4" gutterBottom>
@@ -767,7 +1352,7 @@ const Settings = () => {
           
           <Alert severity="info" sx={{ mb: 3 }}>
             <Typography variant="body1" paragraph>
-              View and edit your environment configuration in JSON or YAML format. This configuration is synchronized with the settings in the LLM Settings tab.
+              View and edit your environment configuration in JSON or YAML format. This configuration is synchronized with the settings in the LLM Providers tab.
             </Typography>
           </Alert>
           

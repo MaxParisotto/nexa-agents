@@ -55,75 +55,70 @@ export const loadConfigFailure = (error) => ({
 
 // Thunk Actions
 export const fetchModels = (provider, apiUrl) => async (dispatch, getState) => {
-  // Check if we've attempted a connection recently (within 30 seconds)
-  const now = Date.now();
-  const lastAttempt = connectionAttempts[provider] || 0;
-  const timeSinceLastAttempt = now - lastAttempt;
-  
-  // If we tried to connect recently and got an error, don't try again immediately
-  const currentError = getState().settings[provider].error;
-  if (currentError && timeSinceLastAttempt < 30000) {
-    console.log(`Skipping ${provider} connection attempt - tried ${timeSinceLastAttempt}ms ago`);
-    return;
-  }
-  
-  // Update last attempt timestamp
-  connectionAttempts[provider] = now;
-  
   dispatch(fetchModelsRequest(provider));
+  
   try {
-    let url = '';
-    if (provider === 'lmStudio') {
-      url = apiUrl ? `${apiUrl}/v1/models` : 'http://localhost:1234/v1/models';
-    } else if (provider === 'ollama') {
-      url = apiUrl ? `${apiUrl}/api/tags` : 'http://localhost:11434/api/tags';
-    }
-
-    console.log(`Attempting to fetch models from ${url}`);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
     let models = [];
-    if (provider === 'ollama') {
-      if (data && Array.isArray(data.models)) {
-        models = data.models.map(model => model.name);
-      } else {
-        console.error('Error: Ollama /api/tags response is not in the expected format', data);
-      }
-    } else if (provider === 'lmStudio') {
-      if (data && data.data && Array.isArray(data.data)) {
-        models = data.data.map(model => model.id);
-      } else {
-        console.error('Error: LM Studio /v1/models response is not in the expected format', data);
-      }
-    }
-    dispatch(fetchModelsSuccess(provider, models));
-  } catch (error) {
-    console.log(`Failed to connect to ${provider} service: ${error.message}`);
-    // Use a more user-friendly error message
-    const errorMessage = error.name === 'AbortError' 
-      ? 'Connection timed out. Service may not be running.' 
-      : error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_CONNECTION_REFUSED')
-        ? `Cannot connect to ${provider} service. Please ensure it is running.`
-        : error.message;
     
+    if (provider === 'lmStudio') {
+      // LM Studio API call to fetch models
+      const response = await axios.get(`${apiUrl}/v1/models`);
+      models = response.data.data.map(model => model.id);
+      
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models from LM Studio`));
+    } 
+    else if (provider === 'ollama') {
+      // Ollama API call to fetch models
+      const response = await axios.get(`${apiUrl}/api/tags`);
+      models = response.data.models.map(model => model.name);
+      
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models from Ollama`));
+    }
+    else if (provider === 'projectManager') {
+      // For Project Manager, we use Ollama API but we're specifically looking for DeepScaler models
+      const response = await axios.get(`${apiUrl}/api/tags`);
+      const allModels = response.data.models.map(model => model.name);
+      
+      // Filter for DeepScaler models first
+      models = allModels.filter(name => 
+        name.toLowerCase().includes('deepscaler') || 
+        name.toLowerCase().includes('deep-scaler')
+      );
+      
+      // If no DeepScaler models found, also look for other models with function calling capabilities
+      if (models.length === 0) {
+        const functionCallingModels = allModels.filter(name => 
+          name.toLowerCase().includes('deepseek') || 
+          name.toLowerCase().includes('llama3') ||
+          name.toLowerCase().includes('llama-3') ||
+          name.toLowerCase().includes('mistral') ||
+          name.toLowerCase().includes('mixtral') ||
+          name.toLowerCase().includes('qwen')
+        );
+        models = functionCallingModels;
+      }
+      
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} compatible models for Project Manager`));
+    }
+    
+    dispatch(fetchModelsSuccess(provider, models));
+    
+    // Update connection attempts timestamp
+    connectionAttempts[provider] = Date.now();
+    
+    return models;
+  } catch (error) {
+    const errorMessage = error.response?.data?.error || error.message;
+    dispatch(logError(LOG_CATEGORIES.SETTINGS, `Failed to fetch models from ${provider}: ${errorMessage}`, error));
     dispatch(fetchModelsFailure(provider, errorMessage));
+    
+    // Notify user
+    dispatch(addNotification({
+      type: 'error',
+      message: `Failed to connect to ${provider}: ${errorMessage}`
+    }));
+    
+    return [];
   }
 };
 
@@ -136,90 +131,121 @@ export const fetchModels = (provider, apiUrl) => async (dispatch, getState) => {
  */
 export const loadConfigFromFile = (retryCount = 0) => async (dispatch) => {
   dispatch(loadConfigRequest());
-  dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Attempting to load configuration from file'));
   
   try {
-    // Use the configService to load configuration
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Loading configuration from file'));
+    
+    // Try to load from file first
     const config = await configService.loadConfig();
     
-    // Verify the config has the required properties
-    if (!config || !config.lmStudio || !config.ollama) {
-      throw new Error('Invalid configuration format');
+    if (config) {
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Configuration loaded from file'));
+      
+      // Update Redux store with loaded config
+      dispatch(loadConfigSuccess(config));
+      
+      // Update settings
+      dispatch(updateSettings({
+        lmStudio: {
+          apiUrl: config.lmStudio?.apiUrl,
+          defaultModel: config.lmStudio?.defaultModel
+        },
+        ollama: {
+          apiUrl: config.ollama?.apiUrl,
+          defaultModel: config.ollama?.defaultModel
+        },
+        projectManager: {
+          apiUrl: config.projectManager?.apiUrl,
+          model: config.projectManager?.model
+        },
+        nodeEnv: config.nodeEnv,
+        port: config.port
+      }));
+      
+      return config;
+    } else {
+      // If file loading fails, fall back to localStorage
+      dispatch(logWarning(LOG_CATEGORIES.SETTINGS, 'Could not load config from file, falling back to localStorage'));
+      
+      const localConfig = loadFromLocalStorage(dispatch);
+      dispatch(loadConfigSuccess(localConfig));
+      
+      return localConfig;
     }
-    
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Configuration loaded successfully'));
-    dispatch(loadConfigSuccess(config));
-    
-    dispatch(addNotification({
-      type: 'success',
-      message: 'Settings loaded successfully'
-    }));
-    
-    return config;
   } catch (error) {
     dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to load configuration', error));
     
-    // Try loading from localStorage if file loading failed
-    let fallbackConfig;
-    
-    try {
-      fallbackConfig = configService.loadConfigFromLocalStorage();
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Loaded fallback configuration from localStorage'));
-    } catch (localStorageError) {
-      dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to load from localStorage', localStorageError));
+    // If server is not available yet, retry a few times
+    if (retryCount < 3) {
+      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Retrying configuration load (attempt ${retryCount + 1})`));
+      
+      // Wait a bit before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      return dispatch(loadConfigFromFile(retryCount + 1));
     }
     
-    // If we have a fallback config with valid properties, use it
-    if (fallbackConfig && fallbackConfig.lmStudio && fallbackConfig.ollama) {
-      dispatch(updateSettings(fallbackConfig));
-      dispatch(loadConfigSuccess(fallbackConfig));
-      
-      dispatch(addNotification({
-        type: 'warning',
-        message: 'Using configuration from localStorage due to loading error'
-      }));
-      
-      return fallbackConfig;
-    }
+    // Fall back to localStorage after retries
+    dispatch(logWarning(LOG_CATEGORIES.SETTINGS, 'Retries exhausted, falling back to localStorage'));
     
-    // Otherwise use default config
-    const defaultConfig = configService.getDefaultConfig();
-    dispatch(updateSettings(defaultConfig));
-    dispatch(loadConfigFailure(error.message || 'Failed to load configuration'));
+    const localConfig = loadFromLocalStorage(dispatch);
+    dispatch(loadConfigFailure(error.message));
     
-    dispatch(addNotification({
-      type: 'warning',
-      message: 'Using default configuration due to loading error'
-    }));
-    
-    return defaultConfig;
+    return localConfig;
   }
 };
 
-/**
- * Helper function to load settings from localStorage
- */
 const loadFromLocalStorage = (dispatch) => {
-  dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Loading settings from localStorage'));
+  dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Loading configuration from localStorage'));
   
-  const settings = {
-    lmStudio: {
-      apiUrl: localStorage.getItem('lmStudioApiUrl') || 'http://localhost:1234',
-      defaultModel: localStorage.getItem('lmStudioDefaultModel') || ''
-    },
-    ollama: {
-      apiUrl: localStorage.getItem('ollamaApiUrl') || 'http://localhost:11434',
-      defaultModel: localStorage.getItem('ollamaDefaultModel') || ''
-    },
-    nodeEnv: localStorage.getItem('nodeEnv') || 'development',
-    port: localStorage.getItem('port') || '3001'
+  const lmStudioAddress = localStorage.getItem('lmStudioAddress') || 'http://localhost:1234';
+  const defaultLmStudioModel = localStorage.getItem('defaultLmStudioModel') || '';
+  const ollamaAddress = localStorage.getItem('ollamaAddress') || 'http://localhost:11434';
+  const defaultOllamaModel = localStorage.getItem('defaultOllamaModel') || '';
+  const projectManagerApiUrl = localStorage.getItem('projectManagerApiUrl') || 'http://localhost:11434';
+  const projectManagerModel = localStorage.getItem('projectManagerModel') || 'deepscaler:7b';
+  
+  // Try to load parameters from localStorage
+  let projectManagerParameters = {
+    temperature: 0.7,
+    topP: 0.9,
+    topK: 40,
+    repeatPenalty: 1.1,
+    maxTokens: 1024,
+    contextLength: 4096
   };
   
-  dispatch(updateSettings(settings));
-  dispatch(addNotification({
-    type: 'info',
-    message: 'Settings loaded from localStorage'
-  }));
+  try {
+    const savedParameters = localStorage.getItem('projectManagerParameters');
+    if (savedParameters) {
+      projectManagerParameters = JSON.parse(savedParameters);
+    }
+  } catch (error) {
+    console.error('Error parsing projectManagerParameters from localStorage:', error);
+  }
+  
+  const nodeEnv = localStorage.getItem('nodeEnv') || 'development';
+  const port = localStorage.getItem('port') || '5000';
+  
+  const config = {
+    lmStudio: {
+      apiUrl: lmStudioAddress,
+      defaultModel: defaultLmStudioModel
+    },
+    ollama: {
+      apiUrl: ollamaAddress,
+      defaultModel: defaultOllamaModel
+    },
+    projectManager: {
+      apiUrl: projectManagerApiUrl,
+      model: projectManagerModel,
+      parameters: projectManagerParameters
+    },
+    nodeEnv,
+    port
+  };
+  
+  return config;
 };
 
 /**
@@ -227,66 +253,86 @@ const loadFromLocalStorage = (dispatch) => {
  * Saves to both localStorage and attempts to save to file
  */
 export const saveSettings = (settings) => async (dispatch) => {
-  // First, validate the settings object
-  if (!settings || !settings.lmStudio || !settings.ollama) {
-    dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Invalid settings object provided'));
-    dispatch(addNotification({
-      type: 'error',
-      message: 'Invalid settings format, settings not saved'
-    }));
-    return;
-  }
-  
-  // Update Redux store first
-  dispatch(updateSettings(settings));
-  dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Updating Redux store with new settings'));
-  
-  // Always save to localStorage to ensure persistence
   try {
-    configService.saveConfigToLocalStorage(settings);
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings saved to localStorage'));
-  } catch (localStorageError) {
-    dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to save to localStorage', localStorageError));
-  }
-  
-  // Then try to save to file with configService
-  try {
-    // Use the configService to save configuration
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Attempting to save settings to file'));
-    const result = await configService.saveConfig(settings);
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Saving settings'));
     
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings saved successfully', result));
-    
-    if (result.error) {
-      dispatch(addNotification({
-        type: 'warning',
-        message: 'Settings saved locally, but failed to save to file'
-      }));
-    } else if (result.rateLimited) {
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Config save was rate limited, using localStorage only'));
-    } else if (result.serverUnavailable) {
-      dispatch(logWarning(LOG_CATEGORIES.SETTINGS, 'Server unavailable, settings saved to localStorage only'));
-      dispatch(addNotification({
-        type: 'warning',
-        message: 'Server unavailable, settings saved locally only'
-      }));
-    } else {
-      dispatch(addNotification({
-        type: 'success',
-        message: 'Settings saved successfully'
-      }));
+    // Save to localStorage
+    if (settings.lmStudio?.apiUrl) {
+      localStorage.setItem('lmStudioAddress', settings.lmStudio.apiUrl);
     }
     
-    return result;
-  } catch (error) {
-    dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to save settings to file', error));
+    if (settings.lmStudio?.defaultModel) {
+      localStorage.setItem('defaultLmStudioModel', settings.lmStudio.defaultModel);
+    }
     
+    if (settings.ollama?.apiUrl) {
+      localStorage.setItem('ollamaAddress', settings.ollama.apiUrl);
+    }
+    
+    if (settings.ollama?.defaultModel) {
+      localStorage.setItem('defaultOllamaModel', settings.ollama.defaultModel);
+    }
+    
+    if (settings.projectManager?.apiUrl) {
+      localStorage.setItem('projectManagerApiUrl', settings.projectManager.apiUrl);
+    }
+    
+    if (settings.projectManager?.model) {
+      localStorage.setItem('projectManagerModel', settings.projectManager.model);
+    }
+    
+    if (settings.projectManager?.parameters) {
+      localStorage.setItem('projectManagerParameters', JSON.stringify(settings.projectManager.parameters));
+    }
+    
+    if (settings.nodeEnv) {
+      localStorage.setItem('nodeEnv', settings.nodeEnv);
+    }
+    
+    if (settings.port) {
+      localStorage.setItem('port', settings.port);
+    }
+    
+    // Update Redux store
+    dispatch(updateSettings(settings));
+    
+    // Save to config file
+    await configService.saveConfig({
+      lmStudio: {
+        apiUrl: settings.lmStudio?.apiUrl,
+        defaultModel: settings.lmStudio?.defaultModel
+      },
+      ollama: {
+        apiUrl: settings.ollama?.apiUrl,
+        defaultModel: settings.ollama?.defaultModel
+      },
+      projectManager: {
+        apiUrl: settings.projectManager?.apiUrl,
+        model: settings.projectManager?.model,
+        parameters: settings.projectManager?.parameters
+      },
+      nodeEnv: settings.nodeEnv,
+      port: settings.port
+    });
+    
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings saved successfully'));
+    
+    // Notify user
     dispatch(addNotification({
-      type: 'warning',
-      message: 'Settings saved locally, but failed to save to file: ' + error.message
+      type: 'success',
+      message: 'Settings saved successfully'
     }));
     
-    // Even though file save failed, we did save to localStorage and Redux
-    return { success: true, localOnly: true, error: error.message };
+    return true;
+  } catch (error) {
+    dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to save settings', error));
+    
+    // Notify user
+    dispatch(addNotification({
+      type: 'error',
+      message: `Failed to save settings: ${error.message}`
+    }));
+    
+    return false;
   }
 };

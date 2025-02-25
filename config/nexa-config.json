@@ -7,6 +7,10 @@
     "apiUrl": "http://localhost:11434",
     "defaultModel": "deepseek-r1:1.5b"
   },
+  "projectManager": {
+    "apiUrl": "http://localhost:11434",
+    "model": "deepscaler:latest"
+  },
   "nodeEnv": "development",
   "port": "3001"
 }

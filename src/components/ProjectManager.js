@@ -42,6 +42,9 @@ const ProjectManager = () => {
   const lmStudioSettings = settings?.lmStudio || {};
   const ollamaSettings = settings?.ollama || {};
   
+  // Add a new state for the Project Manager chat
+  const [projectManagerChatListenerAdded, setProjectManagerChatListenerAdded] = useState(false);
+  
   // Custom logging function that saves logs to state and also outputs to console and Redux
   const log = (level, message, data = null) => {
     const timestamp = new Date().toISOString();
@@ -1321,7 +1324,7 @@ The user will provide a description of a workflow they want to build. Your respo
   /**
    * Call the Ollama API
    */
-  const callOllamaAPI = async (apiUrl, modelName, message) => {
+  const callOllamaAPI = async (apiUrl, modelName, message, parameters = {}) => {
     try {
       log('info', `Calling Ollama API at ${apiUrl} with model ${modelName}`);
       
@@ -1394,8 +1397,12 @@ For example, to create a workflow your response should include:
         {
           model: modelName,
           prompt: fullPrompt,
-          temperature: 0.7,
-          max_tokens: 800
+          temperature: parameters.temperature || 0.7,
+          top_p: parameters.topP || 0.9,
+          top_k: parameters.topK || 40,
+          repeat_penalty: parameters.repeatPenalty || 1.1,
+          max_tokens: parameters.maxTokens || 1024,
+          context_length: parameters.contextLength || 4096
         },
         {
           headers: {
@@ -2683,6 +2690,77 @@ Note: You need to configure at least one LLM provider in Settings for advanced f
     } catch (error) {
       log('error', 'Error adding node to workflow', error);
       throw new Error(`Failed to add node: ${error.message}`);
+    }
+  };
+  
+  // Add a new effect to listen for Project Manager chat requests
+  useEffect(() => {
+    if (!projectManagerChatListenerAdded) {
+      window.addEventListener('project-manager-request', handleProjectManagerRequest);
+      setProjectManagerChatListenerAdded(true);
+      
+      return () => {
+        window.removeEventListener('project-manager-request', handleProjectManagerRequest);
+      };
+    }
+  }, [projectManagerChatListenerAdded]);
+  
+  /**
+   * Handle requests from the Project Manager chat
+   */
+  const handleProjectManagerRequest = async (event) => {
+    const { message } = event.detail;
+    
+    if (!message) return;
+    
+    log('info', `Received Project Manager request: ${message}`);
+    
+    try {
+      // Process the message with the dedicated Project Manager LLM
+      const response = await processWithProjectManagerLLM(message);
+      
+      // Send the response back to the ProjectManagerChat component
+      const responseEvent = new CustomEvent('project-manager-message', {
+        detail: { message: response }
+      });
+      window.dispatchEvent(responseEvent);
+    } catch (error) {
+      log('error', 'Failed to process Project Manager request', error);
+      
+      // Send error message back to the ProjectManagerChat component
+      const errorEvent = new CustomEvent('project-manager-message', {
+        detail: { message: 'Sorry, I encountered an error while processing your request. Please try again later.' }
+      });
+      window.dispatchEvent(errorEvent);
+    }
+  };
+  
+  /**
+   * Process a message with the dedicated Project Manager LLM
+   */
+  const processWithProjectManagerLLM = async (message) => {
+    // Get Project Manager settings from Redux store
+    const projectManagerSettings = settings?.projectManager || {};
+    const apiUrl = projectManagerSettings.apiUrl || 'http://localhost:11434';
+    const model = projectManagerSettings.model || 'deepscaler:7b';
+    const parameters = projectManagerSettings.parameters || {
+      temperature: 0.7,
+      topP: 0.9,
+      topK: 40,
+      repeatPenalty: 1.1,
+      maxTokens: 1024,
+      contextLength: 4096
+    };
+    
+    log('info', `Processing Project Manager request with model: ${model} and parameters: ${JSON.stringify(parameters)}`);
+    
+    try {
+      // Call the Ollama API with the Project Manager model and parameters
+      const response = await callOllamaAPI(apiUrl, model, message, parameters);
+      return response;
+    } catch (error) {
+      log('error', 'Failed to process with Project Manager LLM', error);
+      throw error;
     }
   };
   

@@ -13,6 +13,21 @@ const initialState = {
     error: null,
     models: []
   },
+  projectManager: {
+    apiUrl: 'http://localhost:11434',
+    model: 'deepscaler:7b',
+    loading: false,
+    error: null,
+    models: [],
+    parameters: {
+      temperature: 0.7,
+      topP: 0.9,
+      topK: 40,
+      repeatPenalty: 1.1,
+      maxTokens: 1024,
+      contextLength: 4096
+    }
+  },
   nodeEnv: 'development',
   port: 3001,
   configLoading: false,
@@ -39,6 +54,15 @@ const settingsReducer = (state = initialState, action) => {
           models: state.ollama.models,
           loading: state.ollama.loading,
           error: state.ollama.error
+        },
+        projectManager: {
+          ...state.projectManager,
+          apiUrl: action.payload.projectManager?.apiUrl || state.projectManager.apiUrl,
+          model: action.payload.projectManager?.model || state.projectManager.model,
+          parameters: action.payload.projectManager?.parameters || state.projectManager.parameters,
+          models: state.projectManager.models,
+          loading: state.projectManager.loading,
+          error: state.projectManager.error
         },
         nodeEnv: action.payload.nodeEnv || state.nodeEnv,
         port: action.payload.port || state.port
@@ -67,6 +91,15 @@ const settingsReducer = (state = initialState, action) => {
           models: state.ollama.models,
           loading: state.ollama.loading,
           error: state.ollama.error
+        },
+        projectManager: {
+          ...state.projectManager,
+          apiUrl: action.payload.projectManager?.apiUrl || state.projectManager.apiUrl,
+          model: action.payload.projectManager?.model || state.projectManager.model,
+          parameters: action.payload.projectManager?.parameters || state.projectManager.parameters,
+          models: state.projectManager.models,
+          loading: state.projectManager.loading,
+          error: state.projectManager.error
         },
         nodeEnv: action.payload.nodeEnv || state.nodeEnv,
         port: action.payload.port || state.port,
