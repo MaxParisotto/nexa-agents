@@ -14,7 +14,9 @@ const initialState = {
     models: []
   },
   nodeEnv: 'development',
-  port: 3001
+  port: 3001,
+  configLoading: false,
+  configError: null
 };
 
 const settingsReducer = (state = initialState, action) => {
@@ -40,6 +42,25 @@ const settingsReducer = (state = initialState, action) => {
         },
         nodeEnv: action.payload.nodeEnv || state.nodeEnv,
         port: action.payload.port || state.port
+      };
+    case 'LOAD_CONFIG_REQUEST':
+      return {
+        ...state,
+        configLoading: true,
+        configError: null
+      };
+    case 'LOAD_CONFIG_SUCCESS':
+      return {
+        ...state,
+        ...action.payload,
+        configLoading: false,
+        configError: null
+      };
+    case 'LOAD_CONFIG_FAILURE':
+      return {
+        ...state,
+        configLoading: false,
+        configError: action.payload
       };
     case 'FETCH_MODELS_REQUEST':
       return {

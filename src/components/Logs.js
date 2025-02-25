@@ -15,14 +15,20 @@ import {
   TextField,
   Typography,
   OutlinedInput,
-  Button
+  Button,
+  Switch,
+  FormControlLabel,
+  Tooltip,
+  useTheme
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   FilterList as FilterIcon,
   Search as SearchIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  ContentCopy as ContentCopyIcon,
+  TextFormat as TextFormatIcon
 } from '@mui/icons-material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
@@ -103,6 +109,8 @@ const Logs = () => {
   const logs = useSelector(state => getFilteredLogs(state.logs));
   const filters = useSelector(state => state.logs.filters);
   const [showFilters, setShowFilters] = useState(true);
+  const [textView, setTextView] = useState(false);
+  const theme = useTheme();
 
   const handleFilterChange = (filterType, value) => {
     dispatch(setLogFilter({ [filterType]: value }));
@@ -114,6 +122,67 @@ const Logs = () => {
     }
   };
 
+  /**
+   * Formats logs as plain text for easy copying and sharing
+   * @returns {string} Plain text representation of filtered logs
+   */
+  const getPlainTextLogs = () => {
+    if (!logs || logs.length === 0) {
+      return "No logs available";
+    }
+    
+    return logs.map(log => {
+      const timestamp = new Date(log.timestamp).toLocaleString();
+      let textLog = `[${timestamp}] [${log.level.toUpperCase()}] [${log.category}] ${log.message}`;
+      
+      if (log.details) {
+        // Handle different types of details
+        if (typeof log.details === 'string') {
+          textLog += `\nDetails: ${log.details}`;
+        } else if (Array.isArray(log.details)) {
+          // Format arrays with proper indentation
+          const formattedArray = log.details.map(item => 
+            typeof item === 'object' ? JSON.stringify(item, null, 2) : `  "${item}"`
+          ).join('\n  ');
+          textLog += `\nDetails: [\n  ${formattedArray}\n]`;
+        } else {
+          // Format objects with proper indentation
+          const detailsString = JSON.stringify(log.details, null, 2);
+          // Add indentation to each line for better readability
+          const indentedDetails = detailsString
+            .split('\n')
+            .map((line, index) => index === 0 ? line : `  ${line}`)
+            .join('\n');
+          textLog += `\nDetails: ${indentedDetails}`;
+        }
+      }
+      
+      return textLog;
+    }).join('\n\n');
+  };
+
+  /**
+   * Copies text logs to clipboard
+   */
+  const copyLogsToClipboard = () => {
+    const textLogs = getPlainTextLogs();
+    navigator.clipboard.writeText(textLogs)
+      .then(() => {
+        alert('Logs copied to clipboard!');
+      })
+      .catch(err => {
+        console.error('Failed to copy logs: ', err);
+        alert('Failed to copy logs to clipboard');
+      });
+  };
+
+  /**
+   * Toggles between text view and card view
+   */
+  const handleToggleTextView = (e) => {
+    setTextView(e.target.checked);
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Card sx={{ mb: 3 }}>
@@ -122,7 +191,27 @@ const Logs = () => {
             <Typography variant="h5" component="h2">
               System Logs
             </Typography>
-            <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Tooltip title="Toggle text view for easy sharing">
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={textView}
+                      onChange={handleToggleTextView}
+                      color="primary"
+                    />
+                  }
+                  label={<TextFormatIcon />}
+                  sx={{ mr: 1 }}
+                />
+              </Tooltip>
+              {textView && (
+                <Tooltip title="Copy logs to clipboard">
+                  <IconButton onClick={copyLogsToClipboard} sx={{ mr: 1 }}>
+                    <ContentCopyIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
               <IconButton onClick={() => setShowFilters(!showFilters)} sx={{ mr: 1 }}>
                 <FilterIcon />
               </IconButton>
@@ -198,7 +287,7 @@ const Logs = () => {
                     label="Start Date"
                     value={filters.startDate}
                     onChange={(date) => handleFilterChange('startDate', date)}
-                    renderInput={(params) => <TextField {...params} fullWidth />}
+                    slotProps={{ textField: { fullWidth: true } }}
                   />
                 </LocalizationProvider>
               </Grid>
@@ -209,7 +298,7 @@ const Logs = () => {
                     label="End Date"
                     value={filters.endDate}
                     onChange={(date) => handleFilterChange('endDate', date)}
-                    renderInput={(params) => <TextField {...params} fullWidth />}
+                    slotProps={{ textField: { fullWidth: true } }}
                   />
                 </LocalizationProvider>
               </Grid>
@@ -233,6 +322,22 @@ const Logs = () => {
               <Typography variant="body1" color="textSecondary" align="center">
                 No logs found
               </Typography>
+            ) : textView ? (
+              <Paper 
+                elevation={0} 
+                sx={{ 
+                  p: 2, 
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+                  color: theme.palette.text.primary,
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  overflowX: 'auto',
+                  fontSize: '0.875rem',
+                  borderRadius: 1
+                }}
+              >
+                {getPlainTextLogs()}
+              </Paper>
             ) : (
               logs.map((log) => (
                 <LogEntry key={log.id} log={log} />

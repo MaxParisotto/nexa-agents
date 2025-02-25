@@ -1,0 +1,12 @@
+{
+  "lmStudio": {
+    "apiUrl": "http://localhost:1234",
+    "defaultModel": "qwen2.5-7b-instruct-1m"
+  },
+  "ollama": {
+    "apiUrl": "http://localhost:11434",
+    "defaultModel": "deepseek-r1:1.5b"
+  },
+  "nodeEnv": "development",
+  "port": "3001"
+}
