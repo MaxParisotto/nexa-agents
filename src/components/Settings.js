@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchModels, saveSettings } from '../store/actions/settingsActions';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
 import configService from '../services/configService';
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import 'xterm/css/xterm.css';
 import { 
   Box, 
   Button, 
@@ -27,7 +30,7 @@ import {
   Tabs,
   Paper
 } from '@mui/material';
-import { HelpOutline, Info, ErrorOutline, CheckCircle, Code, Download, ContentCopy, Assessment } from '@mui/icons-material';
+import { HelpOutline, Info, ErrorOutline, CheckCircle, Code, Download, ContentCopy, Assessment, Close as CloseIcon } from '@mui/icons-material';
 import { addNotification } from '../store/actions/systemActions';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from '../store/actions/logActions';
 
@@ -75,6 +78,11 @@ const Settings = () => {
   // State for benchmark functionality
   const [isBenchmarking, setIsBenchmarking] = useState(false);
   const [benchmarkResults, setBenchmarkResults] = useState(null);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const terminalRef = useRef(null);
+  const terminalContainerRef = useRef(null);
+  const terminalInstance = useRef(null);
+  const fitAddon = useRef(null);
   
   const [validationErrors, setValidationErrors] = useState({
     lmStudio: { apiUrl: '', defaultModel: '' },
@@ -117,6 +125,63 @@ const Settings = () => {
     
     setIsBenchmarking(true);
     setBenchmarkResults(null);
+    setShowTerminal(true);
+    
+    // Initialize terminal if not already done
+    setTimeout(() => {
+      if (!terminalInstance.current && terminalContainerRef.current) {
+        terminalInstance.current = new Terminal({
+          cursorBlink: true,
+          fontSize: 14,
+          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+          theme: {
+            background: '#1e1e1e',
+            foreground: '#f0f0f0',
+            cursor: '#f0f0f0',
+            selection: 'rgba(255, 255, 255, 0.3)',
+            black: '#000000',
+            red: '#e06c75',
+            green: '#98c379',
+            yellow: '#e5c07b',
+            blue: '#61afef',
+            magenta: '#c678dd',
+            cyan: '#56b6c2',
+            white: '#d0d0d0'
+          }
+        });
+        
+        fitAddon.current = new FitAddon();
+        terminalInstance.current.loadAddon(fitAddon.current);
+        terminalInstance.current.open(terminalContainerRef.current);
+        fitAddon.current.fit();
+        
+        // Clear terminal
+        terminalInstance.current.clear();
+        terminalInstance.current.write('\x1b[1;32m=== Benchmark Started ===\x1b[0m\r\n\n');
+        terminalInstance.current.write(`\x1b[1;36mModel:\x1b[0m ${formData.projectManager.model}\r\n`);
+        terminalInstance.current.write(`\x1b[1;36mAPI URL:\x1b[0m ${formData.projectManager.apiUrl}\r\n`);
+        terminalInstance.current.write(`\x1b[1;36mParameters:\x1b[0m\r\n`);
+        Object.entries(formData.projectManager.parameters).forEach(([key, value]) => {
+          terminalInstance.current.write(`  - ${key}: ${value}\r\n`);
+        });
+        terminalInstance.current.write('\r\n');
+      } else if (terminalInstance.current) {
+        // Clear terminal
+        terminalInstance.current.clear();
+        terminalInstance.current.write('\x1b[1;32m=== Benchmark Started ===\x1b[0m\r\n\n');
+        terminalInstance.current.write(`\x1b[1;36mModel:\x1b[0m ${formData.projectManager.model}\r\n`);
+        terminalInstance.current.write(`\x1b[1;36mAPI URL:\x1b[0m ${formData.projectManager.apiUrl}\r\n`);
+        terminalInstance.current.write(`\x1b[1;36mParameters:\x1b[0m\r\n`);
+        Object.entries(formData.projectManager.parameters).forEach(([key, value]) => {
+          terminalInstance.current.write(`  - ${key}: ${value}\r\n`);
+        });
+        terminalInstance.current.write('\r\n');
+        
+        if (fitAddon.current) {
+          fitAddon.current.fit();
+        }
+      }
+    }, 100);
     
     try {
       dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Starting benchmark for model: ${formData.projectManager.model}`));
@@ -127,6 +192,57 @@ const Settings = () => {
         message: `Benchmarking ${formData.projectManager.model}. This may take a minute...`
       }));
       
+      // Check if the Ollama server is available
+      if (terminalInstance.current) {
+        terminalInstance.current.write(`\x1b[33mChecking Ollama server availability...\x1b[0m\r\n`);
+      }
+      
+      try {
+        const serverCheckResponse = await axios.get(`${formData.projectManager.apiUrl}/api/version`);
+        
+        if (terminalInstance.current) {
+          terminalInstance.current.write(`\x1b[32mOllama server is available (version: ${serverCheckResponse.data.version})\x1b[0m\r\n\n`);
+        }
+      } catch (serverCheckError) {
+        if (terminalInstance.current) {
+          terminalInstance.current.write(`\x1b[31mError: Ollama server is not available at ${formData.projectManager.apiUrl}\x1b[0m\r\n`);
+          terminalInstance.current.write(`\x1b[31mDetails: ${serverCheckError.message}\x1b[0m\r\n\n`);
+        }
+        
+        throw new Error(`Ollama server is not available at ${formData.projectManager.apiUrl}: ${serverCheckError.message}`);
+      }
+      
+      // Check if the model exists
+      if (terminalInstance.current) {
+        terminalInstance.current.write(`\x1b[33mVerifying model exists...\x1b[0m\r\n`);
+      }
+      
+      try {
+        const modelCheckResponse = await axios.get(`${formData.projectManager.apiUrl}/api/tags`);
+        const availableModels = modelCheckResponse.data.models.map(model => model.name);
+        
+        if (!availableModels.includes(formData.projectManager.model)) {
+          if (terminalInstance.current) {
+            terminalInstance.current.write(`\x1b[31mError: Model "${formData.projectManager.model}" not found in available models.\x1b[0m\r\n`);
+            terminalInstance.current.write(`\x1b[33mAvailable models: ${availableModels.join(', ')}\x1b[0m\r\n\n`);
+          }
+          
+          throw new Error(`Model "${formData.projectManager.model}" not found. Available models: ${availableModels.join(', ')}`);
+        }
+        
+        if (terminalInstance.current) {
+          terminalInstance.current.write(`\x1b[32mModel verified. Proceeding with benchmark...\x1b[0m\r\n\n`);
+        }
+      } catch (modelCheckError) {
+        if (terminalInstance.current) {
+          terminalInstance.current.write(`\x1b[31mError checking model: ${modelCheckError.message}\x1b[0m\r\n\n`);
+          terminalInstance.current.write(`\x1b[33mProceeding with benchmark anyway...\x1b[0m\r\n\n`);
+        }
+        
+        // Log the error but continue with the benchmark
+        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Error checking model: ${modelCheckError.message}`));
+      }
+      
       // Run benchmark tests
       const results = await runModelBenchmark(
         formData.projectManager.apiUrl, 
@@ -136,12 +252,28 @@ const Settings = () => {
       
       setBenchmarkResults(results);
       
+      // Write final results to terminal
+      if (terminalInstance.current) {
+        terminalInstance.current.write('\x1b[1;32m=== Benchmark Completed ===\x1b[0m\r\n\n');
+        terminalInstance.current.write(`\x1b[1;33mOverall Score:\x1b[0m ${results.averageScore.toFixed(1)}/10\r\n`);
+        terminalInstance.current.write(`\x1b[1;33mAverage Latency:\x1b[0m ${results.averageLatency.toFixed(0)}ms\r\n`);
+        terminalInstance.current.write(`\x1b[1;33mTokens/sec:\x1b[0m ${results.averageTokensPerSecond.toFixed(1)}\r\n`);
+        terminalInstance.current.write(`\x1b[1;33mTotal Time:\x1b[0m ${(results.totalTime / 1000).toFixed(1)}s\r\n\n`);
+      }
+      
       dispatch(addNotification({
         type: 'success',
         message: `Benchmark completed for ${formData.projectManager.model}`
       }));
     } catch (error) {
       dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Benchmark failed', error));
+      
+      // Write error to terminal
+      if (terminalInstance.current) {
+        terminalInstance.current.write('\x1b[1;31m=== Benchmark Failed ===\x1b[0m\r\n\n');
+        terminalInstance.current.write(`\x1b[1;31mError:\x1b[0m ${error.message}\r\n`);
+      }
+      
       dispatch(addNotification({
         type: 'error',
         message: `Benchmark failed: ${error.message}`
@@ -193,48 +325,390 @@ const Settings = () => {
     let totalTokens = 0;
     const results = [];
     
-    // Run each test
-    for (const test of tests) {
-      const testStartTime = Date.now();
+    // Write test plan to terminal
+    if (terminalInstance.current) {
+      terminalInstance.current.write('\x1b[1;33mRunning Tests:\x1b[0m\r\n');
+      tests.forEach((test, index) => {
+        terminalInstance.current.write(`  ${index + 1}. ${test.name}\r\n`);
+      });
+      terminalInstance.current.write('\r\n');
+    }
+    
+    /**
+     * Helper function to handle streaming responses from Ollama
+     * @param {string} apiUrl - The Ollama API URL
+     * @param {string} modelName - The model name
+     * @param {string} prompt - The prompt to send
+     * @param {object} parameters - The model parameters
+     * @returns {Promise<string>} - The concatenated response
+     */
+    const handleStreamingRequest = async (apiUrl, modelName, prompt, parameters) => {
+      if (terminalInstance.current) {
+        terminalInstance.current.write(`\x1b[90mAttempting streaming request as fallback...\x1b[0m\r\n`);
+      }
+      
       try {
-        // Call Ollama API
-        const response = await axios.post(
-          `${apiUrl}/api/generate`,
-          {
+        // Make a raw fetch request to handle streaming
+        const response = await fetch(`${apiUrl}/api/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
             model: modelName,
-            prompt: test.prompt,
+            prompt: prompt,
+            stream: true,
             temperature: parameters?.temperature || 0.7,
             top_p: parameters?.topP || 0.9,
             top_k: parameters?.topK || 40,
             repeat_penalty: parameters?.repeatPenalty || 1.1,
             max_tokens: parameters?.maxTokens || 1024
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            timeout: 30000 // 30 second timeout
-          }
-        );
+          })
+        });
         
-        const testEndTime = Date.now();
-        const responseText = response.data.response;
-        const tokensGenerated = response.data.eval_count || responseText.split(/\s+/).length;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+        
+        // Set up a reader to read the stream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let responseChunks = [];
+        
+        // Read the stream
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          // Decode the chunk
+          const chunk = decoder.decode(value, { stream: true });
+          responseChunks.push(chunk);
+          
+          // Log progress
+          if (terminalInstance.current && responseChunks.length % 10 === 0) {
+            terminalInstance.current.write('.');
+          }
+        }
+        
+        // Process all chunks
+        const combinedText = responseChunks.join('');
+        const lines = combinedText.split('\n').filter(line => line.trim());
+        
+        // Extract the response text from each JSON object
+        let extractedText = '';
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.response) {
+              extractedText += data.response;
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+        
+        if (terminalInstance.current) {
+          terminalInstance.current.write('\r\x1b[K'); // Clear the line
+          terminalInstance.current.write(`\x1b[32mStreaming response received (${extractedText.length} chars)\x1b[0m\r\n`);
+        }
+        
+        return extractedText;
+      } catch (error) {
+        if (terminalInstance.current) {
+          terminalInstance.current.write(`\x1b[31mStreaming request failed: ${error.message}\x1b[0m\r\n`);
+        }
+        throw error;
+      }
+    };
+    
+    // Run each test
+    for (const [index, test] of tests.entries()) {
+      const testStartTime = Date.now();
+      
+      // Write test start to terminal
+      if (terminalInstance.current) {
+        terminalInstance.current.write(`\x1b[1;34m[${index + 1}/${tests.length}] Running test: ${test.name}...\x1b[0m\r\n`);
+        terminalInstance.current.write(`\x1b[90mPrompt: ${test.prompt}\x1b[0m\r\n`);
+        terminalInstance.current.write(`\x1b[33mWaiting for response...\x1b[0m`);
+      }
+      
+      try {
+        // Call Ollama API
+        if (terminalInstance.current) {
+          terminalInstance.current.write(`\x1b[90mSending request to ${apiUrl}/api/generate...\x1b[0m\r\n`);
+        }
+        
+        // Add a timeout promise to handle cases where the API doesn't respond
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('API request timed out after 30 seconds')), 30000);
+        });
+        
+        let responseText = '';
+        let testEndTime;
+        
+        try {
+          // First try with non-streaming request
+          // Create the API call promise
+          const apiCallPromise = axios.post(
+            `${apiUrl}/api/generate`,
+            {
+              model: modelName,
+              prompt: test.prompt,
+              temperature: parameters?.temperature || 0.7,
+              top_p: parameters?.topP || 0.9,
+              top_k: parameters?.topK || 40,
+              repeat_penalty: parameters?.repeatPenalty || 1.1,
+              max_tokens: parameters?.maxTokens || 1024,
+              stream: false // Explicitly disable streaming to get a complete response
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          
+          // Race the API call against the timeout
+          const response = await Promise.race([apiCallPromise, timeoutPromise]);
+          
+          testEndTime = Date.now();
+          
+          // Debug the response structure
+          if (terminalInstance.current) {
+            terminalInstance.current.write('\r\x1b[K'); // Clear the line
+            terminalInstance.current.write(`\x1b[36mDebug - Response structure: ${JSON.stringify(Object.keys(response.data))}\x1b[0m\r\n`);
+          }
+          
+          // Handle different response formats
+          
+          // Check if response has the expected structure
+          if (response.data && response.data.response) {
+            // Standard Ollama response format
+            responseText = response.data.response;
+          } else if (response.data && typeof response.data === 'string') {
+            // Plain text response
+            responseText = response.data;
+          } else if (response.data && Array.isArray(response.data)) {
+            // Array of responses (some API versions)
+            responseText = response.data.map(item => item.response || '').join('');
+          } else if (response.data && typeof response.data === 'object') {
+            // If it's a streaming response that was collected as a single object
+            if (terminalInstance.current) {
+              terminalInstance.current.write(`\x1b[33mWarning: Received unexpected response format. Attempting to extract content.\x1b[0m\r\n`);
+            }
+            
+            // Try to extract any text content from the object
+            const dataStr = JSON.stringify(response.data);
+            const matches = dataStr.match(/"response":"([^"]*)"/g);
+            if (matches && matches.length > 0) {
+              responseText = matches.map(m => m.replace(/"response":"/, '').replace(/"$/, '')).join('');
+            } else {
+              // Last resort - use the stringified data
+              responseText = `Unable to parse response: ${dataStr.substring(0, 100)}...`;
+            }
+          } else {
+            throw new Error(`Invalid response structure: ${JSON.stringify(response.data)}`);
+          }
+        } catch (nonStreamingError) {
+          // If non-streaming request fails, try with streaming as fallback
+          if (terminalInstance.current) {
+            terminalInstance.current.write('\r\x1b[K'); // Clear the line
+            terminalInstance.current.write(`\x1b[33mNon-streaming request failed: ${nonStreamingError.message}\x1b[0m\r\n`);
+          }
+          
+          // Try streaming request as fallback
+          const startStreamTime = Date.now();
+          responseText = await handleStreamingRequest(apiUrl, modelName, test.prompt, parameters);
+          testEndTime = Date.now();
+          
+          if (!responseText) {
+            throw new Error('Both non-streaming and streaming requests failed');
+          }
+        }
+        
+        // Safely calculate tokens generated
+        let tokensGenerated = 0;
+        
+        try {
+          // Try to get token count from response if available (non-streaming case)
+          if (response && response.data && response.data.eval_count) {
+            tokensGenerated = response.data.eval_count;
+            if (terminalInstance.current) {
+              terminalInstance.current.write(`\x1b[90mToken count from API: ${tokensGenerated}\x1b[0m\r\n`);
+            }
+          } 
+          // Otherwise estimate based on whitespace (works for both streaming and non-streaming)
+          else if (responseText && typeof responseText === 'string') {
+            tokensGenerated = responseText.split(/\s+/).length;
+            if (terminalInstance.current) {
+              terminalInstance.current.write(`\x1b[90mEstimated token count: ${tokensGenerated}\x1b[0m\r\n`);
+            }
+          } else {
+            // If we can't determine tokens, use a default value
+            tokensGenerated = 10;
+            if (terminalInstance.current) {
+              terminalInstance.current.write(`\x1b[33mWarning: Could not determine token count, using default value\x1b[0m\r\n`);
+            }
+          }
+        } catch (tokenError) {
+          // Fallback if token calculation fails
+          tokensGenerated = responseText ? Math.ceil(responseText.length / 4) : 10;
+          if (terminalInstance.current) {
+            terminalInstance.current.write(`\x1b[33mWarning: Error calculating tokens, using estimate: ${tokensGenerated}\x1b[0m\r\n`);
+          }
+        }
+        
         totalTokens += tokensGenerated;
         
         // Calculate metrics
         const latency = testEndTime - testStartTime;
         const tokensPerSecond = tokensGenerated / (latency / 1000);
-        const score = test.evaluateFunc(responseText);
+        
+        // Safely evaluate the response
+        let score = 0;
+        try {
+          if (responseText && typeof responseText === 'string') {
+            score = test.evaluateFunc(responseText);
+          } else {
+            if (terminalInstance.current) {
+              terminalInstance.current.write(`\x1b[33mWarning: Response is not a string, cannot evaluate\x1b[0m\r\n`);
+            }
+          }
+        } catch (evalError) {
+          if (terminalInstance.current) {
+            terminalInstance.current.write(`\x1b[33mWarning: Error evaluating response: ${evalError.message}\x1b[0m\r\n`);
+          }
+        }
+        
+        // Clear the "Waiting for response..." line and write results to terminal
+        if (terminalInstance.current) {
+          terminalInstance.current.write('\r\x1b[K'); // Clear the line
+          terminalInstance.current.write(`\x1b[32mResponse received in ${(latency / 1000).toFixed(2)}s\x1b[0m\r\n`);
+          
+          // Safely display response text
+          if (responseText && typeof responseText === 'string') {
+            terminalInstance.current.write(`\x1b[90m${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}\x1b[0m\r\n`);
+          } else {
+            terminalInstance.current.write(`\x1b[33mWarning: Response is not a string\x1b[0m\r\n`);
+            terminalInstance.current.write(`\x1b[90m${JSON.stringify(response.data).substring(0, 100)}...\x1b[0m\r\n`);
+          }
+          
+          // Write score with color based on value
+          let scoreColor = '31'; // Red
+          if (score >= 8) scoreColor = '32'; // Green
+          else if (score >= 5) scoreColor = '33'; // Yellow
+          
+          terminalInstance.current.write(`\x1b[1;${scoreColor}mScore: ${score}/10\x1b[0m\r\n`);
+          terminalInstance.current.write(`Tokens/sec: ${tokensPerSecond.toFixed(1)}\r\n\n`);
+        }
         
         results.push({
           name: test.name,
           score,
           latency,
           tokensPerSecond,
-          response: responseText.substring(0, 100) + (responseText.length > 100 ? '...' : '')
+          response: responseText && typeof responseText === 'string' 
+            ? responseText.substring(0, 100) + (responseText.length > 100 ? '...' : '')
+            : JSON.stringify(response.data).substring(0, 100) + '...'
         });
       } catch (error) {
+        // Clear the "Waiting for response..." line and write error to terminal
+        if (terminalInstance.current) {
+          terminalInstance.current.write('\r\x1b[K'); // Clear the line
+          
+          // Provide more detailed error information
+          let errorMessage = error.message;
+          let errorDetails = '';
+          let responseData = null;
+          
+          if (error.response) {
+            // The request was made and the server responded with a status code
+            // that falls out of the range of 2xx
+            errorMessage = `Server error: ${error.response.status}`;
+            errorDetails = JSON.stringify(error.response.data);
+            responseData = error.response.data;
+          } else if (error.request) {
+            // The request was made but no response was received
+            errorMessage = 'No response received from server';
+            errorDetails = 'Check if the Ollama server is running and accessible';
+          }
+          
+          // Check if the error contains streaming response data
+          if (errorMessage.includes('Invalid response structure') && error.message.includes('"response":')) {
+            try {
+              // Try to extract the streamed responses
+              const streamedData = error.message.split('\n')
+                .filter(line => line.trim().startsWith('{') && line.includes('"response"'))
+                .map(line => {
+                  try {
+                    return JSON.parse(line);
+                  } catch (e) {
+                    return null;
+                  }
+                })
+                .filter(item => item !== null);
+              
+              if (streamedData.length > 0) {
+                // Extract the text from the streamed responses
+                const extractedText = streamedData
+                  .map(item => item.response || '')
+                  .join('');
+                
+                if (extractedText) {
+                  terminalInstance.current.write(`\x1b[33mDetected streaming response. Extracted content:\x1b[0m\r\n`);
+                  terminalInstance.current.write(`\x1b[90m${extractedText.substring(0, 200)}${extractedText.length > 200 ? '...' : ''}\x1b[0m\r\n`);
+                  
+                  // Try to evaluate the extracted text
+                  let score = 0;
+                  try {
+                    score = test.evaluateFunc(extractedText);
+                    
+                    // Calculate approximate metrics
+                    const latency = testEndTime - testStartTime;
+                    const tokensGenerated = extractedText.split(/\s+/).length;
+                    const tokensPerSecond = tokensGenerated / (latency / 1000);
+                    
+                    // Add the result with the extracted text
+                    results.push({
+                      name: test.name,
+                      score,
+                      latency,
+                      tokensPerSecond,
+                      response: extractedText.substring(0, 100) + (extractedText.length > 100 ? '...' : '')
+                    });
+                    
+                    // Write score with color based on value
+                    let scoreColor = '31'; // Red
+                    if (score >= 8) scoreColor = '32'; // Green
+                    else if (score >= 5) scoreColor = '33'; // Yellow
+                    
+                    terminalInstance.current.write(`\x1b[1;${scoreColor}mScore: ${score}/10\x1b[0m\r\n`);
+                    terminalInstance.current.write(`Tokens/sec: ${tokensPerSecond.toFixed(1)}\r\n\n`);
+                    
+                    // Skip the rest of the error handling
+                    return;
+                  } catch (evalError) {
+                    terminalInstance.current.write(`\x1b[33mWarning: Error evaluating extracted response: ${evalError.message}\x1b[0m\r\n`);
+                  }
+                }
+              }
+            } catch (parseError) {
+              terminalInstance.current.write(`\x1b[33mWarning: Failed to parse streaming response: ${parseError.message}\x1b[0m\r\n`);
+            }
+          }
+          
+          terminalInstance.current.write(`\x1b[31mError: ${errorMessage}\x1b[0m\r\n`);
+          if (errorDetails) {
+            terminalInstance.current.write(`\x1b[31mDetails: ${errorDetails}\x1b[0m\r\n`);
+          }
+          terminalInstance.current.write('\n');
+        }
+        
         results.push({
           name: test.name,
           score: 0,
@@ -249,6 +723,15 @@ const Settings = () => {
     const averageScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
     const averageLatency = results.reduce((sum, r) => sum + r.latency, 0) / results.length;
     const averageTokensPerSecond = results.reduce((sum, r) => sum + r.tokensPerSecond, 0) / results.length;
+    
+    // Write summary to terminal
+    if (terminalInstance.current) {
+      terminalInstance.current.write('\x1b[1;35m=== Summary ===\x1b[0m\r\n');
+      terminalInstance.current.write(`Total time: ${(totalTime / 1000).toFixed(2)}s\r\n`);
+      terminalInstance.current.write(`Average score: ${averageScore.toFixed(1)}/10\r\n`);
+      terminalInstance.current.write(`Average latency: ${averageLatency.toFixed(0)}ms\r\n`);
+      terminalInstance.current.write(`Average tokens/sec: ${averageTokensPerSecond.toFixed(1)}\r\n\n`);
+    }
     
     return {
       model: modelName,
@@ -692,7 +1175,7 @@ const Settings = () => {
       setIsLoadingFile(false);
     }
   };
-  
+
   const saveConfigToFile = async () => {
     if (!isConfigValid) {
       dispatch(addNotification({
@@ -799,7 +1282,11 @@ const Settings = () => {
     const error = providerData.error;
     const models = providerData.models || [];
     const hasTestedConnection = servicesManuallyLoaded[provider];
-    const isConfigured = formData[provider].apiUrl && formData[provider].defaultModel;
+    const isConfigured = formData[provider].apiUrl && 
+      (provider === 'projectManager' ? formData[provider].model : formData[provider].defaultModel);
+
+    // Determine which field to use for model selection based on provider
+    const modelField = provider === 'projectManager' ? 'model' : 'defaultModel';
 
     return (
       <Card sx={{ mb: 3 }}>
@@ -830,474 +1317,66 @@ const Settings = () => {
                     `Example: ${DEFAULT_URLS[provider]}`}
                   sx={{ mr: 1 }}
                 />
-                <Tooltip title={`Use default (${DEFAULT_URLS[provider]})`}>
-                  <Button 
-                    variant="outlined" 
-                    size="small"
+                <Tooltip title={`Use default URL: ${DEFAULT_URLS[provider]}`}>
+                  <IconButton 
+                    size="small" 
+                    color="primary"
                     onClick={() => handleUseDefault(provider)}
                   >
-                    Default
-                  </Button>
+                    <HelpOutline fontSize="small" />
+                  </IconButton>
                 </Tooltip>
               </Box>
             </Grid>
 
-            <Grid item xs={12} sx={{ display: 'flex', alignItems: 'center' }}>
-              <Button 
-                variant="outlined" 
-                onClick={() => handleTestConnection(provider)}
-                sx={{ mr: 2 }}
-                disabled={isLoading || !formData[provider].apiUrl}
-                color="primary"
-              >
-                {isLoading ? 'Testing...' : 'Test Connection'}
-              </Button>
-              
-              {isLoading && <CircularProgress size={20} sx={{ mr: 1 }} />}
-              
-              {!isLoading && hasTestedConnection && !error && (
-                <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
-                  <CheckCircle fontSize="small" sx={{ mr: 0.5 }} />
-                  Connection successful
-                </Typography>
-              )}
-              
-              {!isLoading && hasTestedConnection && error && (
-                <Typography variant="body2" color="error" sx={{ display: 'flex', alignItems: 'center' }}>
-                  <ErrorOutline fontSize="small" sx={{ mr: 0.5 }} />
-                  Connection failed
-                </Typography>
-              )}
-            </Grid>
-
             <Grid item xs={12}>
-              <FormControl fullWidth error={!!validationErrors[provider].defaultModel}>
-                <InputLabel>Default Model</InputLabel>
-                <Select
-                  value={formData[provider].defaultModel}
-                  onChange={(e) => handleInputChange(provider, 'defaultModel', e.target.value)}
-                  label="Default Model"
-                  disabled={models.length === 0}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                <FormControl 
+                  fullWidth 
+                  error={!!validationErrors[provider][modelField]}
+                  sx={{ mr: 1 }}
                 >
-                  <MenuItem value="">
-                    <em>None</em>
-                  </MenuItem>
-                  {models.map((model, index) => (
-                    <MenuItem key={index} value={typeof model === 'string' ? model : model.id || model.name}>
-                      {typeof model === 'string' ? model : model.id || model.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-                <FormHelperText>
-                  {validationErrors[provider].defaultModel || 
-                  (models.length === 0 && 'Test connection to load available models')}
-                </FormHelperText>
-              </FormControl>
-            </Grid>
-
-            {error && (
-              <Grid item xs={12}>
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  Failed to fetch models: {error}
-                </Alert>
-                <Typography variant="body2">
-                  Make sure your {title} is running and the API URL is correct.
-                </Typography>
-              </Grid>
-            )}
-
-            {!isLoading && !error && models.length > 0 && (
-              <Grid item xs={12}>
-                <Typography variant="body2" color="textSecondary">
-                  {models.length} models available
-                </Typography>
-              </Grid>
-            )}
-          </Grid>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  const renderConfigEditor = () => {
-    return (
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
-              <Code sx={{ mr: 1 }} />
-              Environment Configuration
-            </Typography>
-            {isLoadingFile && <CircularProgress size={20} sx={{ ml: 1 }} />}
-          </Box>
-          
-          <Typography variant="body2" color="text.secondary" paragraph>
-            View and edit your environment configuration in JSON or YAML format. 
-            This configuration is saved to a file in the <code>config/</code> directory of your workspace.
-          </Typography>
-          
-          {fileError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {fileError}
-            </Alert>
-          )}
-          
-          <Divider sx={{ my: 2 }} />
-          
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-            <Tabs value={configFormat} onChange={handleFormatChange}>
-              <Tab label="JSON" value="json" />
-              <Tab label="YAML" value="yaml" />
-            </Tabs>
-          </Box>
-          
-          <Box sx={{ 
-            border: 1, 
-            borderColor: isConfigValid ? 'divider' : 'error.main',
-            borderRadius: 1
-          }}>
-            <Editor
-              height="300px"
-              language={configFormat === 'json' ? 'json' : 'yaml'}
-              value={configValue}
-              onChange={handleEditorChange}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                wordWrap: 'on',
-                automaticLayout: true
-              }}
-            />
-          </Box>
-          
-          {!isConfigValid && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              Invalid {configFormat.toUpperCase()} format. Please check your syntax.
-            </Alert>
-          )}
-          
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
-            <Button 
-              variant="outlined" 
-              startIcon={<ContentCopy />}
-              onClick={handleCopyConfig}
-            >
-              Copy
-            </Button>
-            <Button 
-              variant="outlined"
-              startIcon={<Download />}
-              onClick={handleDownloadConfig}
-            >
-              Download
-            </Button>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={saveConfigToFile}
-              disabled={isSavingFile || !isConfigValid}
-              startIcon={isSavingFile ? <CircularProgress size={20} /> : null}
-            >
-              Save to File
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  const renderProjectManagerCard = () => {
-    const projectManagerModels = settings?.projectManager?.models || [];
-    const isLoadingModels = settings?.projectManager?.loading || false;
-    
-    return (
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Project Manager Settings
-          </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            Configure the dedicated LLM endpoint for the Project Manager agent. This agent is persistent across the project and uses a DeepScaler model with function calling capabilities.
-          </Typography>
-          
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth error={!!validationErrors.projectManager.apiUrl} sx={{ mb: 2 }}>
-                <TextField
-                  label="API URL"
-                  value={formData.projectManager.apiUrl}
-                  onChange={(e) => handleInputChange('projectManager', 'apiUrl', e.target.value)}
-                  error={!!validationErrors.projectManager.apiUrl}
-                  helperText={validationErrors.projectManager.apiUrl}
-                  placeholder="http://localhost:11434"
-                  InputProps={{
-                    endAdornment: (
-                      <Tooltip title="The URL of your Ollama API endpoint">
-                        <IconButton size="small" edge="end">
-                          <HelpOutline fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    ),
-                  }}
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth error={!!validationErrors.projectManager.model} sx={{ mb: 2 }}>
-                <InputLabel>Model</InputLabel>
-                <Select
-                  value={formData.projectManager.model}
-                  onChange={(e) => handleInputChange('projectManager', 'model', e.target.value)}
-                  label="Model"
-                  error={!!validationErrors.projectManager.model}
-                  disabled={isLoadingModels || projectManagerModels.length === 0}
-                >
-                  <MenuItem value="">
-                    <em>None</em>
-                  </MenuItem>
-                  {projectManagerModels.map((model, index) => (
-                    <MenuItem key={index} value={model}>
-                      {model}
-                    </MenuItem>
-                  ))}
-                  {projectManagerModels.length === 0 && (
-                    <MenuItem value="deepscaler:7b">
-                      deepscaler:7b (default)
-                    </MenuItem>
+                  <InputLabel id={`${provider}-model-label`}>Model</InputLabel>
+                  <Select
+                    labelId={`${provider}-model-label`}
+                    value={formData[provider][modelField] || ''}
+                    onChange={(e) => handleInputChange(provider, modelField, e.target.value)}
+                    label="Model"
+                  >
+                    {models.length > 0 ? (
+                      models.map(model => (
+                        <MenuItem key={model} value={model}>{model}</MenuItem>
+                      ))
+                    ) : (
+                      <MenuItem value="" disabled>
+                        {isLoading ? 'Loading models...' : 'No models available'}
+                      </MenuItem>
+                    )}
+                  </Select>
+                  {validationErrors[provider][modelField] && (
+                    <FormHelperText>{validationErrors[provider][modelField]}</FormHelperText>
                   )}
-                </Select>
-                <FormHelperText>
-                  {validationErrors.projectManager.model || 
-                  (projectManagerModels.length === 0 && !isLoadingModels && 'Test connection to load available models') ||
-                  (isLoadingModels && 'Loading models...') ||
-                  "Recommended: deepscaler:7b or deepscaler:14b"}
-                </FormHelperText>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
-                Advanced Parameters
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Temperature"
-                  type="number"
-                  value={formData.projectManager.parameters?.temperature || 0.7}
-                  onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
-                  inputProps={{ 
-                    step: 0.1,
-                    min: 0,
-                    max: 2
-                  }}
-                  helperText="Controls randomness (0-2)"
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Top P"
-                  type="number"
-                  value={formData.projectManager.parameters?.topP || 0.9}
-                  onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
-                  inputProps={{ 
-                    step: 0.05,
-                    min: 0,
-                    max: 1
-                  }}
-                  helperText="Nucleus sampling (0-1)"
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Top K"
-                  type="number"
-                  value={formData.projectManager.parameters?.topK || 40}
-                  onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
-                  inputProps={{ 
-                    step: 1,
-                    min: 1,
-                    max: 100
-                  }}
-                  helperText="Limits vocabulary choices"
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Repeat Penalty"
-                  type="number"
-                  value={formData.projectManager.parameters?.repeatPenalty || 1.1}
-                  onChange={(e) => handleParameterChange('repeatPenalty', parseFloat(e.target.value))}
-                  inputProps={{ 
-                    step: 0.1,
-                    min: 1,
-                    max: 2
-                  }}
-                  helperText="Prevents repetition (1-2)"
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Max Tokens"
-                  type="number"
-                  value={formData.projectManager.parameters?.maxTokens || 1024}
-                  onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
-                  inputProps={{ 
-                    step: 128,
-                    min: 128,
-                    max: 8192
-                  }}
-                  helperText="Maximum output length"
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <TextField
-                  label="Context Length"
-                  type="number"
-                  value={formData.projectManager.parameters?.contextLength || 4096}
-                  onChange={(e) => handleParameterChange('contextLength', parseInt(e.target.value))}
-                  inputProps={{ 
-                    step: 1024,
-                    min: 2048,
-                    max: 32768
-                  }}
-                  helperText="Maximum context window"
-                />
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                <Box>
-                  <Button
-                    variant="outlined"
-                    onClick={() => handleTestConnection('projectManager')}
-                    startIcon={isLoadingModels ? <CircularProgress size={20} /> : <CheckCircle />}
-                    disabled={isLoadingModels}
-                    sx={{ mr: 2 }}
-                  >
-                    {isLoadingModels ? 'Loading Models...' : 'Test Connection'}
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    onClick={handleBenchmark}
-                    startIcon={isBenchmarking ? <CircularProgress size={20} /> : <Assessment />}
-                    disabled={isBenchmarking || !formData.projectManager.model}
-                    color="info"
-                  >
-                    {isBenchmarking ? 'Benchmarking...' : 'Benchmark Model'}
-                  </Button>
-                </Box>
-                
+                </FormControl>
                 <Button
                   variant="outlined"
-                  onClick={() => handleUseDefault('projectManager')}
-                  color="secondary"
+                  color="primary"
+                  onClick={() => handleTestConnection(provider)}
+                  disabled={isLoading || !formData[provider].apiUrl}
+                  sx={{ minWidth: '120px', height: '56px' }}
                 >
-                  Use Default
+                  {isLoading ? (
+                    <CircularProgress size={24} />
+                  ) : hasTestedConnection ? (
+                    'Refresh Models'
+                  ) : (
+                    'Test Connection'
+                  )}
                 </Button>
               </Box>
-              
-              {servicesManuallyLoaded.projectManager && (
-                <Alert severity="success" sx={{ mt: 2 }}>
-                  Connection successful! {projectManagerModels.length > 0 ? 
-                    `Found ${projectManagerModels.length} compatible models.` : 
-                    'No compatible models found. Using default model.'}
+              {error && (
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  {error}
                 </Alert>
-              )}
-              
-              {benchmarkResults && (
-                <Paper elevation={1} sx={{ mt: 3, p: 2, bgcolor: 'background.default' }}>
-                  <Typography variant="h6" gutterBottom>
-                    Benchmark Results: {benchmarkResults.model}
-                  </Typography>
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Box>
-                      <Typography variant="subtitle2">
-                        Overall Score: {benchmarkResults.averageScore.toFixed(1)}/10
-                      </Typography>
-                      <Box sx={{ width: '100%', mt: 1 }}>
-                        <Box sx={{ 
-                          height: 10, 
-                          width: `${benchmarkResults.averageScore * 10}%`, 
-                          bgcolor: getScoreColor(benchmarkResults.averageScore),
-                          borderRadius: 5
-                        }} />
-                      </Box>
-                    </Box>
-                    
-                    <Box>
-                      <Typography variant="body2">
-                        Avg. Latency: {benchmarkResults.averageLatency.toFixed(0)}ms
-                      </Typography>
-                      <Typography variant="body2">
-                        Tokens/sec: {benchmarkResults.averageTokensPerSecond.toFixed(1)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  
-                  <Divider sx={{ my: 2 }} />
-                  
-                  <Typography variant="subtitle2" gutterBottom>
-                    Test Results:
-                  </Typography>
-                  
-                  <Grid container spacing={2}>
-                    {benchmarkResults.tests.map((test, index) => (
-                      <Grid item xs={12} key={index}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 'bold', minWidth: 120 }}>
-                            {test.name}:
-                          </Typography>
-                          <Box sx={{ 
-                            height: 8, 
-                            width: `${test.score * 10}%`, 
-                            bgcolor: getScoreColor(test.score),
-                            borderRadius: 4,
-                            ml: 2,
-                            mr: 2,
-                            flexGrow: 1
-                          }} />
-                          <Typography variant="body2">
-                            {test.score}/10
-                          </Typography>
-                        </Box>
-                        {test.error ? (
-                          <Typography variant="body2" color="error.main" sx={{ ml: 2, fontSize: '0.8rem' }}>
-                            Error: {test.error}
-                          </Typography>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary" sx={{ ml: 2, fontSize: '0.8rem' }}>
-                            {test.response}
-                          </Typography>
-                        )}
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Paper>
               )}
             </Grid>
           </Grid>
@@ -1307,69 +1386,178 @@ const Settings = () => {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 800, margin: '0 auto' }}>
+    <Box sx={{ maxWidth: '900px', mx: 'auto', p: 2 }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab label="LLM Providers" />
-          <Tab label="Project Manager" />
+        <Tabs value={activeTab} onChange={handleTabChange} aria-label="settings tabs">
+          <Tab label="Providers" />
+          <Tab label="Benchmark" />
           <Tab label="Configuration" />
         </Tabs>
       </Box>
-      
-      {activeTab === 0 ? (
-        <>
-          <Typography variant="h4" gutterBottom>
-            LLM Providers
-          </Typography>
+
+      {/* Providers Tab */}
+      {activeTab === 0 && (
+        <div>
+          {renderProviderCard('lmStudio', 'LM Studio', 'Configure LM Studio API settings for local inference')}
+          {renderProviderCard('ollama', 'Ollama', 'Configure Ollama API settings for local inference')}
+          {renderProviderCard('projectManager', 'Project Manager', 'Configure the Project Manager agent settings')}
           
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body1" paragraph>
-              You need to configure at least one LLM provider (LM Studio or Ollama) to enable advanced functionality for the Project Manager.
-            </Typography>
-          </Alert>
-          
-          {renderProviderCard(
-            'lmStudio', 
-            'LM Studio', 
-            'LM Studio is a desktop application that provides a GUI for running models using the OpenAI API format. Make sure LM Studio is running on your computer before testing the connection.'
-          )}
-          
-          {renderProviderCard(
-            'ollama', 
-            'Ollama', 
-            'Ollama allows you to run open-source large language models locally using its own API format. Make sure Ollama is installed and running on your computer before testing the connection.'
-          )}
-        </>
-      ) : activeTab === 1 ? (
-        <>
-          {renderProjectManagerCard()}
-        </>
-      ) : (
-        <>
-          <Typography variant="h4" gutterBottom>
-            Environment Configuration
-          </Typography>
-          
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body1" paragraph>
-              View and edit your environment configuration in JSON or YAML format. This configuration is synchronized with the settings in the LLM Providers tab.
-            </Typography>
-          </Alert>
-          
-          {renderConfigEditor()}
-        </>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSave}
+              disabled={isSavingFile}
+            >
+              {isSavingFile ? 'Saving...' : 'Save All Settings'}
+            </Button>
+          </Box>
+        </div>
       )}
-      
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleSave}
-          size="large"
-        >
-          Save Settings
-        </Button>
-      </Box>
+
+      {/* Benchmark Tab */}
+      {activeTab === 1 && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Benchmark
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              Test the performance of your Project Manager model
+            </Typography>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              onClick={handleBenchmark}
+              disabled={isBenchmarking}
+              startIcon={isBenchmarking ? <CircularProgress size={20} /> : <Assessment />}
+            >
+              {isBenchmarking ? 'Running Benchmark...' : 'Run Benchmark'}
+            </Button>
+            
+            {showTerminal && (
+              <Box sx={{ mt: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, bgcolor: 'background.default' }}>
+                  <Typography variant="subtitle2">Benchmark Terminal</Typography>
+                  <IconButton size="small" onClick={() => setShowTerminal(false)}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+                <Box 
+                  ref={terminalContainerRef} 
+                  sx={{ 
+                    height: '300px', 
+                    width: '100%', 
+                    bgcolor: '#1e1e1e'
+                  }} 
+                />
+              </Box>
+            )}
+            
+            {benchmarkResults && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="h6">Results</Typography>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={12} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Score</Typography>
+                      <Typography variant="h4" sx={{ color: getScoreColor(benchmarkResults.averageScore) }}>
+                        {benchmarkResults.averageScore.toFixed(1)}/10
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Latency</Typography>
+                      <Typography variant="h4">
+                        {benchmarkResults.averageLatency.toFixed(0)}ms
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Tokens/sec</Typography>
+                      <Typography variant="h4">
+                        {benchmarkResults.averageTokensPerSecond.toFixed(1)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Configuration Tab */}
+      {activeTab === 2 && (
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">
+                Configuration
+              </Typography>
+              <Box>
+                <Tabs value={configFormat} onChange={handleFormatChange} aria-label="config format">
+                  <Tab value="json" label="JSON" />
+                  <Tab value="yaml" label="YAML" />
+                </Tabs>
+              </Box>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Editor
+                height="300px"
+                language={configFormat}
+                value={configValue}
+                onChange={handleEditorChange}
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 14
+                }}
+              />
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Box>
+                <Button
+                  variant="outlined"
+                  startIcon={<ContentCopy />}
+                  onClick={handleCopyConfig}
+                  sx={{ mr: 1 }}
+                >
+                  Copy
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={handleDownloadConfig}
+                >
+                  Download
+                </Button>
+              </Box>
+              <Box>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSave}
+                  disabled={!isConfigValid || isSavingFile}
+                >
+                  {isSavingFile ? 'Saving...' : 'Save Settings'}
+                </Button>
+              </Box>
+            </Box>
+            
+            {fileError && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                {fileError}
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </Box>
   );
 };
