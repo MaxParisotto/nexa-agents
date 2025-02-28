@@ -33,6 +33,7 @@ const ChatWidget = () => {
   const nodeRef = useRef(null);
   const [server, setServer] = useState('lmstudio');
   const [model, setModel] = useState('');
+  const [outputTarget, setOutputTarget] = useState('chat');
   const [message, setMessage] = useState('');
   const [conversation, setConversation] = useState([]);
   const [lmStudioAddress, setLmStudioAddress] = useState('');
@@ -708,6 +709,13 @@ const ChatWidget = () => {
               <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflowY: 'hidden' }}>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <FormControl size="small" sx={{ flex: 1 }}>
+                    <InputLabel id="output-target-label">Output To</InputLabel>
+                    <Select labelId="output-target-label" value={outputTarget} label="Output Target" onChange={(e) => setOutputTarget(e.target.value)}>
+                      <MenuItem value="chat">Chat Only</MenuItem>
+                      <MenuItem value="agent">Agent</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ flex: 1 }}>
                     <InputLabel id="server-label">Server</InputLabel>
                     <Select labelId="server-label" id="server" value={server} label="Server" onChange={handleServerChange}>
                       <MenuItem value="lmstudio">LM Studio</MenuItem>
@@ -793,4 +801,3 @@ const ChatWidget = () => {
 };
 
 export default ChatWidget;
-

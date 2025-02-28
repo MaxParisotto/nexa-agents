@@ -15,7 +15,6 @@ import Metrics from './components/Metrics';
 import Logs from './components/Logs';
 import Settings from './components/Settings';
 import ChatWidget from './components/ChatWidget';
-import ProjectManagerChat from './components/ProjectManagerChat';
 import ProjectManager from './components/ProjectManager';
 import NotificationsSystem from './components/NotificationsSystem';
 
@@ -188,10 +187,7 @@ function AppContent() {
           {/* ChatWidget component for interaction */}
           <ChatWidget />
           
-          {/* ProjectManagerChat component for interaction with the Project Manager agent */}
-          <ProjectManagerChat />
-          
-          {/* ProjectManager is a non-visual component that manages agent workflows */}
+          {/* ProjectManager handles both agent workflows and user interaction */}
           <ProjectManager />
           
           {/* Notifications system */}
