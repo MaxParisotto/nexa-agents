@@ -30,6 +30,7 @@ const Dock = () => {
     { text: 'Metrics', icon: <MetricsIcon />, path: '/metrics' },
     { text: 'Logs', icon: <LogsIcon />, path: '/logs' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+    { text: 'Agora', icon: <ChatIcon />, path: '/agora' },
   ];
 
   // Toggle chat widget visibility
@@ -198,4 +199,4 @@ const Dock = () => {
   );
 };
 
-export default Dock; 
+export default Dock;

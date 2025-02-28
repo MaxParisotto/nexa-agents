@@ -1,10 +1,3 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import { Provider, useDispatch, useSelector } from 'react-redux';
-import store from './store';
-
 // Components
 import Header from './components/Header';
 import Dock from './components/Dock';
@@ -16,7 +9,14 @@ import Logs from './components/Logs';
 import Settings from './components/Settings';
 import ChatWidget from './components/ChatWidget';
 import ProjectManager from './components/ProjectManager';
+import Agora from './components/Agora/Agora';
 import NotificationsSystem from './components/NotificationsSystem';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import store from './store';
 
 // Actions
 import { loadSettings, loadPersistedModels } from './store/actions/settingsActions';
@@ -176,6 +176,7 @@ function AppContent() {
                   <Route path="/metrics" element={<Metrics />} />
                   <Route path="/logs" element={<Logs />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/agora" element={<Agora />} />
                 </Routes>
               )}
             </main>
