@@ -30,6 +30,11 @@ const generateUniqueId = () => {
   return `${timestamp}-${idCounter}`;
 };
 
+const DEFAULT_URLS = {
+  lmStudio: 'http://localhost:1234',
+  // Remove Ollama URL
+};
+
 const initialState = {
   notifications: [],
   errors: [],

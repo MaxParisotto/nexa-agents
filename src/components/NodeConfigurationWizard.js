@@ -36,6 +36,7 @@ import store from '../store';
 import { addNotification } from '../store/actions/systemActions';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { useSelector } from 'react-redux';
 
 /**
  * NodeConfigurationWizard component for configuring different types of nodes in the flow
@@ -44,8 +45,6 @@ const NodeConfigurationWizard = ({
   open, 
   onClose, 
   onNodeAdd, 
-  lmStudioAddress, 
-  ollamaAddress, 
   existingNodeData = null,
   onNodeUpdate = null
 }) => {
@@ -55,12 +54,12 @@ const NodeConfigurationWizard = ({
   
   // Agent specific properties
   const [agentDescription, setAgentDescription] = useState(existingNodeData?.data?.agentDescription || '');
-  const [apiAddress, setApiAddress] = useState(existingNodeData?.data?.apiAddress || lmStudioAddress || ollamaAddress || '');
+  const [inferenceApi, setInferenceApi] = useState(existingNodeData?.data?.inferenceApi || 'lmStudio');
+  const [modelName, setModelName] = useState(existingNodeData?.data?.modelName || '');
   const [modelTemperature, setModelTemperature] = useState(existingNodeData?.data?.modelTemperature || 0.7);
   const [maxTokens, setMaxTokens] = useState(existingNodeData?.data?.maxTokens || 1024);
   const [topP, setTopP] = useState(existingNodeData?.data?.topP || 0.9);
   const [repetitionPenalty, setRepetitionPenalty] = useState(existingNodeData?.data?.repetitionPenalty || 1.1);
-  const [inferenceApi, setInferenceApi] = useState(existingNodeData?.data?.inferenceApi || 'lmstudio');
   const [selectedModel, setSelectedModel] = useState(existingNodeData?.data?.selectedModel || '');
   const [availableModels, setAvailableModels] = useState([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -84,6 +83,9 @@ const NodeConfigurationWizard = ({
   // Validation
   const [errors, setErrors] = useState({});
 
+  const lmStudioAddress = useSelector(state => state.settings?.lmStudio?.apiUrl);
+  const [apiAddress, setApiAddress] = useState(existingNodeData?.data?.apiAddress || lmStudioAddress || '');
+
   useEffect(() => {
     if (inferenceApi && apiAddress) {
       fetchAvailableModels();
@@ -95,7 +97,7 @@ const NodeConfigurationWizard = ({
     try {
       let url = '';
       
-      if (inferenceApi === 'lmstudio') {
+      if (inferenceApi === 'lmStudio') {
         url = `${apiAddress}/v1/models`;
       } else if (inferenceApi === 'ollama') {
         url = `${apiAddress}/api/tags`;
@@ -108,7 +110,7 @@ const NodeConfigurationWizard = ({
         timeout: 3000
       });
       
-      if (inferenceApi === 'lmstudio' && response.data?.data) {
+      if (inferenceApi === 'lmStudio' && response.data?.data) {
         setAvailableModels(response.data.data.map(model => model.id));
       } else if (inferenceApi === 'ollama' && response.data?.models) {
         setAvailableModels(response.data.models.map(model => model.name));
@@ -304,8 +306,7 @@ const NodeConfigurationWizard = ({
               label="Inference API"
               onChange={(e) => setInferenceApi(e.target.value)}
             >
-              <MenuItem value="lmstudio">LM Studio</MenuItem>
-              <MenuItem value="ollama">Ollama</MenuItem>
+              <MenuItem value="lmStudio">LM Studio</MenuItem>
             </Select>
           </FormControl>
           
@@ -316,7 +317,7 @@ const NodeConfigurationWizard = ({
             fullWidth
             sx={{ mb: 2 }}
             required
-            helperText={`Default: ${inferenceApi === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:11434'}`}
+            helperText={`Default: ${inferenceApi === 'lmStudio' ? 'http://localhost:1234' : 'http://localhost:11434'}`}
           />
           
           <FormControl fullWidth sx={{ mb: 2 }}>

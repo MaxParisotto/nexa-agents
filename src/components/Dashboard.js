@@ -4,53 +4,52 @@ import { Box, Grid, Paper, Typography, Card, CardContent, CircularProgress } fro
 import { 
   ListAlt as WorkflowIcon,
   SmartToy as AgentIcon,
-  Description as PromptIcon,
+  TextFields as PromptIcon,
   Output as OutputIcon
 } from '@mui/icons-material';
+import ApiStatus from './ApiStatus';
 
 import { startSystemMonitoring } from '../store/actions/systemActions';
 
 /**
- * Dashboard component displays system status and workflow statistics
+ * Dashboard component serving as the main landing page
  */
 const Dashboard = () => {
   const dispatch = useDispatch();
   const system = useSelector(state => state.system);
-  const workflows = useSelector(state => state.system.workflows || []);
+  const workflows = useSelector(state => state.system?.workflows || []);
   
-  // Start system monitoring on component mount
+  // Initialize node statistics
+  const nodeStats = {
+    agents: 0,
+    prompts: 0,
+    outputs: 0
+  };
+  
+  // Count node types from workflows
+  workflows.forEach(workflow => {
+    if (workflow.nodes) {
+      workflow.nodes.forEach(node => {
+        if (node.type === 'agent') nodeStats.agents++;
+        if (node.type === 'prompt') nodeStats.prompts++;
+        if (node.type === 'output') nodeStats.outputs++;
+      });
+    }
+  });
+  
+  // Start monitoring on component mount
   useEffect(() => {
     dispatch(startSystemMonitoring());
   }, [dispatch]);
-  
-  // Calculate statistics
-  const getTotalNodes = () => {
-    return workflows.reduce((total, workflow) => total + (workflow.nodes?.length || 0), 0);
-  };
-  
-  const getNodesByType = () => {
-    const stats = { agents: 0, prompts: 0, outputs: 0 };
-    
-    workflows.forEach(workflow => {
-      if (!workflow.nodes) return;
-      
-      workflow.nodes.forEach(node => {
-        if (node.type === 'agent') stats.agents++;
-        else if (node.type === 'prompt') stats.prompts++;
-        else if (node.type === 'output') stats.outputs++;
-      });
-    });
-    
-    return stats;
-  };
-  
-  const nodeStats = getNodesByType();
   
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
       <Typography variant="h4" gutterBottom>
         Dashboard
       </Typography>
+      
+      {/* API Status Component */}
+      <ApiStatus />
       
       {/* Workflow statistics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

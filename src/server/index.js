@@ -1,3 +1,8 @@
+/**
+ * Main server file for Nexa Agents backend
+ * Handles API routes, middleware, and server initialization
+ */
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -5,6 +10,13 @@ const cors = require('cors');
 const winston = require('winston');
 const fs = require('fs');
 const path = require('path');
+const bodyParser = require('body-parser');
+const logger = require('./utils/logger');
+
+// Import routes
+const settingsRoutes = require('./routes/settings');
+const modelsRoutes = require('./routes/models');
+const testRoutes = require('./routes/test');
 
 const app = express();
 
@@ -66,7 +78,7 @@ const rateLimitFormat = winston.format((info) => {
 });
 
 // Configure Winston logger with rate limiting
-const logger = winston.createLogger({
+const loggerWinston = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: winston.format.combine(
     rateLimitFormat(),
@@ -95,17 +107,23 @@ const logger = winston.createLogger({
 const LOGS_DIR = path.join(__dirname, '../../logs');
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
-  logger.info('Created logs directory', { path: LOGS_DIR });
+  loggerWinston.info('Created logs directory', { path: LOGS_DIR });
 }
 
-// Enable CORS
+// Middleware
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST']
+  origin: 'http://localhost:3000', // Allow requests from React app
+  methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, '../../build')));
 
-// Parse JSON request bodies
-app.use(express.json({ limit: '2mb' }));
+// Request logger middleware
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path}`);
+  next();
+});
 
 // Request logging middleware with rate limiting for identical requests
 const requestLogCache = new Map();
@@ -116,7 +134,7 @@ app.use((req, res, next) => {
   
   // Only log requests if it's been at least 5 seconds since the last identical request
   if (!lastLogged || (now - lastLogged > 5000)) {
-    logger.debug(`Received ${req.method} request`, { 
+    loggerWinston.debug(`Received ${req.method} request`, { 
       path: req.path, 
       query: req.query,
       ip: req.ip
@@ -135,8 +153,13 @@ const YAML_CONFIG_PATH = path.join(CONFIG_DIR, 'nexa-config.yaml');
 // Create config directory if it doesn't exist
 if (!fs.existsSync(CONFIG_DIR)) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  logger.info('Created config directory', { path: CONFIG_DIR });
+  loggerWinston.info('Created config directory', { path: CONFIG_DIR });
 }
+
+// API Routes
+app.use('/api/settings', settingsRoutes);
+app.use('/api/models', modelsRoutes);
+app.use('/api/test', testRoutes);
 
 // API endpoint to save configuration
 app.post('/api/config/save', (req, res) => {
@@ -144,7 +167,7 @@ app.post('/api/config/save', (req, res) => {
     const { format, content } = req.body;
     
     if (!format || !content) {
-      logger.warn('Missing required parameters for saving config', { format, hasContent: !!content });
+      loggerWinston.warn('Missing required parameters for saving config', { format, hasContent: !!content });
       return res.status(400).json({ error: 'Format and content are required' });
     }
     
@@ -152,7 +175,7 @@ app.post('/api/config/save', (req, res) => {
     
     // Ensure the config directory exists (double-check)
     if (!fs.existsSync(CONFIG_DIR)) {
-      logger.info('Recreating config directory', { path: CONFIG_DIR });
+      loggerWinston.info('Recreating config directory', { path: CONFIG_DIR });
       fs.mkdirSync(CONFIG_DIR, { recursive: true });
     }
     
@@ -161,12 +184,12 @@ app.post('/api/config/save', (req, res) => {
       try {
         JSON.parse(content);
       } catch (e) {
-        logger.error('Invalid JSON content', { error: e.message });
+        loggerWinston.error('Invalid JSON content', { error: e.message });
         return res.status(400).json({ error: 'Invalid JSON content' });
       }
     }
     
-    logger.debug('Writing configuration file', { 
+    loggerWinston.debug('Writing configuration file', { 
       format, 
       path: filePath,
       contentLength: content.length
@@ -176,7 +199,7 @@ app.post('/api/config/save', (req, res) => {
     try {
       fs.writeFileSync(filePath, content, 'utf8');
     } catch (writeError) {
-      logger.error('Failed to write configuration file', { 
+      loggerWinston.error('Failed to write configuration file', { 
         error: writeError.message, 
         code: writeError.code,
         path: filePath
@@ -191,18 +214,18 @@ app.post('/api/config/save', (req, res) => {
     
     // Verify file was written successfully
     if (!fs.existsSync(filePath)) {
-      logger.error('File not found after write operation', { path: filePath });
+      loggerWinston.error('File not found after write operation', { path: filePath });
       return res.status(500).json({ error: 'File could not be verified after write' });
     }
     
-    logger.info('Configuration saved successfully', { format, path: filePath });
+    loggerWinston.info('Configuration saved successfully', { format, path: filePath });
     return res.status(200).json({ 
       success: true, 
       message: `Configuration saved as ${format.toUpperCase()}`,
       path: filePath 
     });
   } catch (error) {
-    logger.error('Error saving configuration', { error: error.message, stack: error.stack });
+    loggerWinston.error('Error saving configuration', { error: error.message, stack: error.stack });
     return res.status(500).json({ error: 'Failed to save configuration' });
   }
 });
@@ -213,10 +236,10 @@ app.get('/api/config/load', (req, res) => {
     const format = req.query.format || 'json';
     const filePath = format === 'json' ? JSON_CONFIG_PATH : YAML_CONFIG_PATH;
     
-    logger.debug('Attempting to load configuration', { format, path: filePath });
+    loggerWinston.debug('Attempting to load configuration', { format, path: filePath });
     
     if (!fs.existsSync(filePath)) {
-      logger.warn('Configuration file not found', { path: filePath });
+      loggerWinston.warn('Configuration file not found', { path: filePath });
       return res.status(404).json({ error: `Configuration file not found: ${filePath}` });
     }
     
@@ -224,7 +247,7 @@ app.get('/api/config/load', (req, res) => {
     try {
       content = fs.readFileSync(filePath, 'utf8');
     } catch (readError) {
-      logger.error('Failed to read configuration file', { 
+      loggerWinston.error('Failed to read configuration file', { 
         error: readError.message, 
         code: readError.code,
         path: filePath
@@ -242,12 +265,12 @@ app.get('/api/config/load', (req, res) => {
       try {
         JSON.parse(content);
       } catch (e) {
-        logger.error('Invalid JSON content in config file', { error: e.message, path: filePath });
+        loggerWinston.error('Invalid JSON content in config file', { error: e.message, path: filePath });
         return res.status(400).json({ error: 'File contains invalid JSON' });
       }
     }
     
-    logger.info('Configuration loaded successfully', { 
+    loggerWinston.info('Configuration loaded successfully', { 
       format, 
       path: filePath,
       contentLength: content.length
@@ -259,7 +282,7 @@ app.get('/api/config/load', (req, res) => {
       lastModified: fs.statSync(filePath).mtime
     });
   } catch (error) {
-    logger.error('Error loading configuration', { error: error.message, stack: error.stack });
+    loggerWinston.error('Error loading configuration', { error: error.message, stack: error.stack });
     return res.status(500).json({ error: 'Failed to load configuration' });
   }
 });
@@ -280,12 +303,12 @@ try {
     const config = JSON.parse(configContent);
     if (config.port) {
       PORT = parseInt(config.port, 10);
-      logger.info('Using port from configuration file', { port: PORT });
+      loggerWinston.info('Using port from configuration file', { port: PORT });
     }
   }
 } catch (error) {
-  logger.warn('Error loading port from config file', { error: error.message });
-  logger.info('Using default port', { port: PORT });
+  loggerWinston.warn('Error loading port from config file', { error: error.message });
+  loggerWinston.info('Using default port', { port: PORT });
 }
 
 // Periodic cleanup of log cache
@@ -317,29 +340,29 @@ setInterval(() => {
   }
   
   if (expiredCount > 0) {
-    logger.debug(`Cleaned up ${expiredCount} expired log cache entries`);
+    loggerWinston.debug(`Cleaned up ${expiredCount} expired log cache entries`);
   }
 }, 60000); // Run every minute
 
 io.on('connection', (socket) => {
-  logger.info('New client connected', { id: socket.id });
+  loggerWinston.info('New client connected', { id: socket.id });
 
   socket.on('disconnect', () => {
-    logger.info('Client disconnected', { id: socket.id });
+    loggerWinston.info('Client disconnected', { id: socket.id });
   });
 
   socket.on('register_agent', (agentData) => {
-    logger.debug('Agent registered', { agent: agentData });
+    loggerWinston.debug('Agent registered', { agent: agentData });
     io.emit('agent_registered', agentData);
   });
 
   socket.on('assign_task', (taskData) => {
-    logger.info('Task assigned', { task: taskData });
+    loggerWinston.info('Task assigned', { task: taskData });
     io.emit('task_assigned', taskData);
   });
 
   socket.on('update_task', (taskUpdate) => {
-    logger.info('Task updated', { update: taskUpdate });
+    loggerWinston.info('Task updated', { update: taskUpdate });
     io.emit('task_updated', taskUpdate);
   });
 
@@ -349,7 +372,7 @@ io.on('connection', (socket) => {
     const lastMetricsLog = requestLogCache.get('system_metrics');
     
     if (!lastMetricsLog || (now - lastMetricsLog > 10000)) { // Only log every 10 seconds
-      logger.debug('System metrics received', { metrics });
+      loggerWinston.debug('System metrics received', { metrics });
       requestLogCache.set('system_metrics', now);
     }
     
@@ -357,6 +380,28 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  logger.info(`Server listening on port ${PORT}`);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  loggerWinston.error('Server error:', err);
+  res.status(500).json({
+    error: {
+      message: err.message || 'An unexpected error occurred',
+      code: err.code || 'INTERNAL_SERVER_ERROR'
+    }
+  });
 });
+
+// Serve React app for any other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../build', 'index.html'));
+});
+
+// Start server
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    loggerWinston.info(`Server running on port ${PORT}`);
+    loggerWinston.info(`API available at http://localhost:${PORT}/api`);
+  });
+}
+
+module.exports = app; // Export for testing

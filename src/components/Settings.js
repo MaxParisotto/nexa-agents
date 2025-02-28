@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchModels, saveSettings } from '../store/actions/settingsActions';
+import { fetchModels, saveSettings, toggleFeature } from '../store/actions/settingsActions';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
 import configService from '../services/configService';
@@ -28,15 +28,137 @@ import {
   Tooltip,
   Tab,
   Tabs,
-  Paper
+  Paper,
+  Switch,
+  FormControlLabel,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction
 } from '@mui/material';
 import { HelpOutline, Info, ErrorOutline, CheckCircle, Code, Download, ContentCopy, Assessment, Close as CloseIcon } from '@mui/icons-material';
 import { addNotification, addBenchmarkResult } from '../store/actions/systemActions';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from '../store/actions/logActions';
+import { FETCH_MODELS_SUCCESS } from '../store/actions/settingsActions';
 
 const DEFAULT_URLS = {
-  lmStudio: 'http://localhost:1234',
-  ollama: 'http://localhost:11434'
+  lmStudio: 'http://localhost:1234'
+};
+
+const FEATURE_DESCRIPTIONS = {
+  chatWidget: 'Enable the floating chat widget for direct LLM interactions',
+  projectManagerAgent: 'Enable the Project Manager agent for workflow management',
+  taskManagement: 'Enable task creation and management features',
+  loggingSystem: 'Enable detailed system logging and diagnostics',
+  notifications: 'Enable system notifications and alerts',
+  metrics: 'Enable performance metrics and monitoring',
+  autoSave: 'Automatically save changes to configuration and state',
+  debugMode: 'Enable additional debugging features and logging',
+  experimentalFeatures: 'Enable experimental and beta features'
+};
+
+// Add this at the top of the file with other constants
+const DEFAULT_PARAMETERS = {
+  temperature: 0.7,
+  topP: 0.9,
+  topK: 40,
+  repeatPenalty: 1.1,
+  maxTokens: 1024,
+  contextLength: 4096
+};
+
+const initialFormData = {
+  projectManager: {
+    apiUrl: '',
+    model: '',
+    serverType: 'lmStudio',
+    parameters: {
+      temperature: 0.7,
+      topP: 0.9,
+      topK: 40,
+      repeatPenalty: 1.1,
+      maxTokens: 1024,
+      contextLength: 4096
+    }
+  },
+  lmStudio: { apiUrl: '', defaultModel: '' }
+};
+
+// Add validateSettings function before handleSave
+const validateSettings = (settings) => {
+  const errors = {
+    lmStudio: { apiUrl: '', defaultModel: '' },
+    ollama: { apiUrl: '', defaultModel: '' },
+    projectManager: { apiUrl: '', model: '' }
+  };
+  
+  let isValid = true;
+
+  // Validate LM Studio settings
+  if (!settings.lmStudio?.apiUrl) {
+    errors.lmStudio.apiUrl = 'API URL is required';
+    isValid = false;
+  } else if (!settings.lmStudio.apiUrl.startsWith('http')) {
+    errors.lmStudio.apiUrl = 'API URL must start with http:// or https://';
+    isValid = false;
+  }
+
+  // Validate Ollama settings
+  if (!settings.ollama?.apiUrl) {
+    errors.ollama.apiUrl = 'API URL is required';
+    isValid = false;
+  } else if (!settings.ollama.apiUrl.startsWith('http')) {
+    errors.ollama.apiUrl = 'API URL must start with http:// or https://';
+    isValid = false;
+  }
+
+  // Validate Project Manager settings
+  if (!settings.projectManager?.apiUrl) {
+    errors.projectManager.apiUrl = 'API URL is required';
+    isValid = false;
+  } else if (!settings.projectManager.apiUrl.startsWith('http')) {
+    errors.projectManager.apiUrl = 'API URL must start with http:// or https://';
+    isValid = false;
+  }
+
+  if (!settings.projectManager?.model) {
+    errors.projectManager.model = 'Model is required';
+    isValid = false;
+  }
+
+  // Validate parameters for Project Manager
+  if (settings.projectManager?.parameters) {
+    const params = settings.projectManager.parameters;
+    if (params.temperature < 0 || params.temperature > 2) {
+      errors.projectManager.parameters = 'Temperature must be between 0 and 2';
+      isValid = false;
+    }
+    if (params.topP < 0 || params.topP > 1) {
+      errors.projectManager.parameters = 'Top P must be between 0 and 1';
+      isValid = false;
+    }
+    if (params.topK < 1 || params.topK > 100) {
+      errors.projectManager.parameters = 'Top K must be between 1 and 100';
+      isValid = false;
+    }
+    if (params.repeatPenalty < 1 || params.repeatPenalty > 2) {
+      errors.projectManager.parameters = 'Repeat penalty must be between 1 and 2';
+      isValid = false;
+    }
+    if (params.maxTokens < 128 || params.maxTokens > 4096) {
+      errors.projectManager.parameters = 'Max tokens must be between 128 and 4096';
+      isValid = false;
+    }
+    if (params.contextLength < 512 || params.contextLength > 8192) {
+      errors.projectManager.parameters = 'Context length must be between 512 and 8192';
+      isValid = false;
+    }
+  }
+
+  return {
+    isValid,
+    errors
+  };
 };
 
 const Settings = () => {
@@ -60,10 +182,10 @@ const Settings = () => {
       defaultModel: settings?.ollama?.defaultModel || ''
     },
     projectManager: {
-      apiUrl: settings?.projectManager?.apiUrl || DEFAULT_URLS.ollama,
-      model: settings?.projectManager?.model || 'deepscaler:7b',
-      serverType: settings?.projectManager?.serverType || 'ollama',
-      parameters: settings?.projectManager?.parameters || {
+      apiUrl: settings?.projectManager?.apiUrl || '',
+      model: settings?.projectManager?.model || '',
+      serverType: settings?.projectManager?.serverType || 'lmStudio',
+      parameters: {
         temperature: 0.7,
         topP: 0.9,
         topK: 40,
@@ -73,7 +195,7 @@ const Settings = () => {
       }
     },
     nodeEnv: settings?.nodeEnv || 'development',
-    port: settings?.port || 5000
+    port: settings?.port || '3001'
   });
   
   // State for benchmark functionality
@@ -117,6 +239,100 @@ const Settings = () => {
   // Add a terminal refresh interval state
   const [terminalRefreshInterval, setTerminalRefreshInterval] = useState(null);
 
+  // Initialize featureStates with default values from Redux store
+  const [featureStates, setFeatureStates] = useState(() => {
+    // Get initial values from Redux store or use defaults
+    const storeFeatures = settings?.features || {};
+    return {
+      chatWidget: storeFeatures.chatWidget ?? true,
+      projectManagerAgent: storeFeatures.projectManagerAgent ?? true,
+      taskManagement: storeFeatures.taskManagement ?? true,
+      loggingSystem: storeFeatures.loggingSystem ?? true,
+      notifications: storeFeatures.notifications ?? true,
+      metrics: storeFeatures.metrics ?? true,
+      autoSave: storeFeatures.autoSave ?? true,
+      debugMode: storeFeatures.debugMode ?? false,
+      experimentalFeatures: storeFeatures.experimentalFeatures ?? false
+    };
+  });
+
+  const [manualModelInput, setManualModelInput] = useState('');
+  
+  // Function to handle adding a manual model
+  const handleAddManualModel = () => {
+    if (!manualModelInput) return;
+    
+    const provider = 'projectManager';
+    const normalizedInput = manualModelInput.trim();
+    
+    // Get current models array for this provider
+    const currentModels = settings[provider]?.models || [];
+    
+    // Check if model already exists
+    if (currentModels.includes(normalizedInput)) {
+      dispatch(addNotification({
+        type: 'info',
+        message: `Model "${normalizedInput}" already exists.`
+      }));
+      return;
+    }
+    
+    // Add the new model to the list
+    const updatedModels = [...currentModels, normalizedInput];
+    
+    // Update Redux store
+    dispatch({
+      type: FETCH_MODELS_SUCCESS,
+      payload: {
+        provider,
+        models: updatedModels
+      }
+    });
+    
+    // Save to localStorage for persistence - regular models cache
+    try {
+      const storedModels = JSON.parse(localStorage.getItem('nexa_models') || '{}');
+      localStorage.setItem('nexa_models', JSON.stringify({
+        ...storedModels,
+        [provider]: updatedModels
+      }));
+    } catch (error) {
+      console.error('Error saving models to localStorage:', error);
+    }
+    
+    // Also save to provider-specific localStorage key for the API client
+    try {
+      localStorage.setItem(`${provider}Models`, JSON.stringify(updatedModels));
+    } catch (error) {
+      console.error('Error saving to provider models cache:', error);
+    }
+    
+    // Also maintain a separate list of manually added models
+    try {
+      const manualModels = JSON.parse(localStorage.getItem('projectManager_manual_models') || '[]');
+      if (!manualModels.includes(normalizedInput)) {
+        manualModels.push(normalizedInput);
+        localStorage.setItem('projectManager_manual_models', JSON.stringify(manualModels));
+      }
+    } catch (error) {
+      console.error('Error saving to manual models list:', error);
+    }
+    
+    // Set the model in the form
+    handleInputChange(provider, 'model', normalizedInput);
+    
+    // Show success notification
+    dispatch(addNotification({
+      type: 'success',
+      message: `Model "${normalizedInput}" added successfully.`
+    }));
+    
+    // Clear the input
+    setManualModelInput('');
+    
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Manually added model for ${provider}: ${normalizedInput}`));
+  };
+  
   // Handle benchmark button click
   const handleBenchmark = async () => {
     if (!formData.projectManager.model) {
@@ -930,17 +1146,45 @@ const Settings = () => {
     // Log current settings on component mount - but only once
     dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings component mounted'));
     
-    // Load saved settings from Redux/localStorage
-    const savedNodeEnv = localStorage.getItem('nodeEnv') || 'development';
-    const savedPort = localStorage.getItem('port') || '5000';
+    // Load saved settings from localStorage
+    try {
+      const savedSettings = localStorage.getItem('nexa-settings');
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        
+        // Update form data with saved settings
+        setFormData(prev => ({
+          lmStudio: {
+            apiUrl: parsedSettings.lmStudio?.apiUrl || DEFAULT_URLS.lmStudio,
+            defaultModel: parsedSettings.lmStudio?.defaultModel || ''
+          },
+          ollama: {
+            apiUrl: parsedSettings.ollama?.apiUrl || DEFAULT_URLS.ollama,
+            defaultModel: parsedSettings.ollama?.defaultModel || ''
+          },
+          projectManager: {
+            apiUrl: parsedSettings.projectManager?.apiUrl || '',
+            model: parsedSettings.projectManager?.model || '',
+            serverType: parsedSettings.projectManager?.serverType || 'lmStudio',
+            parameters: parsedSettings.projectManager?.parameters || DEFAULT_PARAMETERS
+          },
+          nodeEnv: parsedSettings.nodeEnv || 'development',
+          port: parsedSettings.port || '3001'
+        }));
+
+        // Update feature states
+        if (parsedSettings.features) {
+          setFeatureStates(parsedSettings.features);
+        }
+
+        // Update Redux store
+        dispatch(saveSettings(parsedSettings));
+      }
+    } catch (error) {
+      dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Error loading saved settings', error));
+    }
     
-    setFormData(prevState => ({
-      ...prevState,
-      nodeEnv: savedNodeEnv,
-      port: savedPort
-    }));
-    
-    // Try to load config from file
+    // Try to load config from file as backup
     loadConfigFromFile();
     
     // Generate config from settings as fallback
@@ -978,25 +1222,37 @@ const Settings = () => {
         defaultModel: formData.ollama.defaultModel
       },
       projectManager: {
-        apiUrl: formData.projectManager.apiUrl,
-        model: formData.projectManager.model,
-        serverType: formData.projectManager.serverType || 'ollama'
+        apiUrl: formData.projectManager?.apiUrl || '',
+        model: formData.projectManager?.model || '',
+        serverType: formData.projectManager?.serverType || 'lmStudio',
+        parameters: formData.projectManager?.parameters || DEFAULT_PARAMETERS
       },
+      features: featureStates,  // Include feature states
       nodeEnv: formData.nodeEnv,
       port: formData.port
     };
-    
+
     try {
+      // Save to localStorage for persistence
+      localStorage.setItem('nexa-settings', JSON.stringify(config));
+
       if (configFormat === 'json') {
         setConfigValue(JSON.stringify(config, null, 2));
       } else {
-        // Simple YAML conversion for demo
+        // Simple YAML conversion
         let yamlStr = '';
         Object.entries(config).forEach(([key, value]) => {
           if (typeof value === 'object') {
             yamlStr += `${key}:\n`;
             Object.entries(value).forEach(([subKey, subValue]) => {
-              yamlStr += `  ${subKey}: ${subValue || '""'}\n`;
+              if (typeof subValue === 'object') {
+                yamlStr += `  ${subKey}:\n`;
+                Object.entries(subValue).forEach(([subSubKey, subSubValue]) => {
+                  yamlStr += `    ${subSubKey}: ${subSubValue}\n`;
+                });
+              } else {
+                yamlStr += `  ${subKey}: ${subValue || '""'}\n`;
+              }
             });
           } else {
             yamlStr += `${key}: ${value}\n`;
@@ -1100,21 +1356,28 @@ const Settings = () => {
   };
 
   const handleTestConnection = (provider) => {
-    let apiUrl, modelName;
+    let apiUrl, modelName, serverType;
     
     if (provider === 'lmStudio') {
       apiUrl = formData.lmStudio.apiUrl;
       modelName = formData.lmStudio.defaultModel;
+      serverType = 'lmStudio';
     } else if (provider === 'ollama') {
       apiUrl = formData.ollama.apiUrl;
       modelName = formData.ollama.defaultModel;
+      serverType = 'ollama';
     } else if (provider === 'projectManager') {
       apiUrl = formData.projectManager.apiUrl;
       modelName = formData.projectManager.model;
+      serverType = formData.projectManager.serverType || 'lmStudio';
     }
     
-    // Log the connection attempt
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Testing connection to ${provider} at ${apiUrl}`));
+    // Log the connection attempt with more detail
+    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Testing connection to ${provider} at ${apiUrl}`, { 
+      serverType,
+      provider,
+      apiUrl
+    }));
     
     if (!apiUrl) {
       setValidationErrors(prev => ({
@@ -1133,10 +1396,8 @@ const Settings = () => {
       message: `Testing connection to ${provider}...`
     }));
     
-    // For Project Manager, pass the server type to the fetchModels action
-    const serverType = provider === 'projectManager' ? formData.projectManager.serverType || 'ollama' : null;
-    
-    // Dispatch the fetchModels action
+    // For Project Manager, explicitly passing the server type is important
+    // This ensures it uses the correct backend for model discovery
     dispatch(fetchModels(provider, apiUrl, serverType))
       .then(models => {
         if (models && models.length > 0) {
@@ -1155,21 +1416,28 @@ const Settings = () => {
           // If no model is selected and we have models, select the first one
           if (!modelName && models.length > 0) {
             if (provider === 'projectManager') {
-              // For Project Manager, try to find a suitable model
-              // First look for deepscaler models
-              let selectedModel = models.find(m => 
-                m.toLowerCase().includes('deepscaler') || 
-                m.toLowerCase().includes('deep-scaler')
-              );
+              // For Project Manager, try to find a suitable model based on server type
+              let selectedModel = null;
               
-              // If no deepscaler model, try deepseek models
-              if (!selectedModel) {
+              // Select appropriate model based on server type
+              if (serverType === 'lmStudio') {
+                // For LM Studio, prefer qwen models
                 selectedModel = models.find(m => 
-                  m.toLowerCase().includes('deepseek')
+                  m.toLowerCase().includes('qwen') || 
+                  m.toLowerCase().includes('mixtral') ||
+                  m.toLowerCase().includes('llama') ||
+                  m.toLowerCase().includes('mistral')
+                );
+              } else {
+                // For Ollama, prefer llama or mistral models
+                selectedModel = models.find(m => 
+                  m.toLowerCase().includes('llama') || 
+                  m.toLowerCase().includes('mistral') ||
+                  m.toLowerCase().includes('mixtral')
                 );
               }
               
-              // If still no model found, use the first one
+              // If no preferred model found, use the first one
               if (!selectedModel) {
                 selectedModel = models[0];
               }
@@ -1185,7 +1453,7 @@ const Settings = () => {
           // Show warning if no models were found
           dispatch(addNotification({
             type: 'warning',
-            message: `Connected to ${provider} but found no models. Please check if models are installed.`
+            message: `Connected to ${provider} but found no models. Please check if models are installed or add a model manually.`
           }));
         }
       })
@@ -1199,49 +1467,27 @@ const Settings = () => {
       });
   };
 
-  const validateForm = () => {
+  const validateForm = (formData) => {
     const errors = {
-      lmStudio: { apiUrl: '', defaultModel: '' },
-      ollama: { apiUrl: '', defaultModel: '' },
-      projectManager: { apiUrl: '', model: '' }
+      projectManager: { apiUrl: '', model: '' },
+      lmStudio: { apiUrl: '' }
     };
-    
-    let isValid = true;
-    
-    // Validate LM Studio
-    if (!formData.lmStudio.apiUrl) {
-      errors.lmStudio.apiUrl = 'API URL is required';
-      isValid = false;
-    } else if (!formData.lmStudio.apiUrl.startsWith('http')) {
-      errors.lmStudio.apiUrl = 'API URL must start with http:// or https://';
-      isValid = false;
-    }
-    
-    // Validate Ollama
-    if (!formData.ollama.apiUrl) {
-      errors.ollama.apiUrl = 'API URL is required';
-      isValid = false;
-    } else if (!formData.ollama.apiUrl.startsWith('http')) {
-      errors.ollama.apiUrl = 'API URL must start with http:// or https://';
-      isValid = false;
-    }
-    
+
     // Validate Project Manager
     if (!formData.projectManager.apiUrl) {
       errors.projectManager.apiUrl = 'API URL is required';
-      isValid = false;
     } else if (!formData.projectManager.apiUrl.startsWith('http')) {
       errors.projectManager.apiUrl = 'API URL must start with http:// or https://';
-      isValid = false;
     }
-    
-    if (!formData.projectManager.model) {
-      errors.projectManager.model = 'Model is required';
-      isValid = false;
+
+    // Validate LM Studio
+    if (!formData.lmStudio.apiUrl) {
+      errors.lmStudio.apiUrl = 'API URL is required';
+    } else if (!formData.lmStudio.apiUrl.startsWith('http')) {
+      errors.lmStudio.apiUrl = 'API URL must start with http:// or https://';
     }
-    
-    setValidationErrors(errors);
-    return isValid;
+
+    return errors;
   };
 
   const handleInputChange = (provider, field, value) => {
@@ -1263,26 +1509,77 @@ const Settings = () => {
     }));
   };
 
-  const handleSave = () => {
-    if (validateForm()) {
-      // Only log once, not for each operation
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Saving settings'));
-      
-      // Update Redux store and save to localStorage
-      dispatch(saveSettings(formData));
-      
-      // Also save to file
-      saveConfigToFile();
-      
-      dispatch(addNotification({
-        type: 'success',
-        message: 'Settings saved successfully!'
-      }));
-    } else {
-      dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Settings validation failed', validationErrors));
+  const handleSave = async () => {
+    try {
+      // Validate settings
+      const validationResult = validateSettings(formData);
+      if (!validationResult.isValid) {
+        setValidationErrors(validationResult.errors);
+        dispatch(addNotification({
+          type: 'error',
+          message: 'Please fix validation errors before saving'
+        }));
+        return;
+      }
+
+      // Prepare complete configuration object
+      const completeConfig = {
+        lmStudio: {
+          apiUrl: formData.lmStudio.apiUrl,
+          defaultModel: formData.lmStudio.defaultModel
+        },
+        ollama: {
+          apiUrl: formData.ollama.apiUrl,
+          defaultModel: formData.ollama.defaultModel
+        },
+        projectManager: {
+          apiUrl: formData.projectManager.apiUrl,
+          model: formData.projectManager.model,
+          serverType: formData.projectManager.serverType,
+          parameters: formData.projectManager.parameters
+        },
+        features: featureStates,
+        nodeEnv: formData.nodeEnv,
+        port: formData.port
+      };
+
+      // Save to localStorage
+      localStorage.setItem('nexa-settings', JSON.stringify(completeConfig));
+
+      // Save settings to Redux store
+      await dispatch(saveSettings(completeConfig));
+
+      // Save to config file
+      try {
+        await configService.saveConfigToFile(completeConfig, 'json');
+        dispatch(addNotification({
+          type: 'success',
+          message: 'Settings saved successfully to configuration file'
+        }));
+      } catch (fileError) {
+        dispatch(logWarning(
+          LOG_CATEGORIES.SETTINGS,
+          'Failed to save to config file, but settings are saved in application state',
+          fileError
+        ));
+        dispatch(addNotification({
+          type: 'warning',
+          message: 'Settings saved in application but failed to update config file'
+        }));
+      }
+
+      // Update validation state
+      setValidationErrors({
+        lmStudio: { apiUrl: '', defaultModel: '' },
+        ollama: { apiUrl: '', defaultModel: '' },
+        projectManager: { apiUrl: '', model: '' }
+      });
+
+    } catch (error) {
+      dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to save settings', error));
       dispatch(addNotification({
         type: 'error',
-        message: 'Please fix validation errors before saving'
+        message: `Failed to save settings: ${error.message}`
       }));
     }
   };
@@ -1306,7 +1603,7 @@ const Settings = () => {
       }));
     } else if (provider === 'projectManager') {
       // Use the appropriate default URL based on server type
-      const serverType = formData.projectManager.serverType || 'ollama';
+      const serverType = formData.projectManager.serverType || 'lmStudio';
       const defaultUrl = DEFAULT_URLS[serverType];
       
       setFormData(prev => ({
@@ -1315,7 +1612,7 @@ const Settings = () => {
           ...prev.projectManager,
           apiUrl: defaultUrl,
           // Keep the existing model or use a default based on server type
-          model: prev.projectManager.model || (serverType === 'lmStudio' ? '' : 'deepscaler:7b'),
+          model: prev.projectManager.model || (serverType === 'lmStudio' ? '' : 'qwen2.5-7b-instruct-1m'),
           serverType: serverType
         }
       }));
@@ -1323,86 +1620,48 @@ const Settings = () => {
   };
 
   const loadConfigFromFile = async () => {
-    // Rate limiting - don't reload if we just loaded in the last 3 seconds
-    const now = Date.now();
-    if (lastOperation.type === 'load' && now - lastOperation.timestamp < 3000) {
-      console.log('Skipping repeated load operation');
-      // Use the last result
-      if (lastOperation.result) {
-        if (configFormat === 'json') {
-          setConfigValue(JSON.stringify(lastOperation.result, null, 2));
-          updateSettingsFromConfig(lastOperation.result);
-        } else {
-          setConfigValue(lastOperation.result);
-        }
-      }
-      return;
-    }
-    
     setIsLoadingFile(true);
     setFileError('');
     
     try {
-      // First, check if the server is available
-      const serverAvailable = await configService.checkServerAvailability(true);
+      const config = await configService.loadConfigFromFile('json');
       
-      if (!serverAvailable) {
-        throw new Error('Server is not available. Configuration will be loaded from browser storage.');
-      }
-      
-      const config = await configService.loadConfigFromFile(configFormat);
-      
-      // Update the last operation
-      setLastOperation({
-        type: 'load',
-        timestamp: Date.now(),
-        result: config
-      });
-      
-      if (configFormat === 'json') {
-        // If it's a JSON config, update the state
-        setConfigValue(JSON.stringify(config, null, 2));
-        updateSettingsFromConfig(config);
-      } else {
-        // If it's YAML, it's just the text content
-        setConfigValue(config);
-      }
-      
+      // Update form data with loaded configuration
+      setFormData(prev => ({
+        ...prev,
+        lmStudio: {
+          apiUrl: config.lmStudio?.apiUrl || DEFAULT_URLS.lmStudio,
+          defaultModel: config.lmStudio?.defaultModel || ''
+        },
+        ollama: {
+          apiUrl: config.ollama?.apiUrl || DEFAULT_URLS.ollama,
+          defaultModel: config.ollama?.defaultModel || ''
+        },
+        projectManager: {
+          apiUrl: config.projectManager?.apiUrl || '',
+          model: config.projectManager?.model || '',
+          serverType: config.projectManager?.serverType || 'lmStudio'
+        },
+        nodeEnv: config.nodeEnv || 'development',
+        port: config.port || '3001'
+      }));
+
+      // Update Redux store
+      dispatch(saveSettings(config));
+
       dispatch(addNotification({
         type: 'success',
-        message: `Configuration loaded from file`
+        message: 'Configuration loaded successfully'
       }));
+
     } catch (error) {
-      // Different handling based on error type
-      if (error.message.includes('Server is not available')) {
-        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, 'Server unavailable for configuration loading', error));
-        setFileError('Server unavailable - using browser storage');
-        
-        // Load from localStorage as fallback
-        const localConfig = configService.loadConfigFromLocalStorage();
-        setConfigValue(JSON.stringify(localConfig, null, 2));
-        updateSettingsFromConfig(localConfig);
-        
-        dispatch(addNotification({
-          type: 'warning',
-          message: 'Server unavailable - Using settings from browser storage'
-        }));
-      } else if (error.message === 'Configuration file not found') {
-        // For file not found, just use a gentle notification
-        dispatch(addNotification({
-          type: 'info',
-          message: 'Using default configuration (no file found)'
-        }));
-      } else {
-        // For other errors, show more details
-        dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Error loading configuration file', error));
-        setFileError('Failed to load configuration file: ' + error.message);
-        
-        dispatch(addNotification({
-          type: 'warning',
-          message: 'Error loading configuration: ' + error.message
-        }));
-      }
+      dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to load configuration', error));
+      setFileError('Failed to load configuration: ' + error.message);
+      
+      dispatch(addNotification({
+        type: 'error',
+        message: 'Error loading configuration: ' + error.message
+      }));
     } finally {
       setIsLoadingFile(false);
     }
@@ -1514,11 +1773,28 @@ const Settings = () => {
     const error = providerData.error;
     const models = providerData.models || [];
     const hasTestedConnection = servicesManuallyLoaded[provider];
-    const isConfigured = formData[provider].apiUrl && 
-      (provider === 'projectManager' ? formData[provider].model : formData[provider].defaultModel);
-
-    // Determine which field to use for model selection based on provider
+    const isConfigured = formData[provider]?.apiUrl && 
+      (provider === 'projectManager' ? formData[provider]?.model : formData[provider]?.defaultModel);
+    
+    // Define modelField based on provider type
     const modelField = provider === 'projectManager' ? 'model' : 'defaultModel';
+
+    // Ensure parameters exist for Project Manager
+    if (provider === 'projectManager' && !formData.projectManager?.parameters) {
+      setFormData(prev => ({
+        ...prev,
+        projectManager: {
+          ...prev.projectManager,
+          parameters: { ...DEFAULT_PARAMETERS }
+        }
+      }));
+      return null; // Return null once to avoid the error while state updates
+    }
+
+    // Get parameters safely
+    const parameters = provider === 'projectManager' ? 
+      (formData.projectManager?.parameters || DEFAULT_PARAMETERS) : 
+      null;
 
     return (
       <Card sx={{ mb: 3 }}>
@@ -1631,25 +1907,59 @@ const Settings = () => {
                   {error}
                 </Alert>
               )}
+              
+              {/* Always show manual model input for Project Manager with improved visibility */}
+              {provider === 'projectManager' && (
+                <Box sx={{ 
+                  mt: 2, 
+                  p: 2, 
+                  border: '1px dashed', 
+                  borderColor: models.length === 0 && !isLoading ? 'warning.main' : 'divider', 
+                  borderRadius: 1,
+                  backgroundColor: models.length === 0 && !isLoading ? 'warning.light' : 'background.paper'
+                }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {models.length === 0 && !isLoading ? 
+                      <strong>No models found. Add a model name manually:</strong> : 
+                      'Add a custom model:'
+                    }
+                  </Typography>
+                  <Box sx={{ display: 'flex', mt: 1 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Model Name"
+                      placeholder="Enter model name (e.g., qwen2.5-7b-instruct, llama3)"
+                      value={manualModelInput || ''}
+                      onChange={(e) => setManualModelInput(e.target.value)}
+                      sx={{ mr: 1 }}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleAddManualModel}
+                      disabled={!manualModelInput}
+                      color={models.length === 0 ? "warning" : "primary"}
+                    >
+                      Add Model
+                    </Button>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                    Common model names: llama2, mistral-7b-instruct, qwen2.5-7b-instruct, mixtral-8x7b
+                  </Typography>
+                </Box>
+              )}
             </Grid>
             
             {/* Add model parameters for Project Manager */}
-            {provider === 'projectManager' && (
+            {provider === 'projectManager' && parameters && (
               <>
-                <Grid item xs={12}>
-                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
-                    Model Parameters
-                  </Typography>
-                  <Divider />
-                </Grid>
-                
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Temperature"
                     type="number"
                     inputProps={{ step: 0.1, min: 0, max: 2 }}
-                    value={formData.projectManager.parameters.temperature}
+                    value={parameters.temperature}
                     onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
                     helperText="Controls randomness (0.0-2.0)"
                   />
@@ -1661,7 +1971,7 @@ const Settings = () => {
                     label="Top P"
                     type="number"
                     inputProps={{ step: 0.05, min: 0, max: 1 }}
-                    value={formData.projectManager.parameters.topP}
+                    value={parameters.topP}
                     onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
                     helperText="Nucleus sampling (0.0-1.0)"
                   />
@@ -1673,7 +1983,7 @@ const Settings = () => {
                     label="Top K"
                     type="number"
                     inputProps={{ step: 1, min: 1, max: 100 }}
-                    value={formData.projectManager.parameters.topK}
+                    value={parameters.topK}
                     onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
                     helperText="Limits vocabulary to top K tokens"
                   />
@@ -1685,7 +1995,7 @@ const Settings = () => {
                     label="Repeat Penalty"
                     type="number"
                     inputProps={{ step: 0.1, min: 1, max: 2 }}
-                    value={formData.projectManager.parameters.repeatPenalty}
+                    value={parameters.repeatPenalty}
                     onChange={(e) => handleParameterChange('repeatPenalty', parseFloat(e.target.value))}
                     helperText="Penalizes repetition (1.0-2.0)"
                   />
@@ -1697,7 +2007,7 @@ const Settings = () => {
                     label="Max Tokens"
                     type="number"
                     inputProps={{ step: 128, min: 128, max: 4096 }}
-                    value={formData.projectManager.parameters.maxTokens}
+                    value={parameters.maxTokens}
                     onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
                     helperText="Maximum tokens to generate"
                   />
@@ -1709,7 +2019,7 @@ const Settings = () => {
                     label="Context Length"
                     type="number"
                     inputProps={{ step: 512, min: 512, max: 8192 }}
-                    value={formData.projectManager.parameters.contextLength}
+                    value={parameters.contextLength}
                     onChange={(e) => handleParameterChange('contextLength', parseInt(e.target.value))}
                     helperText="Maximum context window size"
                   />
@@ -1722,6 +2032,140 @@ const Settings = () => {
     );
   };
 
+  // Update handleFeatureToggle with error handling
+  const handleFeatureToggle = async (featureName) => {
+    try {
+      const newValue = !featureStates[featureName];
+      
+      // Update local state
+      setFeatureStates(prev => ({
+        ...prev,
+        [featureName]: newValue
+      }));
+      
+      // Dispatch Redux action
+      dispatch(toggleFeature(featureName, newValue));
+      
+      // Save to localStorage
+      try {
+        const currentSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+        localStorage.setItem('settings', JSON.stringify({
+          ...currentSettings,
+          features: {
+            ...(currentSettings.features || {}),
+            [featureName]: newValue
+          }
+        }));
+      } catch (storageError) {
+        console.error('Error saving to localStorage:', storageError);
+        dispatch(logWarning(
+          LOG_CATEGORIES.SETTINGS,
+          'Failed to save feature state to localStorage',
+          storageError
+        ));
+      }
+
+      // Save to config file
+      try {
+        // Get current config
+        const config = await configService.loadConfig();
+        
+        // Update features in config
+        const updatedConfig = {
+          ...config,
+          features: {
+            ...(config.features || {}),
+            [featureName]: newValue
+          }
+        };
+
+        // Save updated config
+        await configService.saveConfig(updatedConfig);
+        
+        dispatch(logInfo(
+          LOG_CATEGORIES.SETTINGS,
+          `Feature "${featureName}" ${newValue ? 'enabled' : 'disabled'} and saved to config`,
+          { featureName, value: newValue }
+        ));
+      } catch (configError) {
+        dispatch(logWarning(
+          LOG_CATEGORIES.SETTINGS,
+          'Failed to save feature state to config file',
+          configError
+        ));
+      }
+      
+      // Show notification
+      dispatch(addNotification({
+        type: 'info',
+        message: `${featureName} ${newValue ? 'enabled' : 'disabled'}`
+      }));
+      
+      dispatch(logInfo(
+        LOG_CATEGORIES.SETTINGS,
+        `Feature "${featureName}" ${newValue ? 'enabled' : 'disabled'}`
+      ));
+    } catch (error) {
+      console.error('Error toggling feature:', error);
+      dispatch(logError(
+        LOG_CATEGORIES.SETTINGS,
+        `Error toggling feature ${featureName}`,
+        error
+      ));
+      dispatch(addNotification({
+        type: 'error',
+        message: `Failed to toggle ${featureName}: ${error.message}`
+      }));
+    }
+  };
+
+  // Inside the Settings component, after other useEffect hooks
+  useEffect(() => {
+    // Update local state when Redux settings change
+    if (settings?.features) {
+      setFeatureStates(settings.features);
+    }
+  }, [settings?.features]);
+
+  // Fix message flooding by adding rate limiting to the event listener
+  useEffect(() => {
+    // Message flood prevention
+    let messageCount = 0;
+    let lastResetTime = Date.now();
+    const MESSAGE_LIMIT = 10; // Max 10 messages per second
+    const RESET_INTERVAL = 1000; // Reset counter every second
+
+    const handleMessage = (event) => {
+      const now = Date.now();
+      
+      // Reset counter if window has passed
+      if (now - lastResetTime > RESET_INTERVAL) {
+        messageCount = 0;
+        lastResetTime = now;
+      }
+
+      // Increment counter
+      messageCount++;
+
+      // Check if over limit
+      if (messageCount > MESSAGE_LIMIT) {
+        console.warn(`Message flood detected: ${messageCount} messages in 1 second`);
+        return; // Skip processing this message
+      }
+
+      // Process message normally
+      // ... rest of your message handling code ...
+    };
+
+    // Clean up old listeners before adding new one
+    window.removeEventListener('project-manager-message', handleMessage);
+    window.addEventListener('project-manager-message', handleMessage);
+
+    return () => {
+      window.removeEventListener('project-manager-message', handleMessage);
+    };
+  }, []);
+
   return (
     <Box sx={{ maxWidth: '900px', mx: 'auto', p: 2 }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -1729,6 +2173,7 @@ const Settings = () => {
           <Tab label="Providers" />
           <Tab label="Benchmark" />
           <Tab label="Configuration" />
+          <Tab label="Features" />
         </Tabs>
       </Box>
 
@@ -1921,6 +2366,54 @@ const Settings = () => {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Features Tab */}
+      {activeTab === 3 && (
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Feature Management
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            Enable or disable specific features to customize your environment.
+          </Typography>
+          
+          <Paper variant="outlined" sx={{ mt: 2 }}>
+            <List>
+              {Object.entries(FEATURE_DESCRIPTIONS).map(([feature, description]) => (
+                <ListItem key={feature} divider>
+                  <ListItemText 
+                    primary={
+                      <Typography variant="subtitle1" sx={{ textTransform: 'capitalize' }}>
+                        {feature.replace(/([A-Z])/g, ' $1').toLowerCase()}
+                      </Typography>
+                    }
+                    secondary={description}
+                  />
+                  <ListItemSecondaryAction>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={featureStates[feature] || false}
+                          onChange={() => handleFeatureToggle(feature)}
+                          color="primary"
+                        />
+                      }
+                      label={featureStates[feature] ? 'Enabled' : 'Disabled'}
+                      labelPlacement="start"
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+          
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="info">
+              Changes to feature settings take effect immediately but may require a page refresh to fully apply.
+            </Alert>
+          </Box>
+        </Box>
       )}
     </Box>
   );

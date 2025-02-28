@@ -20,7 +20,7 @@ import ProjectManager from './components/ProjectManager';
 import NotificationsSystem from './components/NotificationsSystem';
 
 // Actions
-import { loadConfigFromFile, loadPersistedModels } from './store/actions/settingsActions';
+import { loadSettings, loadPersistedModels } from './store/actions/settingsActions';
 
 // Services
 import configService from './services/configService';
@@ -29,6 +29,9 @@ import { addNotification } from './store/actions/systemActions';
 
 // Agents
 import projectManagerAgent from './agents/ProjectManagerAgent';
+
+// Utils
+import { isServerRunning } from './utils/serverChecker';
 
 // Styling
 import './App.css';
@@ -41,34 +44,45 @@ function AppContent() {
   const dispatch = useDispatch();
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
-  const configStatus = useSelector(state => ({
-    loading: state.settings.configLoading,
-    error: state.settings.configError
-  }));
+  const settings = useSelector(state => state.settings);
+  const [serverStatus, setServerStatus] = useState({ checked: false, running: false });
 
-  // Load configuration and models from storage on startup
+  // Check if the server is running
   useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Initializing application configuration'));
-        
-        // Load config first
-        await dispatch(loadConfigFromFile());
-        
-        // Then load persisted models
-        dispatch(loadPersistedModels());
-        
-        setIsConfigLoaded(true);
-      } catch (error) {
-        dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to initialize configuration', error));
+    const checkServer = async () => {
+      const running = await isServerRunning();
+      setServerStatus({ checked: true, running });
+      
+      if (!running) {
         dispatch(addNotification({
-          type: 'error',
-          message: 'Failed to load configuration. Using defaults.'
+          type: 'warning',
+          message: 'Backend connection unavailable',
+          description: 'Using local settings. Some features may be limited.'
         }));
       }
     };
     
-    loadConfig();
+    checkServer();
+  }, [dispatch]);
+
+  // Load settings and models from backend on startup
+  useEffect(() => {
+    const loadAppSettings = async () => {
+      try {
+        // Load settings from backend with silent fallback
+        await dispatch(loadSettings());
+        
+        // Also load any cached models
+        dispatch(loadPersistedModels());
+        
+        setIsConfigLoaded(true);
+      } catch (error) {
+        // We still consider config loaded even if we're using fallback values
+        setIsConfigLoaded(true);
+      }
+    };
+    
+    loadAppSettings();
   }, [dispatch]);
 
   // Create theme based on dark mode preference
@@ -111,7 +125,10 @@ function AppContent() {
     // Initialize Project Manager Agent
     const initializeAgent = async () => {
       try {
+        console.log('📱 App: Initializing ProjectManagerAgent from App component');
         const success = await projectManagerAgent.initialize();
+        console.log('📱 App: ProjectManagerAgent initialization result:', success);
+        
         if (!success) {
           dispatch(addNotification({
             type: 'warning',
@@ -119,29 +136,23 @@ function AppContent() {
             description: 'Some features may be limited'
           }));
         } else {
-          dispatch(logInfo(
-            LOG_CATEGORIES.AGENT,
-            'Project Manager Agent initialized successfully'
-          ));
+          console.log('📱 App: ProjectManagerAgent successfully initialized');
         }
       } catch (error) {
-        dispatch(logError(
-          LOG_CATEGORIES.AGENT,
-          'Failed to initialize Project Manager Agent',
-          { error: error.message }
-        ));
+        console.error('📱 App: Error initializing ProjectManagerAgent:', error);
         dispatch(addNotification({
           type: 'error',
-          message: 'Project Manager Agent initialization failed',
+          message: 'Failed to initialize Project Manager Agent',
           description: error.message
         }));
       }
     };
 
     initializeAgent();
-    
-    // Cleanup on unmount
+
+    // Cleanup when app unmounts
     return () => {
+      console.log('📱 App: Unmounting, cleaning up ProjectManagerAgent');
       projectManagerAgent.destroy();
     };
   }, [dispatch]);
@@ -154,9 +165,9 @@ function AppContent() {
           <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
           <div className="app-container">
             <main className="content-full">
-              {configStatus.loading ? (
+              {settings.loading && !isConfigLoaded ? (
                 <div className="loading-container">
-                  <p>Loading configuration...</p>
+                  <p>Loading settings...</p>
                 </div>
               ) : (
                 <Routes>

@@ -7,11 +7,16 @@ export const LOAD_CONFIG_REQUEST = 'LOAD_CONFIG_REQUEST';
 export const LOAD_CONFIG_SUCCESS = 'LOAD_CONFIG_SUCCESS';
 export const LOAD_CONFIG_FAILURE = 'LOAD_CONFIG_FAILURE';
 export const LOAD_MODELS_FROM_STORAGE = 'LOAD_MODELS_FROM_STORAGE';
+export const TOGGLE_FEATURE = 'TOGGLE_FEATURE';
+export const LOAD_SETTINGS_REQUEST = 'LOAD_SETTINGS_REQUEST';
+export const LOAD_SETTINGS_SUCCESS = 'LOAD_SETTINGS_SUCCESS';
+export const LOAD_SETTINGS_FAILURE = 'LOAD_SETTINGS_FAILURE';
 
 import axios from 'axios';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from './logActions';
 import { addNotification } from './systemActions';
 import configService from '../../services/configService';
+import api from '../../services/apiClient';
 
 // Track connection attempt timestamps to avoid repeated attempts
 const connectionAttempts = {
@@ -59,172 +64,314 @@ export const loadModelsFromStorage = (provider) => ({
   payload: provider
 });
 
-// Thunk Actions
-export const fetchModels = (provider, apiUrl, serverType = null) => async (dispatch, getState) => {
-  dispatch(fetchModelsRequest(provider));
-  
-  // Add detailed logging
-  dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Attempting to fetch models from ${provider} at ${apiUrl}${serverType ? ` (server type: ${serverType})` : ''}`));
-  
-  try {
-    let models = [];
-    
-    if (provider === 'lmStudio') {
-      // LM Studio API call to fetch models
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to LM Studio API: ${apiUrl}/v1/models`));
-      
-      const response = await axios.get(`${apiUrl}/v1/models`, {
-        // Add timeout and headers for better debugging
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-      
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `LM Studio API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
-      
-      if (response.data && response.data.data && Array.isArray(response.data.data)) {
-        models = response.data.data.map(model => model.id);
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully extracted ${models.length} models from LM Studio response`));
-      } else {
-        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected LM Studio API response format: ${JSON.stringify(response.data).substring(0, 200)}`));
-        models = [];
-      }
-      
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models from LM Studio`));
-    } 
-    else if (provider === 'ollama') {
-      // Ollama API call to fetch models
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to Ollama API: ${apiUrl}/api/tags`));
-      
-      const response = await axios.get(`${apiUrl}/api/tags`, {
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-      
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Ollama API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
-      
-      if (response.data && response.data.models && Array.isArray(response.data.models)) {
-        models = response.data.models.map(model => model.name);
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully extracted ${models.length} models from Ollama response`));
-      } else {
-        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected Ollama API response format: ${JSON.stringify(response.data).substring(0, 200)}`));
-        models = [];
-      }
-      
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models from Ollama`));
-    }
-    else if (provider === 'projectManager') {
-      // For Project Manager, use the specified server type to determine the API endpoint
-      const effectiveServerType = serverType || 'ollama';
-      
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Project Manager using server type: ${effectiveServerType}`));
-      
-      if (effectiveServerType === 'lmStudio') {
-        // Use LM Studio API
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to LM Studio API for Project Manager: ${apiUrl}/v1/models`));
-        
-        const response = await axios.get(`${apiUrl}/v1/models`, {
-          timeout: 10000,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        });
-        
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Project Manager API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
-        
-        if (response.data && response.data.data && Array.isArray(response.data.data)) {
-          models = response.data.data.map(model => model.id);
-          dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully extracted ${models.length} models from LM Studio for Project Manager`));
-        } else {
-          dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected LM Studio API response format for Project Manager: ${JSON.stringify(response.data).substring(0, 200)}`));
-          models = [];
-        }
-      } else {
-        // Use Ollama API
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Making request to Ollama API for Project Manager: ${apiUrl}/api/tags`));
-        
-        const response = await axios.get(`${apiUrl}/api/tags`, {
-          timeout: 10000,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        });
-        
-        dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Project Manager API response received: ${JSON.stringify(response.data).substring(0, 100)}...`));
-        
-        if (response.data && response.data.models && Array.isArray(response.data.models)) {
-          const allModels = response.data.models.map(model => model.name);
-          dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Extracted ${allModels.length} total models from Ollama for Project Manager`));
-          
-          // Instead of filtering, use all available models
-          models = allModels;
-          dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Using all ${models.length} available models for Project Manager`));
-          
-          // For backward compatibility, still prioritize certain models if they exist
-          const preferredModels = allModels.filter(name => 
-            name.toLowerCase().includes('deepscaler') || 
-            name.toLowerCase().includes('deep-scaler') ||
-            name.toLowerCase().includes('deepseek') || 
-            name.toLowerCase().includes('llama3') ||
-            name.toLowerCase().includes('llama-3') ||
-            name.toLowerCase().includes('mistral') ||
-            name.toLowerCase().includes('mixtral') ||
-            name.toLowerCase().includes('qwen')
-          );
-          
-          // If we have preferred models, put them at the top of the list
-          if (preferredModels.length > 0) {
-            // Remove preferred models from the main list to avoid duplicates
-            const otherModels = allModels.filter(model => !preferredModels.includes(model));
-            // Combine preferred models first, then other models
-            models = [...preferredModels, ...otherModels];
-            dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Prioritized ${preferredModels.length} preferred models for Project Manager`));
-          }
-        } else {
-          dispatch(logWarning(LOG_CATEGORIES.SETTINGS, `Unexpected API response format for Project Manager: ${JSON.stringify(response.data).substring(0, 200)}`));
-          models = [];
-        }
-      }
-      
-      dispatch(logInfo(LOG_CATEGORIES.SETTINGS, `Successfully fetched ${models.length} models for Project Manager`));
-    }
-    
-    dispatch(fetchModelsSuccess(provider, models));
-    
-    // Update connection attempts timestamp
-    connectionAttempts[provider] = Date.now();
-    
-    return models;
-  } catch (error) {
-    // Enhanced error logging
-    const errorMessage = error.response?.data?.error || error.message;
-    const statusCode = error.response?.status || 'unknown';
-    const errorDetails = {
-      message: errorMessage,
-      status: statusCode,
-      url: `${apiUrl}/${provider === 'lmStudio' || (provider === 'projectManager' && serverType === 'lmStudio') ? 'v1/models' : 'api/tags'}`,
-      provider: provider,
-      serverType: serverType
-    };
-    
-    dispatch(logError(LOG_CATEGORIES.SETTINGS, `Failed to fetch models from ${provider}: ${errorMessage}`, errorDetails));
-    dispatch(fetchModelsFailure(provider, errorMessage));
-    
-    // Notify user with more details
-    dispatch(addNotification({
-      type: 'error',
-      message: `Failed to connect to ${provider} (${statusCode}): ${errorMessage}`
-    }));
-    
-    return [];
+export const toggleFeature = (featureName, enabled) => ({
+  type: TOGGLE_FEATURE,
+  payload: {
+    featureName,
+    enabled
   }
+});
+
+export const loadSettingsRequest = () => ({
+  type: LOAD_SETTINGS_REQUEST
+});
+
+export const loadSettingsSuccess = (settings) => ({
+  type: LOAD_SETTINGS_SUCCESS,
+  payload: settings
+});
+
+export const loadSettingsFailure = (error) => ({
+  type: LOAD_SETTINGS_FAILURE,
+  payload: error
+});
+
+// Thunk Actions
+export const fetchModels = (provider, apiUrl, serverType) => {
+  return async (dispatch) => {
+    try {
+      dispatch(fetchModelsRequest(provider));
+      
+      // Log the attempt with all parameters
+      console.log(`fetchModels: Fetching models for ${provider}`, { apiUrl, serverType });
+      
+      // Special handling for projectManager - ensure provider name is properly cased
+      const normalizedProvider = provider.toLowerCase() === 'projectmanager' ? 'projectManager' : provider;
+      
+      let result;
+      try {
+        // Try to fetch models from API, passing serverType if available
+        result = await api.models.getModels(normalizedProvider, apiUrl, serverType);
+        
+        // Check if we have models or if there was an error
+        if (result.error && !result.fallback) {
+          throw new Error(result.error);
+        }
+        
+        if ((!result.models || !Array.isArray(result.models) || result.models.length === 0) && !result.fallback) {
+          throw new Error('No models found');
+        }
+        
+        // For projectManager, we might have fallback models
+        if (result.fallback && result.models && Array.isArray(result.models)) {
+          dispatch(addNotification({
+            type: 'info',
+            message: `Using default models for ${normalizedProvider}`,
+            description: 'Custom models can be added in Settings'
+          }));
+        }
+        
+        // Cache models in localStorage 
+        localStorage.setItem(`${normalizedProvider}Models`, JSON.stringify(result.models));
+        
+        dispatch(fetchModelsSuccess(normalizedProvider, result.models));
+        
+        return result.models;
+      } catch (error) {
+        const errorMessage = error.message || `Error fetching ${normalizedProvider} models`;
+        
+        // Update the UI with the error
+        dispatch(fetchModelsFailure(normalizedProvider, errorMessage));
+        
+        // Show a small notification
+        dispatch(addNotification({
+          type: 'warning',
+          message: `Could not fetch models for ${normalizedProvider}`,
+          description: 'Using cached models if available'
+        }));
+        
+        // Try to load cached models from localStorage
+        const cachedModels = localStorage.getItem(`${normalizedProvider}Models`);
+        if (cachedModels) {
+          try {
+            const models = JSON.parse(cachedModels);
+            if (Array.isArray(models) && models.length > 0) {
+              dispatch(fetchModelsSuccess(normalizedProvider, models));
+              return models;
+            }
+          } catch (e) {
+            // Ignore JSON parse errors
+          }
+        }
+        
+        // If no cached models, use defaults based on serverType for projectManager
+        if (normalizedProvider === 'projectManager') {
+          // Use provided serverType or default to 'lmStudio'
+          const effectiveServerType = serverType || 'lmStudio';
+          const defaultModels = effectiveServerType === 'ollama' ? 
+            ['llama2', 'mistral', 'mixtral'] :
+            ['qwen2.5-7b-instruct', 'llama2', 'mistral-7b-instruct'];
+            
+          dispatch(fetchModelsSuccess(normalizedProvider, defaultModels));
+          
+          // Cache these defaults
+          localStorage.setItem(`${normalizedProvider}Models`, JSON.stringify(defaultModels));
+          
+          dispatch(addNotification({
+            type: 'info',
+            message: 'Using default models',
+            description: 'No custom models were found'
+          }));
+          
+          return defaultModels;
+        }
+        
+        // Return empty array to prevent crashes
+        return [];
+      }
+    } catch (error) {
+      // Last resort fallback for any unexpected errors
+      dispatch(fetchModelsFailure(provider, 'Unexpected error fetching models'));
+      return [];
+    }
+  };
+};
+
+export const testConnection = (provider, apiUrl, model) => {
+  return async (dispatch) => {
+    try {
+      let result;
+      try {
+        // Try to test connection
+        result = await api.models.testConnection(provider, apiUrl, model);
+        
+        // If the result contains an error property, throw it
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        
+        // Notify user of success
+        if (result.success) {
+          dispatch(addNotification({
+            type: 'success',
+            message: `Successfully connected to ${provider}`
+          }));
+        } else {
+          // Connection failed but API responded
+          dispatch(addNotification({
+            type: 'warning',
+            message: `Connection test completed with warnings`,
+            description: result.message || 'See details in Settings panel'
+          }));
+        }
+        
+        return result;
+      } catch (error) {
+        // Handle connection test error
+        const errorMessage = error.message || `Error testing connection to ${provider}`;
+        
+        // Show a user-friendly notification
+        dispatch(addNotification({
+          type: 'error',
+          message: `Could not connect to ${provider}`,
+          description: errorMessage.includes('Failed to fetch') ? 
+            'Server is not reachable' : errorMessage
+        }));
+        
+        // Return a failed result instead of throwing
+        return {
+          success: false,
+          message: errorMessage,
+          provider,
+          apiUrl,
+          model
+        };
+      }
+    } catch (e) {
+      // Last resort fallback
+      return {
+        success: false,
+        message: 'Unexpected error testing connection'
+      };
+    }
+  };
+};
+
+export const saveSettings = (settings) => {
+  return async (dispatch) => {
+    try {
+      // Make sure we have valid settings to save
+      if (!settings) {
+        return { success: false, message: 'No settings provided' };
+      }
+      
+      // Validate settings first - using try-catch to prevent crashes
+      let validationResult = { isValid: true };
+      try {
+        validationResult = await api.settings.validateSettings(settings);
+      } catch (error) {
+        // If validation fails, log it but continue with save
+        validationResult = { 
+          isValid: true, 
+          warnings: ["Validation skipped due to error"] 
+        };
+      }
+      
+      // Try to save settings
+      try {
+        await api.settings.saveSettings(settings);
+        
+        // Update Redux store
+        dispatch(updateSettings(settings));
+        
+        return { success: true, validationResult };
+      } catch (error) {
+        // If backend save fails, save to localStorage as fallback
+        // Save individual settings to localStorage
+        const { lmStudio, ollama, projectManager } = settings;
+        
+        if (lmStudio) {
+          localStorage.setItem('lmStudioAddress', lmStudio.apiUrl || '');
+          localStorage.setItem('defaultLmStudioModel', lmStudio.defaultModel || '');
+        }
+        
+        if (ollama) {
+          localStorage.setItem('ollamaAddress', ollama.apiUrl || '');
+          localStorage.setItem('defaultOllamaModel', ollama.defaultModel || '');
+        }
+        
+        if (projectManager) {
+          localStorage.setItem('projectManagerApiUrl', projectManager.apiUrl || '');
+          localStorage.setItem('projectManagerModel', projectManager.model || '');
+          localStorage.setItem('projectManagerServerType', projectManager.serverType || 'lmStudio');
+          localStorage.setItem('projectManagerParameters', JSON.stringify(projectManager.parameters || {}));
+        }
+        
+        // Update Redux store anyway
+        dispatch(updateSettings(settings));
+        
+        return { 
+          success: true, 
+          savedLocally: true,
+          message: 'Saved to local storage only',
+          validationResult 
+        };
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        message: 'Failed to save settings' 
+      };
+    }
+  };
+};
+
+/**
+ * Thunk action creator for loading settings from the backend API
+ * Falls back to localStorage if the backend API is not available
+ * @returns {Promise<object>} - Settings object
+ */
+export const loadSettings = () => {
+  return async (dispatch) => {
+    try {
+      dispatch(loadSettingsRequest());
+      
+      let settings;
+      
+      try {
+        // Try to load from backend first
+        settings = await api.settings.loadSettings();
+      } catch (error) {
+        // If backend fails, load from localStorage
+        dispatch(logWarning(LOG_CATEGORIES.SETTINGS, 'Using localStorage fallback'));
+        
+        // Get fallback settings from localStorage
+        settings = {
+          lmStudio: {
+            apiUrl: localStorage.getItem('lmStudioAddress') || 'http://localhost:1234',
+            defaultModel: localStorage.getItem('defaultLmStudioModel') || '',
+            models: JSON.parse(localStorage.getItem('lmStudioModels') || '[]')
+          },
+          ollama: {
+            apiUrl: localStorage.getItem('ollamaAddress') || 'http://localhost:11434',
+            defaultModel: localStorage.getItem('defaultOllamaModel') || '',
+            models: JSON.parse(localStorage.getItem('ollamaModels') || '[]')
+          },
+          projectManager: {
+            apiUrl: localStorage.getItem('projectManagerApiUrl') || 'http://localhost:11434',
+            model: localStorage.getItem('projectManagerModel') || '',
+            serverType: localStorage.getItem('projectManagerServerType') || 'ollama',
+            parameters: JSON.parse(localStorage.getItem('projectManagerParameters') || '{}'),
+            models: JSON.parse(localStorage.getItem('projectManagerModels') || '[]')
+          },
+          features: {
+            enableFileUploads: localStorage.getItem('enableFileUploads') === 'true',
+            enableVoiceInput: localStorage.getItem('enableVoiceInput') === 'true'
+          },
+          nodeEnv: localStorage.getItem('nodeEnv') || 'development',
+          port: localStorage.getItem('port') || '3000'
+        };
+      }
+      
+      dispatch(loadSettingsSuccess(settings));
+      dispatch(updateSettings(settings));
+      
+      return settings;
+    } catch (error) {
+      dispatch(loadSettingsFailure('Error loading settings'));
+      return {};
+    }
+  };
 };
 
 /**
@@ -308,9 +455,9 @@ const loadFromLocalStorage = (dispatch) => {
   const defaultLmStudioModel = localStorage.getItem('defaultLmStudioModel') || '';
   const ollamaAddress = localStorage.getItem('ollamaAddress') || 'http://localhost:11434';
   const defaultOllamaModel = localStorage.getItem('defaultOllamaModel') || '';
-  const projectManagerApiUrl = localStorage.getItem('projectManagerApiUrl') || 'http://localhost:11434';
-  const projectManagerModel = localStorage.getItem('projectManagerModel') || 'deepscaler:7b';
-  const projectManagerServerType = localStorage.getItem('projectManagerServerType') || 'ollama';
+  const projectManagerApiUrl = localStorage.getItem('projectManagerApiUrl') || 'http://localhost:1234';
+  const projectManagerModel = localStorage.getItem('projectManagerModel') || 'qwen2.5-7b-instruct-1m';
+  const projectManagerServerType = localStorage.getItem('projectManagerServerType') || 'lmStudio';
   
   // Try to load parameters from localStorage
   let projectManagerParameters = {
@@ -354,111 +501,6 @@ const loadFromLocalStorage = (dispatch) => {
   };
   
   return config;
-};
-
-/**
- * Thunk action creator for saving settings
- * Saves to both localStorage and attempts to save to file
- */
-export const saveSettings = (settings) => async (dispatch) => {
-  try {
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Saving settings'));
-    
-    // Save to localStorage
-    if (settings.lmStudio?.apiUrl) {
-      localStorage.setItem('lmStudioAddress', settings.lmStudio.apiUrl);
-    }
-    
-    if (settings.lmStudio?.defaultModel) {
-      localStorage.setItem('defaultLmStudioModel', settings.lmStudio.defaultModel);
-    }
-    
-    if (settings.ollama?.apiUrl) {
-      localStorage.setItem('ollamaAddress', settings.ollama.apiUrl);
-    }
-    
-    if (settings.ollama?.defaultModel) {
-      localStorage.setItem('defaultOllamaModel', settings.ollama.defaultModel);
-    }
-    
-    if (settings.projectManager?.apiUrl) {
-      localStorage.setItem('projectManagerApiUrl', settings.projectManager.apiUrl);
-    }
-    
-    if (settings.projectManager?.model) {
-      localStorage.setItem('projectManagerModel', settings.projectManager.model);
-    }
-    
-    if (settings.projectManager?.serverType) {
-      localStorage.setItem('projectManagerServerType', settings.projectManager.serverType);
-    }
-    
-    if (settings.projectManager?.parameters) {
-      localStorage.setItem('projectManagerParameters', JSON.stringify(settings.projectManager.parameters));
-    }
-    
-    if (settings.nodeEnv) {
-      localStorage.setItem('nodeEnv', settings.nodeEnv);
-    }
-    
-    if (settings.port) {
-      localStorage.setItem('port', settings.port);
-    }
-    
-    // Also save models to localStorage if they exist
-    if (settings.lmStudio?.models?.length) {
-      localStorage.setItem('lmStudioModels', JSON.stringify(settings.lmStudio.models));
-    }
-    if (settings.ollama?.models?.length) {
-      localStorage.setItem('ollamaModels', JSON.stringify(settings.ollama.models));
-    }
-    if (settings.projectManager?.models?.length) {
-      localStorage.setItem('projectManagerModels', JSON.stringify(settings.projectManager.models));
-    }
-    
-    // Update Redux store
-    dispatch(updateSettings(settings));
-    
-    // Save to config file
-    await configService.saveConfig({
-      lmStudio: {
-        apiUrl: settings.lmStudio?.apiUrl,
-        defaultModel: settings.lmStudio?.defaultModel
-      },
-      ollama: {
-        apiUrl: settings.ollama?.apiUrl,
-        defaultModel: settings.ollama?.defaultModel
-      },
-      projectManager: {
-        apiUrl: settings.projectManager?.apiUrl,
-        model: settings.projectManager?.model,
-        serverType: settings.projectManager?.serverType,
-        parameters: settings.projectManager?.parameters
-      },
-      nodeEnv: settings.nodeEnv,
-      port: settings.port
-    });
-    
-    dispatch(logInfo(LOG_CATEGORIES.SETTINGS, 'Settings saved successfully'));
-    
-    // Notify user
-    dispatch(addNotification({
-      type: 'success',
-      message: 'Settings saved successfully'
-    }));
-    
-    return true;
-  } catch (error) {
-    dispatch(logError(LOG_CATEGORIES.SETTINGS, 'Failed to save settings', error));
-    
-    // Notify user
-    dispatch(addNotification({
-      type: 'error',
-      message: `Failed to save settings: ${error.message}`
-    }));
-    
-    return false;
-  }
 };
 
 /**

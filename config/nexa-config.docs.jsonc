@@ -1,0 +1,113 @@
+/**
+ * Nexa Configuration Documentation
+ * This is a documented version of nexa-config.json with all available options
+ * Use this as a reference when editing the actual config file
+ */
+{
+  // LM Studio configuration
+  // Controls the local LM Studio server settings
+  "lmStudio": {
+    // API URL for LM Studio server (default: http://localhost:1234)
+    "apiUrl": "http://localhost:1234",
+    // Default model to use with LM Studio
+    // Common options: qwen2.5-7b-instruct-1m, llama2-7b, mistral-7b, etc.
+    "defaultModel": "qwen2.5-7b-instruct-1m"
+  },
+
+  // Ollama configuration
+  // Controls the local Ollama server settings
+  "ollama": {
+    // API URL for Ollama server (default: http://localhost:11434)
+    "apiUrl": "http://localhost:11434",
+    // Default model to use with Ollama
+    // Common options: llama2, mistral, deepseek-r1:1.5b, etc.
+    "defaultModel": "deepseek-r1:1.5b"
+  },
+
+  // Project Manager configuration
+  // Controls the behavior of the Project Manager agent
+  "projectManager": {
+    // API URL for the Project Manager's LLM server
+    "apiUrl": "http://localhost:1234",
+    // Model to use for Project Manager operations
+    "model": "qwen2.5-7b-instruct-1m",
+    // Server type: "lmStudio" or "ollama"
+    "serverType": "lmStudio",
+    // LLM generation parameters
+    "parameters": {
+      // Controls randomness in generation (0.0-1.0)
+      // Higher values = more random, lower = more deterministic
+      "temperature": 0.7,
+      // Nucleus sampling parameter (0.0-1.0)
+      // Controls cumulative probability cutoff for token selection
+      "topP": 0.9,
+      // Limits vocabulary to top K tokens (1-100)
+      // Lower values = more focused responses
+      "topK": 40,
+      // Penalizes repeated tokens (1.0-2.0)
+      // Higher values = stronger penalty for repetition
+      "repeatPenalty": 1.1,
+      // Maximum tokens to generate in response (128-4096)
+      "maxTokens": 1024,
+      // Maximum context window size (512-8192)
+      // Must be supported by the selected model
+      "contextLength": 4096
+    }
+  },
+
+  // Feature toggles
+  // Enable/disable specific functionality
+  "features": {
+    // Enable floating chat widget
+    "chatWidget": true,
+    // Enable Project Manager agent
+    "projectManagerAgent": true,
+    // Enable task management system
+    "taskManagement": true,
+    // Enable system logging
+    "loggingSystem": true,
+    // Enable system notifications
+    "notifications": true,
+    // Enable performance metrics
+    "metrics": true,
+    // Enable automatic saving of changes
+    "autoSave": true,
+    // Enable debug mode for additional logging
+    "debugMode": false,
+    // Enable experimental features
+    "experimentalFeatures": false
+  },
+
+  // Environment configuration
+  // System-level settings
+  "environment": {
+    // Node environment: "development", "production", or "test"
+    "nodeEnv": "development",
+    // Server port number
+    "port": "3001",
+    // Logging level: "error", "warn", "info", "debug", or "trace"
+    "logLevel": "info",
+    // Log retention period (e.g., "1d", "7d", "30d")
+    "maxLogRetention": "7d",
+    // Auto-save interval in milliseconds (e.g., 300000 = 5 minutes)
+    "autoSaveInterval": 300000
+  },
+
+  // UI configuration
+  // User interface preferences
+  "ui": {
+    // UI theme: "light" or "dark"
+    "theme": "light",
+    // Layout configuration: "standard", "compact", or "expanded"
+    "defaultLayout": "standard",
+    // Chat widget position: "bottom-right", "bottom-left", "top-right", "top-left"
+    "chatPosition": "bottom-right",
+    // Notification settings
+    "notifications": {
+      // Notification position: "top-right", "top-left", "bottom-right", "bottom-left"
+      "position": "top-right",
+      // Notification duration in milliseconds
+      "duration": 5000
+    }
+  }
+} 

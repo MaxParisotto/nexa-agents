@@ -12,10 +12,6 @@ const DEFAULT_CONFIG = {
     apiUrl: 'http://localhost:1234',
     defaultModel: 'qwen2.5-7b-instruct-1m'
   },
-  ollama: {
-    apiUrl: 'http://localhost:11434',
-    defaultModel: 'deepseek-r1:1.5b'
-  },
   nodeEnv: 'development',
   port: 3001
 };
@@ -398,8 +394,13 @@ export const loadConfigFromLocalStorage = () => {
   if (storedSettings) {
     try {
       const parsedSettings = JSON.parse(storedSettings);
-      if (parsedSettings && parsedSettings.lmStudio && parsedSettings.ollama) {
-        return parsedSettings;
+      if (parsedSettings && parsedSettings.lmStudio) {
+        return {
+          lmStudio: {
+            apiUrl: localStorage.getItem('lmStudioApiUrl') || DEFAULT_CONFIG.lmStudio.apiUrl,
+            defaultModel: localStorage.getItem('lmStudioDefaultModel') || DEFAULT_CONFIG.lmStudio.defaultModel
+          }
+        };
       }
     } catch (e) {
       console.warn('Failed to parse settings from localStorage:', e);
@@ -411,10 +412,6 @@ export const loadConfigFromLocalStorage = () => {
     lmStudio: {
       apiUrl: localStorage.getItem('lmStudioApiUrl') || DEFAULT_CONFIG.lmStudio.apiUrl,
       defaultModel: localStorage.getItem('lmStudioDefaultModel') || DEFAULT_CONFIG.lmStudio.defaultModel
-    },
-    ollama: {
-      apiUrl: localStorage.getItem('ollamaApiUrl') || DEFAULT_CONFIG.ollama.apiUrl,
-      defaultModel: localStorage.getItem('ollamaDefaultModel') || DEFAULT_CONFIG.ollama.defaultModel
     },
     nodeEnv: localStorage.getItem('nodeEnv') || DEFAULT_CONFIG.nodeEnv,
     port: localStorage.getItem('port') || DEFAULT_CONFIG.port
@@ -430,8 +427,6 @@ export const saveConfigToLocalStorage = (config) => {
   
   localStorage.setItem('lmStudioApiUrl', config.lmStudio?.apiUrl || '');
   localStorage.setItem('lmStudioDefaultModel', config.lmStudio?.defaultModel || '');
-  localStorage.setItem('ollamaApiUrl', config.ollama?.apiUrl || '');
-  localStorage.setItem('ollamaDefaultModel', config.ollama?.defaultModel || '');
   localStorage.setItem('nodeEnv', config.nodeEnv || 'development');
   localStorage.setItem('port', config.port || '3001');
 };
@@ -515,7 +510,7 @@ export const loadConfig = async () => {
     }
     
     // Verify we have a valid config, otherwise use defaults
-    if (!config || !config.lmStudio || !config.ollama) {
+    if (!config || !config.lmStudio) {
       console.log('Invalid configuration loaded, using defaults');
       config = getDefaultConfig();
       source = 'default';
@@ -542,6 +537,44 @@ export const saveConfig = async (config, format = 'json') => {
   return saveConfigToFile(config, format);
 };
 
+// Load settings from localStorage
+export const loadSettings = () => {
+  try {
+    const parsedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+    if (parsedSettings && parsedSettings.lmStudio) {
+      return {
+        lmStudio: {
+          apiUrl: localStorage.getItem('lmStudioApiUrl') || DEFAULT_CONFIG.lmStudio.apiUrl,
+          defaultModel: localStorage.getItem('lmStudioDefaultModel') || DEFAULT_CONFIG.lmStudio.defaultModel
+        }
+      };
+    }
+    return DEFAULT_CONFIG;
+  } catch (error) {
+    console.error('Error loading settings:', error);
+    return DEFAULT_CONFIG;
+  }
+};
+
+// Save settings to localStorage
+export const saveSettings = (config) => {
+  try {
+    localStorage.setItem('settings', JSON.stringify(config));
+    localStorage.setItem('lmStudioApiUrl', config.lmStudio?.apiUrl || '');
+    localStorage.setItem('lmStudioDefaultModel', config.lmStudio?.defaultModel || '');
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
+};
+
+// Validate settings
+export const validateSettings = (config) => {
+  if (!config || !config.lmStudio) {
+    return false;
+  }
+  return true;
+};
+
 // Export the full interface
 export default {
   loadConfig,
@@ -551,5 +584,8 @@ export default {
   saveConfigToLocalStorage,
   checkServerAvailability,
   saveConfig,
-  getDefaultConfig
+  getDefaultConfig,
+  loadSettings,
+  saveSettings,
+  validateSettings
 }; 
