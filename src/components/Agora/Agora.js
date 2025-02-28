@@ -30,10 +30,21 @@ const Agora = () => {
 
   const handleSendMessage = () => {
     if (newMessage.trim()) {
+      const mentions = [];
+      const content = newMessage.replace(/@(\w+)/g, (match, username) => {
+        const agent = agents.find(a => a.name === username);
+        if (agent) {
+          mentions.push(agent.id);
+          return `@${username}`;
+        }
+        return match;
+      });
+
       setMessages(prev => [...prev, {
         id: prev.length + 1,
         author: 'You',
-        content: newMessage,
+        content,
+        mentions,
         timestamp: new Date().toLocaleTimeString(),
         avatar: '/static/images/avatar/user.png'
       }]);
@@ -89,7 +100,23 @@ const Agora = () => {
                     {message.timestamp}
                   </Typography>
                 </div>
-                <Typography variant="body2">{message.content}</Typography>
+                <Typography variant="body2">
+                  {message.content.split(' ').map((word, i) => (
+                    message.mentions?.some(mention => word === `@${agents.find(a => a.id === mention)?.name}`) ? (
+                      <span key={i} className="mention" style={{ 
+                        color: '#1976d2',
+                        fontWeight: 500,
+                        backgroundColor: '#1976d210',
+                        padding: '2px 4px',
+                        borderRadius: 4
+                      }}>
+                        {word}
+                      </span>
+                    ) : (
+                      <span key={i}>{word} </span>
+                    )
+                  ))}
+                </Typography>
               </div>
             </div>
           ))}
