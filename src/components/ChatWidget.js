@@ -178,7 +178,7 @@ const ChatWidget = () => {
     return () => {
       window.removeEventListener('toggle-chat-widget', handleDockToggle);
     };
-  }, [width, height, lmStudioAddress, ollamaAddress, server]);
+  }, [lmStudioAddress, ollamaAddress, server]); // Removed width/height from dependencies
 
   useEffect(() => {
     // Let ProjectManager handle the welcome message, don't add our own
@@ -310,15 +310,24 @@ const ChatWidget = () => {
   };
 
   const handleResize = (event, { size }) => {
-    // Update current dimensions
-    setWidth(size.width);
-    setHeight(size.height);
-    
-    // Also save for restoring after un-minimizing
-    setExpandedDimensions({
-      width: size.width,
-      height: size.height
-    });
+    // Only update if dimensions actually changed
+    if (size.width !== width || size.height !== height) {
+      // Calculate horizontal movement delta to keep right edge anchored
+      const deltaX = size.width - width;
+      const newX = position.x - deltaX;
+      
+      // Update dimensions only
+      setWidth(size.width);
+      setHeight(size.height);
+      
+      // Save for restoring after un-minimizing
+      setExpandedDimensions({
+        width: size.width,
+        height: size.height
+      });
+
+      console.log('Resized to:', size.width, 'x', size.height);
+    }
   };
 
   const handleDrag = (e, ui) => {
