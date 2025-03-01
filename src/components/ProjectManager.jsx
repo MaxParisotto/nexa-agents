@@ -1377,8 +1377,44 @@ When a user asks you to perform any action related to workflows or tasks, please
     }
   };
   
+  // Add this function to implement the fallback command processor
+  const processCommandFallback = (message) => {
+    if (!message || typeof message !== 'string') {
+      return "I didn't understand that message.";
+    }
+    
+    message = message.trim().toLowerCase();
+    
+    if (message.includes('hello') || message.includes('hi')) {
+      return "Hello! I'm your project assistant. How can I help you today?";
+    }
+    
+    if (message.includes('help')) {
+      return `Here are some commands you can try:
+  - help: Show this message
+  - status: Check system status
+  - version: Show application version
+  - about: Learn more about this application`;
+    }
+    
+    if (message.includes('status')) {
+      return "System is operational. Using local settings mode.";
+    }
+    
+    if (message.includes('version')) {
+      return "Nexa Agents v1.0.0";
+    }
+    
+    if (message.includes('about')) {
+      return "Nexa Agents is an AI orchestration platform for managing autonomous agents and workflows.";
+    }
+    
+    // Default response for unrecognized commands
+    return "I'm not connected to an LLM server at the moment. Please check your settings or try basic commands like 'help'.";
+  };
+
   // This is a service component with no UI
   return null;
 };
 
-export default ProjectManager; 
+export default ProjectManager;

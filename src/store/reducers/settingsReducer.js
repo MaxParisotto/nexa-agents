@@ -249,6 +249,15 @@ export function settingsReducer(state = initialState, action) {
         loading: false,
         error: action.payload
       };
+
+    case 'UPDATE_OPENAI_SETTINGS':
+      return {
+        ...state,
+        openai: {
+          ...state.openai,
+          ...action.payload
+        }
+      };
       
     default:
       return state;

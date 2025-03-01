@@ -25,6 +25,9 @@ import modelsRoutes from './routes/models.js';
 import testRoutes from './routes/test.js';
 import { createUplinkRouter } from './routes/uplink.js';
 
+// Import the OpenAI Uplink Server
+import { openaiUplinkServer } from './uplink/openaiUplinkServer.js';
+
 const app = express();
 
 // In-memory cache for rate limiting logs
@@ -390,6 +393,14 @@ io.on('connection', (socket) => {
     io.emit('metrics_updated', metrics);
   });
 });
+
+// After starting the WebSocket server, also start the OpenAI Uplink
+try {
+  openaiUplinkServer.start();
+  logger.info(`OpenAI Uplink server started on port ${openaiUplinkServer.port}`);
+} catch (err) {
+  logger.error('Failed to start OpenAI Uplink server', err);
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {

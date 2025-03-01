@@ -6,76 +6,95 @@
 import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-// Create logs directory if it doesn't exist
-const LOGS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '../../../logs');
-if (!fs.existsSync(LOGS_DIR)) {
-  fs.mkdirSync(LOGS_DIR, { recursive: true });
+// Get the directory name for ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure logs directory exists
+const logsDir = path.join(__dirname, '../../../logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
 }
 
-// Define log formats
-const consoleFormat = winston.format.combine(
-  winston.format.colorize(),
+// Define custom format
+const customFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.errors({ stack: true }),
+  winston.format.splat(),
+  winston.format.json(),
   winston.format.printf(({ level, message, timestamp, ...meta }) => {
-    return `${timestamp} ${level}: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`;
+    const metaStr = Object.keys(meta).length ? 
+      JSON.stringify(meta, (key, value) => {
+        // Handle circular references
+        if (key && typeof value === 'object' && value !== null) {
+          if (seen.has(value)) {
+            return '[Circular]';
+          }
+          seen.add(value);
+        }
+        return value;
+      }, 2) : '';
+    seen = new Set(); // Reset for next use
+    return `${timestamp} ${level}: ${message} ${metaStr}`;
   })
 );
 
-const fileFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.json()
-);
+// Set to handle circular references
+let seen = new Set();
 
-// Create logger with console and file transports
+// Create logger
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  format: fileFormat,
+  format: customFormat,
   transports: [
-    // Console transport for all environments
+    // Console output with colors
     new winston.transports.Console({
-      format: consoleFormat
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(({ level, message, timestamp, ...meta }) => {
+          const metaStr = Object.keys(meta).length && !meta.silent ? 
+            ('\n' + JSON.stringify(meta, null, 2)) : '';
+          return `${timestamp} ${level}: ${message}${metaStr}`;
+        })
+      )
     }),
-    // Info log file
-    new winston.transports.File({
-      filename: path.join(LOGS_DIR, 'info.log'),
-      level: 'info',
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
-    }),
-    // Error log file
-    new winston.transports.File({
-      filename: path.join(LOGS_DIR, 'error.log'),
+    // Error logs
+    new winston.transports.File({ 
+      filename: path.join(logsDir, 'error.log'), 
       level: 'error',
       maxsize: 5242880, // 5MB
-      maxFiles: 5
+      maxFiles: 5,
+    }),
+    // All logs
+    new winston.transports.File({ 
+      filename: path.join(logsDir, 'combined.log'),
+      maxsize: 10485760, // 10MB
+      maxFiles: 5,
+    })
+  ],
+  exceptionHandlers: [
+    new winston.transports.File({ 
+      filename: path.join(logsDir, 'exceptions.log'),
+      maxsize: 5242880, // 5MB,
+      maxFiles: 5,
+    })
+  ],
+  rejectionHandlers: [
+    new winston.transports.File({ 
+      filename: path.join(logsDir, 'rejections.log'),
+      maxsize: 5242880, // 5MB,
+      maxFiles: 5,
     })
   ]
 });
 
-// Add request logging with rate limiting to prevent log spam
-const requestLogCache = new Map();
-
-// Helper function to clean up expired cache entries
-const cleanupRequestCache = () => {
-  const now = Date.now();
-  let expiredCount = 0;
-  
-  requestLogCache.forEach((timestamp, key) => {
-    // Remove entries older than 5 minutes
-    if (now - timestamp > 300000) {
-      requestLogCache.delete(key);
-      expiredCount++;
-    }
-  });
-  
-  if (expiredCount > 0) {
-    logger.debug(`Cleaned up ${expiredCount} expired log cache entries`);
+// Add a stream for Morgan HTTP logging middleware
+logger.stream = {
+  write: function(message) {
+    logger.info(message.trim());
   }
 };
 
-// Set up cache cleanup interval
-setInterval(cleanupRequestCache, 60000); // Run every minute
-
-// Export the configured logger
 export default logger;

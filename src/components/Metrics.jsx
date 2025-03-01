@@ -1,662 +1,371 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { 
+  Container, Typography, Paper, Grid, Box, 
+  Card, CardContent, CircularProgress, LinearProgress
+} from '@mui/material';
 import { useSelector, useDispatch } from 'react-redux';
 import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Paper, 
-  Tabs, 
-  Tab, 
-  Card, 
-  CardContent, 
-  Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  CircularProgress,
-  Button
-} from '@mui/material';
-import { styled } from '@mui/material/styles';
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  AreaChart,
-  Area
+  LineChart, Line, XAxis, YAxis, CartesianGrid, 
+  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
-import { 
-  Speed as SpeedIcon, 
-  Memory as MemoryIcon, 
-  Assessment as AssessmentIcon,
-  Token as TokenIcon,
-  Refresh as RefreshIcon
-} from '@mui/icons-material';
-import { startSystemMonitoring, addBenchmarkResult } from '../store/actions/systemActions';
+import { startSystemMonitoring } from '../store/actions/systemActions';
 
-// Styled components
-const Item = styled(Paper)(({ theme }) => ({
-  ...theme.typography.body2,
-  padding: theme.spacing(3),
-  color: theme.palette.text.secondary,
-  height: '100%',
-  display: 'flex',
-  flexDirection: 'column'
-}));
-
-const MetricCard = styled(Card)(({ theme }) => ({
-  height: '100%',
-  display: 'flex',
-  flexDirection: 'column'
-}));
-
-const MetricValue = styled(Typography)(({ theme }) => ({
-  fontSize: '2.5rem',
-  fontWeight: 'bold',
-  marginBottom: theme.spacing(1)
-}));
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
-
-/**
- * Metrics component that displays system performance metrics and charts
- * including detailed token metrics with graphs for tokens/s, total tokens, etc.
- */
 const Metrics = () => {
   const dispatch = useDispatch();
-  const metrics = useSelector((state) => state.system.metrics);
-  const metricsHistory = useSelector((state) => state.system.metricsHistory || []);
-  const tokenMetrics = useSelector((state) => state.system.tokenMetrics);
-  const benchmarkResults = useSelector((state) => state.system.tokenMetrics.benchmarkResults || []);
-  const websocketStatus = useSelector((state) => state.system.websocketStatus);
-  const [activeTab, setActiveTab] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-
+  const metrics = useSelector(state => state.system.metrics || {});
+  const tokenMetrics = useSelector(state => state.system.tokenMetrics || {});
+  const benchmarks = useSelector(state => state.system.benchmarks || []);
+  const workflows = useSelector(state => state.system.workflows || []);
+  
+  // State for metrics history
+  const [metricsHistory, setMetricsHistory] = useState([]);
+  const [tokenHistory, setTokenHistory] = useState([]);
+  
+  // Add metrics to history when they change
   useEffect(() => {
-    const metricsInterval = dispatch(startSystemMonitoring());
-    
-    // Import any benchmark results from localStorage if they exist
-    const storedBenchmarks = localStorage.getItem('benchmarkResults');
-    if (storedBenchmarks) {
-      try {
-        const benchmarks = JSON.parse(storedBenchmarks);
-        if (Array.isArray(benchmarks) && benchmarks.length > 0) {
-          benchmarks.forEach(benchmark => {
-            dispatch(addBenchmarkResult(benchmark));
-          });
-        }
-      } catch (error) {
-        console.error('Error parsing stored benchmarks:', error);
-      }
+    if (metrics && Object.keys(metrics).length > 0) {
+      setMetricsHistory(prev => {
+        // Keep only the last 50 data points to prevent memory issues
+        const newHistory = [...prev, {
+          time: new Date().toLocaleTimeString(),
+          cpu: metrics.cpu || 0,
+          memory: metrics.memory || 0,
+          disk: metrics.disk || 0,
+          timestamp: Date.now()
+        }];
+        
+        // Only keep the last 50 entries
+        return newHistory.slice(-50);
+      });
     }
+  }, [metrics]);
+  
+  // Add token metrics to history when they change
+  useEffect(() => {
+    if (tokenMetrics && Object.keys(tokenMetrics).length > 0) {
+      setTokenHistory(prev => {
+        // Keep only the last 50 data points to prevent memory issues
+        const newHistory = [...prev, {
+          time: new Date().toLocaleTimeString(),
+          used: tokenMetrics.used || 0,
+          remaining: tokenMetrics.remaining || 0,
+          total: tokenMetrics.total || 0,
+          timestamp: Date.now()
+        }];
+        
+        // Only keep the last 50 entries
+        return newHistory.slice(-50);
+      });
+    }
+  }, [tokenMetrics]);
+  
+  // Start system monitoring when component mounts
+  useEffect(() => {
+    // Start system monitoring
+    const monitoringInterval = dispatch(startSystemMonitoring());
     
+    // Clean up on unmount
     return () => {
-      if (metricsInterval) {
-        clearInterval(metricsInterval);
+      if (monitoringInterval) {
+        clearInterval(monitoringInterval);
       }
     };
   }, [dispatch]);
-
-  // Handle tab change
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
-
-  // Format timestamp for chart display
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
-  };
-
-  // Format large numbers with commas
-  const formatNumber = (num) => {
-    return num?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") || '0';
-  };
-
-  // Refresh metrics
-  const handleRefresh = () => {
-    setRefreshing(true);
-    dispatch(startSystemMonitoring());
-    setTimeout(() => setRefreshing(false), 1000);
-  };
-
-  // Prepare system metrics chart data
-  const systemChartData = metricsHistory.map((item) => ({
-    timestamp: formatTimestamp(item.timestamp),
-    cpuUsage: item.cpuUsage,
-    memoryUsage: item.memoryUsage,
-    activeAgents: item.activeAgents,
-    pendingTasks: item.pendingTasks
-  }));
-
-  // Prepare token metrics chart data
-  const tokenChartData = tokenMetrics.tokenHistory.map((item) => ({
-    timestamp: formatTimestamp(item.timestamp),
-    tokensPerSecond: item.averageTokensPerSecond,
-    recentTokensGenerated: item.recentTokensGenerated,
-    recentTokensProcessed: item.recentTokensProcessed
-  }));
-
-  // Prepare model usage data for pie chart
-  const modelUsageData = Object.entries(tokenMetrics.modelUsage || {}).map(([model, data]) => ({
-    name: model,
-    value: data.totalTokens || 0
-  })).sort((a, b) => b.value - a.value);
-
-  // Prepare benchmark results data
-  const benchmarkChartData = benchmarkResults.map((result, index) => ({
-    name: result.model || `Benchmark ${index + 1}`,
-    score: result.averageScore || 0,
-    tokensPerSecond: result.averageTokensPerSecond || 0,
-    latency: result.averageLatency || 0
-  }));
-
+  
+  // Calculate model usage distribution from benchmarks
+  const getModelUsageData = useCallback(() => {
+    if (!benchmarks || benchmarks.length === 0) {
+      return [
+        { name: 'No Data', value: 1 }
+      ];
+    }
+    
+    // Aggregate token usage by model name
+    const modelUsage = benchmarks.reduce((acc, benchmark) => {
+      const modelName = benchmark.model || 'Unknown';
+      const tokensUsed = benchmark.tokens || 0;
+      
+      if (!acc[modelName]) {
+        acc[modelName] = 0;
+      }
+      
+      acc[modelName] += tokensUsed;
+      return acc;
+    }, {});
+    
+    // Convert to array format for the pie chart
+    return Object.entries(modelUsage).map(([name, value]) => ({
+      name,
+      value
+    }));
+  }, [benchmarks]);
+  
+  // Format for pie chart
+  const pieData = getModelUsageData();
+  
+  // Colors for the pie chart
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+  
+  // Calculate active workflows
+  const activeWorkflows = workflows.filter(w => w.status === 'running').length;
+  
+  // Calculate total tokens used today
+  const calculateTodayTokens = useCallback(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return benchmarks
+      .filter(b => new Date(b.timestamp) >= today)
+      .reduce((sum, b) => sum + (b.tokens || 0), 0);
+  }, [benchmarks]);
+  
+  const todayTokens = calculateTodayTokens();
+  
   return (
-    <Box sx={{ flexGrow: 1, p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">
-          System Metrics
-        </Typography>
-        <Button 
-          variant="outlined" 
-          startIcon={refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          {refreshing ? 'Refreshing...' : 'Refresh Metrics'}
-        </Button>
-      </Box>
+    <Container maxWidth="lg" sx={{ mt: 4 }}>
+      <Typography variant="h4" gutterBottom>System Metrics</Typography>
       
-      {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={3}>
+        {/* System status cards */}
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard elevation={3}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" color="text.secondary">
-                  Total Tokens Generated
-                </Typography>
-                <TokenIcon color="primary" />
-              </Box>
-              <MetricValue color="primary">
-                {formatNumber(tokenMetrics.totalTokensGenerated)}
-              </MetricValue>
-              <Typography variant="body2" color="text.secondary">
-                Tokens generated across all models
-              </Typography>
-            </CardContent>
-          </MetricCard>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard elevation={3}>
-            <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" color="text.secondary">
-                  Tokens/Second
-                </Typography>
-                <SpeedIcon color="secondary" />
-              </Box>
-              <MetricValue color="secondary">
-                {tokenMetrics.averageTokensPerSecond?.toFixed(1) || '0.0'}
-              </MetricValue>
-              <Typography variant="body2" color="text.secondary">
-                Current generation speed
-              </Typography>
-            </CardContent>
-          </MetricCard>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard elevation={3}>
-            <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" color="text.secondary">
-                  CPU Usage
-                </Typography>
-                <MemoryIcon color="info" />
-              </Box>
-              <MetricValue color="info">
-                {Math.round(metrics.cpuUsage || 0)}%
-              </MetricValue>
-              <Typography variant="body2" color="text.secondary">
-                Current CPU utilization
-              </Typography>
-            </CardContent>
-          </MetricCard>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard elevation={3}>
-            <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" color="text.secondary">
-                  Memory Usage
-                </Typography>
-                <AssessmentIcon color="warning" />
-              </Box>
-              <MetricValue color="warning">
-                {Math.round(metrics.memoryUsage || 0)}%
-              </MetricValue>
-              <Typography variant="body2" color="text.secondary">
-                Current memory utilization
-              </Typography>
-            </CardContent>
-          </MetricCard>
-        </Grid>
-      </Grid>
-      
-      {/* Tabs for different metric categories */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange} aria-label="metrics tabs">
-          <Tab label="Token Metrics" />
-          <Tab label="System Performance" />
-          <Tab label="Benchmark Results" />
-        </Tabs>
-      </Box>
-      
-      {/* Token Metrics Tab */}
-      {activeTab === 0 && (
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={8}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Token Generation Rate
-              </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={tokenChartData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="tokensPerSecond" 
-                    name="Tokens/Second" 
-                    stroke="#8884d8" 
-                    activeDot={{ r: 8 }} 
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Item>
-          </Grid>
-          
-          <Grid item xs={12} md={4}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Model Usage Distribution
-              </Typography>
-              {modelUsageData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={modelUsageData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {modelUsageData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => formatNumber(value)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    No model usage data available
-                  </Typography>
-                </Box>
-              )}
-            </Item>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Token Generation Over Time
-              </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart
-                  data={tokenChartData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Area 
-                    type="monotone" 
-                    dataKey="recentTokensGenerated" 
-                    name="Tokens Generated" 
-                    stroke="#8884d8" 
-                    fill="#8884d8" 
-                    fillOpacity={0.3}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="recentTokensProcessed" 
-                    name="Tokens Processed" 
-                    stroke="#82ca9d" 
-                    fill="#82ca9d" 
-                    fillOpacity={0.3}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </Item>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Token Metrics Summary
-              </Typography>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Metric</TableCell>
-                      <TableCell align="right">Value</TableCell>
-                      <TableCell>Description</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>Total Tokens Generated</TableCell>
-                      <TableCell align="right">{formatNumber(tokenMetrics.totalTokensGenerated)}</TableCell>
-                      <TableCell>Total number of tokens generated across all models</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>Total Tokens Processed</TableCell>
-                      <TableCell align="right">{formatNumber(tokenMetrics.totalTokensProcessed)}</TableCell>
-                      <TableCell>Total number of tokens processed (input + output)</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>Average Tokens/Second</TableCell>
-                      <TableCell align="right">{tokenMetrics.averageTokensPerSecond?.toFixed(2) || '0.00'}</TableCell>
-                      <TableCell>Average token generation speed</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>Models Used</TableCell>
-                      <TableCell align="right">{Object.keys(tokenMetrics.modelUsage || {}).length}</TableCell>
-                      <TableCell>Number of different models used</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Item>
-          </Grid>
-        </Grid>
-      )}
-      
-      {/* System Performance Tab */}
-      {activeTab === 1 && (
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
+              <Typography color="textSecondary" gutterBottom>
                 CPU Usage
               </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={systemChartData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis unit="%" domain={[0, 100]} />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="cpuUsage" 
-                    name="CPU Usage" 
-                    stroke="#8884d8" 
-                    activeDot={{ r: 8 }} 
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Item>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
+              <Box display="flex" alignItems="center">
+                <CircularProgress 
+                  variant="determinate" 
+                  value={metrics.cpu || 0} 
+                  size={60}
+                  sx={{ mr: 2 }}
+                />
+                <Typography variant="h5">
+                  {metrics.cpu || 0}%
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
                 Memory Usage
               </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={systemChartData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis unit="%" domain={[0, 100]} />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="memoryUsage" 
-                    name="Memory Usage" 
-                    stroke="#82ca9d" 
-                    activeDot={{ r: 8 }} 
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Item>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Agent and Task Activity
+              <Box display="flex" alignItems="center">
+                <CircularProgress 
+                  variant="determinate" 
+                  value={metrics.memory || 0} 
+                  size={60}
+                  sx={{ mr: 2 }}
+                  color="secondary"
+                />
+                <Typography variant="h5">
+                  {metrics.memory || 0}%
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Active Workflows
               </Typography>
+              <Typography variant="h5">
+                {activeWorkflows}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Total: {workflows.length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Tokens Used Today
+              </Typography>
+              <Typography variant="h5">
+                {todayTokens.toLocaleString()}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Total: {tokenMetrics.total?.toLocaleString() || 0}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        {/* CPU and memory chart */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>System Performance</Typography>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={metricsHistory}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis domain={[0, 100]} />
+                <Tooltip />
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="cpu" 
+                  stroke="#8884d8" 
+                  name="CPU (%)" 
+                  activeDot={{ r: 8 }} 
+                  isAnimationActive={false}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="memory" 
+                  stroke="#82ca9d" 
+                  name="Memory (%)" 
+                  isAnimationActive={false}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="disk" 
+                  stroke="#ff7300" 
+                  name="Disk (%)" 
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+              System resource utilization over time
+            </Typography>
+          </Paper>
+        </Grid>
+        
+        {/* Token usage chart */}
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>Token Usage Over Time</Typography>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={tokenHistory}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="used" 
+                  stroke="#ff7300" 
+                  name="Tokens Used" 
+                  isAnimationActive={false}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="remaining" 
+                  stroke="#82ca9d" 
+                  name="Tokens Remaining" 
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+              Token usage metrics over time
+            </Typography>
+          </Paper>
+        </Grid>
+        
+        {/* Token distribution by model */}
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>Usage by Model</Typography>
+            {pieData.length > 1 ? (
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart
-                  data={systemChartData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value.toLocaleString()} tokens`} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box display="flex" justifyContent="center" alignItems="center" height={300}>
+                <Typography color="textSecondary">
+                  No model usage data available
+                </Typography>
+              </Box>
+            )}
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+              Token consumption by model
+            </Typography>
+          </Paper>
+        </Grid>
+        
+        {/* Benchmark results */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>Benchmark Results</Typography>
+            {benchmarks.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart 
+                  data={benchmarks.slice(-20).map(b => ({
+                    time: new Date(b.timestamp).toLocaleTimeString(),
+                    duration: b.duration || 0,
+                    tokens: b.tokens || 0,
+                    model: b.model || 'Unknown'
+                  }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis />
+                  <XAxis dataKey="time" />
+                  <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                  <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
                   <Tooltip />
                   <Legend />
                   <Line 
                     type="monotone" 
-                    dataKey="activeAgents" 
-                    name="Active Agents" 
+                    dataKey="duration" 
+                    name="Duration (ms)" 
                     stroke="#8884d8" 
+                    yAxisId="left"
+                    isAnimationActive={false}
                   />
                   <Line 
                     type="monotone" 
-                    dataKey="pendingTasks" 
-                    name="Pending Tasks" 
-                    stroke="#ff8042" 
+                    dataKey="tokens" 
+                    name="Tokens" 
+                    stroke="#82ca9d" 
+                    yAxisId="right"
+                    isAnimationActive={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
-            </Item>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Current System Status
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <TableContainer>
-                    <Table>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>WebSocket Connection</TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={websocketStatus} 
-                              color={websocketStatus === 'connected' ? 'success' : 'error'} 
-                              size="small" 
-                            />
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>CPU Usage</TableCell>
-                          <TableCell>{Math.round(metrics.cpuUsage || 0)}%</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Memory Usage</TableCell>
-                          <TableCell>{Math.round(metrics.memoryUsage || 0)}%</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TableContainer>
-                    <Table>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>Active Agents</TableCell>
-                          <TableCell>{metrics.activeAgents || 0}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Pending Tasks</TableCell>
-                          <TableCell>{metrics.pendingTasks || 0}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Last Updated</TableCell>
-                          <TableCell>{new Date().toLocaleTimeString()}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Grid>
-              </Grid>
-            </Item>
-          </Grid>
-        </Grid>
-      )}
-      
-      {/* Benchmark Results Tab */}
-      {activeTab === 2 && (
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Item elevation={3}>
-              <Typography variant="h6" gutterBottom>
-                Benchmark Comparison
-              </Typography>
-              {benchmarkResults.length > 0 ? (
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart
-                    data={benchmarkChartData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
-                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="score" name="Score (0-10)" fill="#8884d8" />
-                    <Bar yAxisId="right" dataKey="tokensPerSecond" name="Tokens/Second" fill="#82ca9d" />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    No benchmark results available. Run benchmarks in the Settings page.
-                  </Typography>
-                </Box>
-              )}
-            </Item>
-          </Grid>
-          
-          {benchmarkResults.length > 0 && (
-            <Grid item xs={12}>
-              <Item elevation={3}>
-                <Typography variant="h6" gutterBottom>
-                  Benchmark Results
+            ) : (
+              <Box display="flex" justifyContent="center" alignItems="center" height={300}>
+                <Typography color="textSecondary">
+                  No benchmark data available
                 </Typography>
-                <TableContainer>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Model</TableCell>
-                        <TableCell align="right">Score</TableCell>
-                        <TableCell align="right">Tokens/Second</TableCell>
-                        <TableCell align="right">Latency (ms)</TableCell>
-                        <TableCell align="right">Total Time</TableCell>
-                        <TableCell>Timestamp</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {benchmarkResults.map((result, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{result.model || 'Unknown'}</TableCell>
-                          <TableCell align="right">{result.averageScore?.toFixed(1) || '0.0'}/10</TableCell>
-                          <TableCell align="right">{result.averageTokensPerSecond?.toFixed(1) || '0.0'}</TableCell>
-                          <TableCell align="right">{result.averageLatency?.toFixed(0) || '0'}</TableCell>
-                          <TableCell align="right">{result.totalTime ? `${(result.totalTime / 1000).toFixed(1)}s` : 'N/A'}</TableCell>
-                          <TableCell>{result.timestamp ? new Date(result.timestamp).toLocaleString() : 'N/A'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Item>
-            </Grid>
-          )}
-          
-          {benchmarkResults.length > 0 && (
-            <Grid item xs={12}>
-              <Item elevation={3}>
-                <Typography variant="h6" gutterBottom>
-                  Latency Comparison
-                </Typography>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={benchmarkChartData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="latency" name="Average Latency (ms)" fill="#ff8042" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Item>
-            </Grid>
-          )}
+              </Box>
+            )}
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+              Performance metrics from recent operations
+            </Typography>
+          </Paper>
         </Grid>
-      )}
-    </Box>
+      </Grid>
+    </Container>
   );
 };
 
-export default Metrics; 
+export default Metrics;

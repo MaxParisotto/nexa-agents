@@ -1,41 +1,62 @@
 import { useEffect, useRef } from 'react';
-import { Terminal } from '@xterm/xterm'; // Updated from 'xterm'
-import { FitAddon } from '@xterm/addon-fit'; // Updated from 'xterm-addon-fit'
-import '@xterm/xterm/css/xterm.css'; // Updated from 'xterm/css/xterm.css'
+import { Terminal } from '@xterm/xterm'; 
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 import { useSettings } from './SettingsContext';
 
 const SettingsTerminal = () => {
   const terminalRef = useRef(null);
-  const fitAddon = useRef(new FitAddon());
+  const fitAddon = useRef(null);
+  const terminal = useRef(null);
   const { state } = useSettings();
   const ws = useRef(null);
 
   useEffect(() => {
-    const terminal = new Terminal({
-      cursorBlink: true,
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#ffffff'
+    // Initialize the terminal only if the ref exists
+    if (terminalRef.current) {
+      // Create new instances for each render to avoid stale references
+      fitAddon.current = new FitAddon();
+      terminal.current = new Terminal({
+        cursorBlink: true,
+        theme: {
+          background: '#1e1e1e',
+          foreground: '#ffffff'
+        }
+      });
+
+      try {
+        terminal.current.loadAddon(fitAddon.current);
+        terminal.current.open(terminalRef.current);
+        
+        // Wait for next tick to ensure the terminal is fully initialized
+        setTimeout(() => {
+          if (fitAddon.current) {
+            try {
+              fitAddon.current.fit();
+            } catch (e) {
+              console.warn('Error resizing terminal:', e);
+            }
+          }
+        }, 100);
+        
+        // Add some sample content
+        terminal.current.writeln('Welcome to Nexa Terminal');
+        terminal.current.writeln('---------------------------');
+        terminal.current.writeln('Type "help" for available commands');
+      } catch (err) {
+        console.error('Error initializing terminal:', err);
       }
-    });
+    }
 
-    terminal.loadAddon(fitAddon.current);
-    terminal.open(terminalRef.current);
-    fitAddon.current.fit();
-
-    const handleResize = () => {
-      fitAddon.current.fit();
-      if (ws.current?.readyState === WebSocket.OPEN) {
-        const { cols, rows } = terminal;
-        ws.current.send(JSON.stringify({ type: 'resize', cols, rows }));
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
+    // Clean up
     return () => {
-      window.removeEventListener('resize', handleResize);
-      terminal.dispose();
+      if (terminal.current) {
+        try {
+          terminal.current.dispose();
+        } catch (e) {
+          console.warn('Error disposing terminal:', e);
+        }
+      }
     };
   }, []);
 

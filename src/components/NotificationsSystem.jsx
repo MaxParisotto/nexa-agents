@@ -17,6 +17,11 @@ const NotificationsSystem = () => {
   const MAX_VISIBLE_NOTIFICATIONS = 4;
   // Maximum time (in ms) any notification can stay on screen
   const ABSOLUTE_MAX_DURATION = 10000;
+
+  // Use a combination of timestamp and random string to ensure unique keys
+  const generateUniqueKey = () => {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+  };
   
   // Process new notifications
   useEffect(() => {
@@ -33,6 +38,7 @@ const NotificationsSystem = () => {
             ...prev,
             ...newNotifications.map(n => ({
               ...n,
+              id: generateUniqueKey(), // Use the unique key generator here
               open: true,
               addedAt: Date.now(),
               autoHideDuration: Math.min(getAutoDuration(n.type), ABSOLUTE_MAX_DURATION)
@@ -151,4 +157,4 @@ const NotificationsSystem = () => {
   );
 };
 
-export default NotificationsSystem; 
+export default NotificationsSystem;

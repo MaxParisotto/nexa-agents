@@ -86,6 +86,16 @@ export const loadSettingsFailure = (error) => ({
   payload: error
 });
 
+/**
+ * Update OpenAI settings
+ */
+export const updateOpenAISettings = (settings) => {
+  return {
+    type: 'UPDATE_OPENAI_SETTINGS',
+    payload: settings
+  };
+};
+
 // Thunk Actions
 export const fetchModels = (provider, apiUrl, serverType) => {
   return async (dispatch) => {
