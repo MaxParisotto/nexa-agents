@@ -3,13 +3,13 @@ import { Box, Paper, Tooltip, IconButton } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Dashboard as DashboardIcon, 
-  SmartToy as AgentsIcon,
+  AccountTree as WorkflowIcon,
   Assignment as TasksIcon,
   Timeline as MetricsIcon,
   Assessment as LogsIcon,
   Settings as SettingsIcon,
   Chat as ChatIcon,
-  ManageAccounts as ProjectManagerIcon
+  ManageAccounts as AgentsIcon
 } from '@mui/icons-material';
 
 /**
@@ -25,7 +25,7 @@ const Dock = () => {
   // Navigation items with their routes and icons
   const navItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-    { text: 'Agents', icon: <AgentsIcon />, path: '/agents' },
+    { text: 'Workflow', icon: <WorkflowIcon />, path: '/workflow' },
     { text: 'Tasks', icon: <TasksIcon />, path: '/tasks' },
     { text: 'Metrics', icon: <MetricsIcon />, path: '/metrics' },
     { text: 'Logs', icon: <LogsIcon />, path: '/logs' },
@@ -170,10 +170,10 @@ const Dock = () => {
           </IconButton>
         </Tooltip>
         
-        {/* Project Manager Chat button */}
-        <Tooltip title="Project Manager" placement="top">
+        {/* Agents button */}
+        <Tooltip title="Agents" placement="top">
           <IconButton
-            onClick={handleProjectManagerChatToggle}
+            onClick={() => navigate('/agents')}
             sx={{
               color: isProjectManagerChatOpen ? 'primary.main' : 'text.secondary',
               backgroundColor: isProjectManagerChatOpen ? 
@@ -191,7 +191,7 @@ const Dock = () => {
               },
             }}
           >
-            <ProjectManagerIcon />
+            <AgentsIcon />
           </IconButton>
         </Tooltip>
       </Box>

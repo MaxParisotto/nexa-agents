@@ -8,6 +8,7 @@ import {
   Description as PromptIcon,
   Memory as AgentIcon,
   Settings as SettingsIcon,
+  SettingsApplications as RoleIcon,
 } from '@mui/icons-material';
 
 // Common styles for nodes
@@ -53,7 +54,8 @@ const AgentNode = ({ data, id }) => {
   
   const handleEdit = () => {
     if (data.onEdit) {
-      data.onEdit(id);
+      // Pass both node ID and whether this is the project manager
+      data.onEdit(id, data.isProjectManager);
     }
   };
   
@@ -82,9 +84,27 @@ const AgentNode = ({ data, id }) => {
       <Box sx={{...labelStyles, bgcolor: '#1976d2'}}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <AgentIcon sx={{ mr: 1, fontSize: '16px' }} />
-          <Typography variant="subtitle2">Agent</Typography>
+          <Typography variant="subtitle2">
+            {data.isProjectManager ? 'Project Manager' : 'Agent'}
+          </Typography>
         </Box>
         <Box>
+          {data.isProjectManager && (
+            <Tooltip title="Edit Role">
+              <IconButton 
+                size="small" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEdit();
+                }}
+                sx={{ color: 'white', p: 0.5, mr: 0.5 }}
+                data-testid="edit-prompt-button"
+              >
+                <RoleIcon fontSize="small" />
+                <Typography variant="caption" sx={{ ml: 0.5 }}>Edit Prompt</Typography>
+              </IconButton>
+            </Tooltip>
+          )}
           <Tooltip title="Edit">
             <IconButton size="small" onClick={handleEdit} sx={{ color: 'white', p: 0.5 }}>
               <EditIcon fontSize="small" />
@@ -123,6 +143,13 @@ const AgentNode = ({ data, id }) => {
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Typography variant="caption" color="text.secondary">
               Temp: {data.temperature}
+            </Typography>
+          </Box>
+        )}
+        {data.isProjectManager && data.systemPrompt && (
+          <Box sx={{ mt: 1, p: 1, bgcolor: '#fffde7', borderRadius: '4px' }}>
+            <Typography variant="caption" color="text.secondary">
+              System Prompt: {data.systemPrompt.substring(0, 40)}{data.systemPrompt.length > 40 ? '...' : ''}
             </Typography>
           </Box>
         )}
@@ -313,4 +340,4 @@ export const nodeTypes = {
   output: memo(OutputNode),
 };
 
-export default nodeTypes; 
+export default nodeTypes;

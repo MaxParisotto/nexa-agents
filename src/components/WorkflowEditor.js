@@ -14,6 +14,7 @@ import {
 import { Save as SaveIcon, PlayArrow as RunIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { useDispatch } from 'react-redux';
 import { addNotification, saveWorkflowThunk, listWorkflowsThunk } from '../store/actions/systemActions';
+import { fetchAgents } from '../store/actions/agentActions';
 
 import 'reactflow/dist/style.css';
 import NodeConfigurationWizard from './NodeConfigurationWizard';
@@ -27,7 +28,7 @@ const initialEdges = [];
 /**
  * Agents component for managing and connecting different AI agent nodes in a flow
  */
-const Agents = () => {
+const WorkflowEditor = () => {
   const dispatch = useDispatch();
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -49,6 +50,9 @@ const Agents = () => {
 
   // Load settings from localStorage
   useEffect(() => {
+    // Initialize core agents including Project Manager
+    dispatch(fetchAgents());
+    
     const storedLmStudioAddress = localStorage.getItem('lmStudioAddress') || '';
     const storedOllamaAddress = localStorage.getItem('ollamaAddress') || '';
     setLmStudioAddress(storedLmStudioAddress);
@@ -409,4 +413,4 @@ const Agents = () => {
   );
 };
 
-export default Agents;
+export default WorkflowEditor;

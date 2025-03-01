@@ -1022,7 +1022,7 @@ class ProjectManagerAgent extends EventEmitter {
       const messages = [
         {
           role: 'system',
-          content: `You are a helpful Project Manager assistant that helps users manage their projects and workflows. 
+          content: this.settings.prompt || `You are a helpful Project Manager assistant that helps users manage their projects and workflows. 
 You can help with:
 - Creating and managing tasks
 - Organizing workflows
@@ -1766,4 +1766,4 @@ Please be concise and direct in your responses.`
 
 // Create and export singleton instance
 const projectManagerAgent = new ProjectManagerAgent();
-export default projectManagerAgent; 
+export default projectManagerAgent;

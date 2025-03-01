@@ -2,7 +2,7 @@
 import Header from './components/Header';
 import Dock from './components/Dock';
 import Dashboard from './components/Dashboard';
-import Agents from './components/Agents';
+import WorkflowEditor from './components/WorkflowEditor'; // Already correct import
 import Tasks from './components/Tasks';
 import Metrics from './components/Metrics';
 import Logs from './components/Logs';
@@ -10,6 +10,7 @@ import Settings from './components/Settings';
 import ChatWidget from './components/ChatWidget';
 import ProjectManager from './components/ProjectManager';
 import Agora from './components/Agora/Agora';
+import Agents from './components/Agents/Agents';
 import NotificationsSystem from './components/NotificationsSystem';
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
@@ -171,12 +172,13 @@ function AppContent() {
               ) : (
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/agents" element={<Agents />} />
+                  <Route path="/workflow" element={<WorkflowEditor />} />
                   <Route path="/tasks" element={<Tasks />} />
                   <Route path="/metrics" element={<Metrics />} />
                   <Route path="/logs" element={<Logs />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/agora" element={<Agora />} />
+                  <Route path="/agents" element={<Agents />} />
                 </Routes>
               )}
             </main>
