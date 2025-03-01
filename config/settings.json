@@ -5,7 +5,7 @@
   },
   "ollama": {
     "apiUrl": "http://localhost:11434",
-    "defaultModel": "llama2"
+    "defaultModel": "deepscaler:latest"
   },
   "projectManager": {
     "apiUrl": "http://localhost:1234",
@@ -17,10 +17,12 @@
       "topK": 40,
       "repeatPenalty": 1.1,
       "maxTokens": 1024,
-      "contextLength": 8192
+      "contextLength": 4096
     }
   },
   "features": {
+    "enableFileUploads": false,
+    "enableVoiceInput": false,
     "chatWidget": true,
     "projectManagerAgent": true,
     "taskManagement": true,
@@ -29,7 +31,7 @@
     "metrics": true,
     "autoSave": true,
     "debugMode": true,
-    "experimentalFeatures": false
+    "experimentalFeatures": true
   },
   "nodeEnv": "development",
   "port": "3001"

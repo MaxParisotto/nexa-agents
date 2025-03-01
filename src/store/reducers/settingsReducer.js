@@ -45,14 +45,12 @@ const initialState = {
   port: localStorage.getItem('port') || '3000',
   configLoading: false,
   configError: null,
-  loading: false, // For overall settings loading
-  error: null // For overall settings errors
+  loading: false,
+  error: null
 };
 
-// Helper to validate model name
 const validateModel = (model) => {
   if (!model) return '';
-  // Basic validation - proper validation is on the backend
   return model;
 };
 
@@ -226,3 +224,19 @@ const settingsReducer = (state = initialState, action) => {
       return state;
   }
 };
+
+// Selector: Get LLM server configurations
+export const selectLLMServers = (state) => ({
+  lmStudio: state.lmStudio,
+  ollama: state.ollama,
+  projectManager: state.projectManager
+});
+
+// Selector: Get all available models across providers
+export const selectAvailableModels = (state) => [
+  ...state.lmStudio.models.map(m => ({...m, provider: 'lmStudio'})),
+  ...state.ollama.models.map(m => ({...m, provider: 'ollama'})),
+  ...state.projectManager.models.map(m => ({...m, provider: 'projectManager'}))
+];
+
+export default settingsReducer;

@@ -67,22 +67,22 @@ const DEFAULT_PARAMETERS = {
   contextLength: 4096
 };
 
-const initialFormData = {
-  projectManager: {
-    apiUrl: '',
-    model: '',
-    serverType: 'lmStudio',
-    parameters: {
-      temperature: 0.7,
-      topP: 0.9,
-      topK: 40,
-      repeatPenalty: 1.1,
-      maxTokens: 1024,
-      contextLength: 4096
-    }
-  },
+  const initialFormData = {
+    projectManager: {
+      apiUrl: '',
+      model: '',
+      serverType: 'lmStudio',
+      parameters: {
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+        repeatPenalty: 1.1,
+        maxTokens: 1024,
+        contextLength: 4096
+      }
+    },
   lmStudio: { apiUrl: '', defaultModel: '' }
-};
+  };
 
 // Add validateSettings function before handleSave
 const validateSettings = (settings) => {
