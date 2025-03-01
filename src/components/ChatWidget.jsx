@@ -22,6 +22,7 @@ import Draggable from 'react-draggable';
 import axios from 'axios';
 import PersonIcon from '@mui/icons-material/Person';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import { useSelector } from 'react-redux';
 
 import 'react-resizable/css/styles.css';
 
@@ -51,6 +52,11 @@ const ChatWidget = () => {
   const [resizeStartPosition, setResizeStartPosition] = useState({ x: 0, y: 0 });
   const chatContainerRef = useRef(null);
   const [messageListenerAdded, setMessageListenerAdded] = useState(false);
+  const settings = useSelector(state => state.settings);
+  const [connectionStatus, setConnectionStatus] = useState({
+    status: 'checking',
+    message: 'Checking connection...'
+  });
 
   // Store last position before collapse to restore it when expanding
   const [expandedPosition, setExpandedPosition] = useState({ x: 0, y: 0 });
@@ -206,6 +212,69 @@ const ChatWidget = () => {
     }
   }, [conversation, isCollapsed]);
   
+  // Check server connection on component mount
+  useEffect(() => {
+    checkLLMConnection();
+    
+    // Set up a periodic connection check
+    const checkInterval = setInterval(checkLLMConnection, 60000); // Check every minute
+    
+    return () => clearInterval(checkInterval);
+  }, [settings]);
+  
+  // Check if the LLM server is connected
+  const checkLLMConnection = async () => {
+    setConnectionStatus({
+      status: 'checking',
+      message: 'Checking connection...'
+    });
+    
+    try {
+      // Try LM Studio first
+      let isLmStudioConnected = false;
+      let isOllamaConnected = false;
+      
+      try {
+        const lmStudioUrl = settings?.lmStudio?.apiUrl || 'http://localhost:1234';
+        const baseUrl = lmStudioUrl.startsWith('http') ? lmStudioUrl : `http://${lmStudioUrl}`;
+        await axios.get(`${baseUrl}/v1/models`, { timeout: 2000 });
+        isLmStudioConnected = true;
+      } catch (err) {
+        console.log('LM Studio connection failed:', err.message);
+      }
+      
+      try {
+        const ollamaUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
+        const baseUrl = ollamaUrl.startsWith('http') ? ollamaUrl : `http://${ollamaUrl}`;
+        await axios.get(`${baseUrl}/api/tags`, { timeout: 2000 });
+        isOllamaConnected = true;
+      } catch (err) {
+        console.log('Ollama connection failed:', err.message);
+      }
+      
+      if (isLmStudioConnected || isOllamaConnected) {
+        setConnectionStatus({
+          status: 'connected',
+          message: isLmStudioConnected && isOllamaConnected 
+            ? 'Connected to LM Studio and Ollama'
+            : isLmStudioConnected
+              ? 'Connected to LM Studio'
+              : 'Connected to Ollama'
+        });
+      } else {
+        setConnectionStatus({
+          status: 'error',
+          message: 'No LLM server connected. Check server and settings.'
+        });
+      }
+    } catch (error) {
+      setConnectionStatus({
+        status: 'error',
+        message: 'Connection check failed'
+      });
+    }
+  };
+
   /**
    * Handle messages from the ProjectManager agent
    */
