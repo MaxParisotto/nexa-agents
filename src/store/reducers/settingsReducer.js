@@ -225,18 +225,39 @@ const settingsReducer = (state = initialState, action) => {
   }
 };
 
-// Selector: Get LLM server configurations
-export const selectLLMServers = (state) => ({
-  lmStudio: state.lmStudio,
-  ollama: state.ollama,
-  projectManager: state.projectManager
-});
-
-// Selector: Get all available models across providers
-export const selectAvailableModels = (state) => [
-  ...state.lmStudio.models.map(m => ({...m, provider: 'lmStudio'})),
-  ...state.ollama.models.map(m => ({...m, provider: 'ollama'})),
-  ...state.projectManager.models.map(m => ({...m, provider: 'projectManager'}))
+// Selector: Get LLM server configurations as array
+export const selectLLMServers = (state) => [
+  { 
+    id: 'lmStudio',
+    name: 'LM Studio',
+    type: 'lmStudio',
+    ...(state.settings.lmStudio || {}),
+    models: state.settings.lmStudio?.models || []
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    type: 'ollama',
+    ...(state.settings.ollama || {}),
+    models: state.settings.ollama?.models || []
+  },
+  {
+    id: 'projectManager',
+    name: 'Project Manager',
+    type: 'projectManager', 
+    ...(state.settings.projectManager || {}),
+    models: state.settings.projectManager?.models || []
+  }
 ];
+
+// Selector: Get all available models across providers with safety checks
+export const selectAvailableModels = (state) => {
+  const { lmStudio = {}, ollama = {}, projectManager = {} } = state.settings || {};
+  return [
+    ...(lmStudio.models || []).map(m => ({...m, provider: 'lmStudio'})),
+    ...(ollama.models || []).map(m => ({...m, provider: 'ollama'})),
+    ...(projectManager.models || []).map(m => ({...m, provider: 'projectManager'}))
+  ];
+};
 
 export default settingsReducer;
