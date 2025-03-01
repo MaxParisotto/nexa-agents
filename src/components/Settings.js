@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { UplinkConfig } from './uplink';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchModels, saveSettings, toggleFeature } from '../store/actions/settingsActions';
 import Editor from '@monaco-editor/react';
@@ -2180,6 +2181,11 @@ const Settings = () => {
           <Tab label="Uplink" />
         </Tabs>
       </Box>
+
+      {/* Uplink Tab */}
+      {activeTab === 4 && (
+        <UplinkConfig />
+      )}
 
       {/* Providers Tab */}
       {activeTab === 0 && (

@@ -33,18 +33,6 @@
     "debugMode": true,
     "experimentalFeatures": true
   },
-  "uplink": {
-    "websocket": {
-      "enabled": true,
-      "host": "localhost",
-      "port": 8080
-    },
-    "restApi": {
-      "enabled": true,
-      "host": "localhost",
-      "port": 8081
-    }
-  },
   "nodeEnv": "development",
   "port": "3001"
 }
