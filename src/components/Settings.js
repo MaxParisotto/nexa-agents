@@ -2174,6 +2174,7 @@ const Settings = () => {
           <Tab label="Benchmark" />
           <Tab label="Configuration" />
           <Tab label="Features" />
+          <Tab label="Uplink" />
         </Tabs>
       </Box>
 

@@ -2,7 +2,15 @@ import { UPDATE_SETTINGS } from '../actions/settingsActions';
 
 const initialState = {
   lmStudio: { models: [] },
-  ollama: { models: [] }
+  ollama: { models: [] },
+  uplink: {
+    enabled: false,
+    websocketPort: 3001,
+    authToken: '',
+    connectedGPTs: [],
+    openaiKey: '',
+    apiSchemaVersion: '1.0'
+  }
 };
 
 const settingsReducer = (state = initialState, action) => {
