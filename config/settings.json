@@ -34,5 +34,55 @@
     "experimentalFeatures": true
   },
   "nodeEnv": "development",
-  "port": "3001"
+  "port": "3001",
+  "uplink": {
+    "websocket": {
+      "enabled": true,
+      "port": 3002,
+      "apiPath": "/api/v1/ws",
+      "restApi": {
+        "enabled": true,
+        "path": "/api/v1/rest",
+        "methods": ["GET", "POST", "PUT", "DELETE"]
+      },
+      "authentication": {
+        "type": "apiKey",
+        "header": "X-API-KEY"
+      },
+      "rateLimiting": {
+        "enabled": true,
+        "maxRequests": 100,
+        "windowMs": 60000
+      }
+    },
+    "openai": {
+      "enabled": true,
+      "apiKey": "",
+      "endpoint": "https://api.openai.com/v1",
+      "models": {
+        "gpt-4": {
+          "maxTokens": 8192,
+          "temperature": 0.7,
+          "topP": 1.0
+        },
+        "gpt-3.5-turbo": {
+          "maxTokens": 4096,
+          "temperature": 0.7,
+          "topP": 1.0
+        }
+      },
+      "actions": {
+        "enabled": true,
+        "auth": {
+          "type": "apiKey",
+          "header": "Authorization"
+        },
+        "rateLimiting": {
+          "enabled": true,
+          "maxRequests": 60,
+          "windowMs": 60000
+        }
+      }
+    }
+  }
 }

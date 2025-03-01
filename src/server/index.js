@@ -156,10 +156,14 @@ if (!fs.existsSync(CONFIG_DIR)) {
   loggerWinston.info('Created config directory', { path: CONFIG_DIR });
 }
 
+// Import uplink routes
+import uplinkRoutes from './routes/uplink.js';
+
 // API Routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/models', modelsRoutes);
 app.use('/api/test', testRoutes);
+app.use('/api/uplink', uplinkRoutes);
 
 // API endpoint to save configuration
 app.post('/api/config/save', (req, res) => {
