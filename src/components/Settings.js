@@ -1491,13 +1491,16 @@ const Settings = () => {
   };
 
   const handleInputChange = (provider, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [provider]: {
-        ...prev[provider],
-        [field]: value
+    setFormData(prev => {
+      const newValue = value || '';
+      return {
+        ...prev,
+        [provider]: {
+          ...prev[provider],
+          [field]: newValue
+        }
       }
-    }));
+    });
     
     // Clear validation errors when user types
     setValidationErrors(prev => ({
@@ -1839,7 +1842,7 @@ const Settings = () => {
                 <TextField
                   fullWidth
                   label="API URL"
-                  value={formData[provider].apiUrl}
+                  value={formData[provider].apiUrl || ''}
                   onChange={(e) => handleInputChange(provider, 'apiUrl', e.target.value)}
                   error={!!validationErrors[provider].apiUrl}
                   helperText={validationErrors[provider].apiUrl || 
@@ -1959,7 +1962,7 @@ const Settings = () => {
                     label="Temperature"
                     type="number"
                     inputProps={{ step: 0.1, min: 0, max: 2 }}
-                    value={parameters.temperature}
+                    value={parameters.temperature || 0.7}
                     onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
                     helperText="Controls randomness (0.0-2.0)"
                   />
@@ -1971,7 +1974,7 @@ const Settings = () => {
                     label="Top P"
                     type="number"
                     inputProps={{ step: 0.05, min: 0, max: 1 }}
-                    value={parameters.topP}
+                    value={parameters.topP || 0.9}
                     onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
                     helperText="Nucleus sampling (0.0-1.0)"
                   />
@@ -1983,7 +1986,7 @@ const Settings = () => {
                     label="Top K"
                     type="number"
                     inputProps={{ step: 1, min: 1, max: 100 }}
-                    value={parameters.topK}
+                    value={parameters.topK || 40}
                     onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
                     helperText="Limits vocabulary to top K tokens"
                   />
@@ -1995,7 +1998,7 @@ const Settings = () => {
                     label="Repeat Penalty"
                     type="number"
                     inputProps={{ step: 0.1, min: 1, max: 2 }}
-                    value={parameters.repeatPenalty}
+                    value={parameters.repeatPenalty || 1.1}
                     onChange={(e) => handleParameterChange('repeatPenalty', parseFloat(e.target.value))}
                     helperText="Penalizes repetition (1.0-2.0)"
                   />
@@ -2007,7 +2010,7 @@ const Settings = () => {
                     label="Max Tokens"
                     type="number"
                     inputProps={{ step: 128, min: 128, max: 4096 }}
-                    value={parameters.maxTokens}
+                    value={parameters.maxTokens || 2048}
                     onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
                     helperText="Maximum tokens to generate"
                   />
@@ -2019,7 +2022,7 @@ const Settings = () => {
                     label="Context Length"
                     type="number"
                     inputProps={{ step: 512, min: 512, max: 8192 }}
-                    value={parameters.contextLength}
+                    value={parameters.contextLength || 4096}
                     onChange={(e) => handleParameterChange('contextLength', parseInt(e.target.value))}
                     helperText="Maximum context window size"
                   />
