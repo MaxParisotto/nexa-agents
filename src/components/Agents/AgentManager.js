@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 
-const AgentManager = () => {
+const AgentManager = ({ agents, loading, error }) => {
   return (
     <Paper elevation={2} sx={{ p: 3, mt: 2 }}>
       <Typography variant="h6" gutterBottom>
@@ -11,19 +11,25 @@ const AgentManager = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Agent Name</TableCell>
+              <TableCell>Name</TableCell>
               <TableCell>Model</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Last Active</TableCell>
+              <TableCell>Server</TableCell>
+              <TableCell>Functions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {/* Temporary empty state */}
-            <TableRow>
-              <TableCell colSpan={4} align="center">
-                No agents currently active
-              </TableCell>
-            </TableRow>
+            {agents?.map((agent) => (
+              <TableRow key={agent.id}>
+                <TableCell>{agent.name}</TableCell>
+                <TableCell>{agent.config.model}</TableCell>
+                <TableCell>{agent.status}</TableCell>
+                <TableCell>{new Date(agent.lastActive).toLocaleString()}</TableCell>
+                <TableCell>{agent.config.llmServer}</TableCell>
+                <TableCell>{agent.config.functions.length}</TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </TableContainer>

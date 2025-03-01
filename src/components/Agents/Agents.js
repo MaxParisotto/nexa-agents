@@ -12,12 +12,16 @@ import {
   DialogContent,
   DialogActions
 } from '@mui/material';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { selectLLMServers, selectAvailableModels } from '../../store/reducers/settingsReducer';
 import { registerAgent } from '../../store/actions/agentActions';
 import AgentManager from './AgentManager';
 
 const Agents = () => {
   const dispatch = useDispatch();
+  const llmServers = useSelector(selectLLMServers);
+  const availableModels = useSelector(selectAvailableModels);
+  const agents = useSelector(state => state.agents.list);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -99,10 +103,12 @@ const Agents = () => {
                 onChange={(e) => setFormData({...formData, llmServer: e.target.value})}
                 displayEmpty
               >
-                <MenuItem value="" disabled>Select LLM Server</MenuItem>
-                <MenuItem value="claude">Claude</MenuItem>
-                <MenuItem value="gpt-4">GPT-4</MenuItem>
-                <MenuItem value="local">Local Model</MenuItem>
+              <MenuItem value="" disabled>Select LLM Server</MenuItem>
+              {llmServers?.map((server) => (
+                <MenuItem key={server.id} value={server.id}>
+                  {server.name} ({server.type})
+                </MenuItem>
+              ))}
               </Select>
               
               <Select
@@ -112,9 +118,11 @@ const Agents = () => {
                 displayEmpty
               >
                 <MenuItem value="" disabled>Select Model</MenuItem>
-                <MenuItem value="claude-3-opus">Claude 3 Opus</MenuItem>
-                <MenuItem value="gpt-4-turbo">GPT-4 Turbo</MenuItem>
-                <MenuItem value="llama-3-70b">Llama 3 70B</MenuItem>
+                {availableModels?.map((model) => (
+                  <MenuItem key={model.id} value={model.id}>
+                    {model.name} ({model.provider})
+                  </MenuItem>
+                ))}
               </Select>
             </Box>
             
