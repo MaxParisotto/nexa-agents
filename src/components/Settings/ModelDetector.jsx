@@ -35,57 +35,165 @@ const ModelDetector = ({
     }
   }, [apiUrl, serverType]);
 
+  // Also update selectedModel when defaultModel prop changes
+  useEffect(() => {
+    if (defaultModel && defaultModel !== selectedModel) {
+      setSelectedModel(defaultModel);
+    }
+  }, [defaultModel]);
+
   // Detect available models
   const detectModels = async () => {
     setLoading(true);
     setError(null);
     
+    // If no API URL, set default models based on server type
+    if (!apiUrl) {
+      const fallbackModels = getFallbackModels(serverType);
+      setModels(fallbackModels);
+      setLoading(false);
+      setError("No API URL provided. Using default model list.");
+      return;
+    }
+    
+    console.log(`[ModelDetector] Detecting models for ${serverType} at ${apiUrl}`);
+    
     try {
-      // Use the Redux thunk to fetch models
-      const detectedModels = await dispatch(fetchModels(serverType, apiUrl, serverType));
+      // Format API URL correctly
+      let formattedUrl = apiUrl;
+      if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+        formattedUrl = `http://${formattedUrl}`;
+      }
+      formattedUrl = formattedUrl.replace(/\/$/, ''); // Remove trailing slash if present
       
-      if (Array.isArray(detectedModels) && detectedModels.length > 0) {
-        setModels(detectedModels);
-        
-        // If we have models but no selection, set the first one as selected
-        if (!selectedModel && detectedModels.length > 0) {
-          const bestModel = findBestDefaultModel(detectedModels);
-          setSelectedModel(bestModel);
-          if (onModelSelected) onModelSelected(bestModel);
+      let fetchedModels = [];
+      
+      if (serverType === 'lmStudio') {
+        try {
+          const response = await axios.get(`${formattedUrl}/v1/models`, { timeout: 3000 });
+          if (response.data && response.data.data && Array.isArray(response.data.data)) {
+            fetchedModels = response.data.data.map(model => model.id);
+            console.log(`[ModelDetector] Found ${fetchedModels.length} models from LM Studio`);
+          }
+        } catch (err) {
+          console.error(`[ModelDetector] Failed to fetch LM Studio models:`, err);
+          setError(`Failed to fetch LM Studio models: ${err.message}`);
+          fetchedModels = getFallbackModels('lmStudio');
         }
-        
-        // Notify parent component
-        if (onModelsLoaded) onModelsLoaded(detectedModels);
-        
+      } else if (serverType === 'ollama') {
+        try {
+          const response = await axios.get(`${formattedUrl}/api/tags`, { timeout: 3000 });
+          if (response.data && response.data.models && Array.isArray(response.data.models)) {
+            fetchedModels = response.data.models.map(model => model.name);
+            console.log(`[ModelDetector] Found ${fetchedModels.length} models from Ollama`);
+          }
+        } catch (err) {
+          console.error(`[ModelDetector] Failed to fetch Ollama models:`, err);
+          setError(`Failed to fetch Ollama models: ${err.message}`);
+          fetchedModels = getFallbackModels('ollama');
+        }
+      }
+      
+      // If we got models successfully
+      if (fetchedModels.length > 0) {
+        setModels(fetchedModels);
         setConnectionStatus({
           status: 'connected',
           lastChecked: new Date().toLocaleTimeString()
         });
+        
+        // Notify parent component
+        if (onModelsLoaded) {
+          onModelsLoaded(fetchedModels);
+        }
+        
+        // If we don't have a selected model yet but have models available, select the best one
+        if (!selectedModel && fetchedModels.length > 0) {
+          const bestModel = findBestDefaultModel(fetchedModels, serverType);
+          setSelectedModel(bestModel);
+          if (onModelSelected) onModelSelected(bestModel);
+        }
       } else {
-        setError(`No models found for ${serverType}`);
+        // If we didn't get any models, use fallbacks
+        const fallbackModels = getFallbackModels(serverType);
+        setModels(fallbackModels);
+        setError(`No models found for ${serverType}. Using default models.`);
         setConnectionStatus({
           status: 'no_models',
           lastChecked: new Date().toLocaleTimeString()
         });
+        
+        // Only notify about fallback models if we have them
+        if (fallbackModels.length > 0) {
+          if (onModelsLoaded) {
+            onModelsLoaded(fallbackModels);
+          }
+          
+          // If we don't have a selected model, select the first fallback
+          if (!selectedModel) {
+            setSelectedModel(fallbackModels[0]);
+            if (onModelSelected) onModelSelected(fallbackModels[0]);
+          }
+        }
       }
     } catch (err) {
-      console.error(`Error detecting models for ${serverType}:`, err);
+      console.error(`[ModelDetector] Error detecting models for ${serverType}:`, err);
+      
+      // Use fallback models
+      const fallbackModels = getFallbackModels(serverType);
+      setModels(fallbackModels);
       setError(`Failed to detect models: ${err.message || 'Unknown error'}`);
       setConnectionStatus({
         status: 'error',
         lastChecked: new Date().toLocaleTimeString()
       });
+      
+      // Only notify about fallback models if we have them
+      if (fallbackModels.length > 0) {
+        if (onModelsLoaded) {
+          onModelsLoaded(fallbackModels);
+        }
+        
+        // If we don't have a selected model, select the first fallback
+        if (!selectedModel) {
+          setSelectedModel(fallbackModels[0]);
+          if (onModelSelected) onModelSelected(fallbackModels[0]);
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
   
+  // Get fallback models for different server types
+  const getFallbackModels = (serverType) => {
+    if (serverType === 'lmStudio') {
+      return [
+        'qwen2.5-7b-instruct',
+        'llama3-8b-instruct',
+        'mistral-7b-instruct-v0.2',
+        'mistral-7b-instruct',
+        'gemma-7b-instruct',
+        'llama2-7b-chat'
+      ];
+    } else if (serverType === 'ollama') {
+      return [
+        'qwen2.5:7b-instruct',
+        'llama3:8b-instruct',
+        'mistral:7b-instruct',
+        'mixtral:8x7b-instruct',
+        'gemma:7b-instruct',
+        'llama2:7b-chat'
+      ];
+    }
+    return [];
+  };
+  
   // Find the best model to use as default
-  const findBestDefaultModel = (models) => {
-    // Priority models by type
+  const findBestDefaultModel = (models, serverType) => {
+    // Models to prioritize in order of preference
     const modelPriority = {
       lmStudio: [
-        // Ordered from most to least preferred
         /qwen.*?instruct/i,   // Qwen instruct models
         /llama.*?3/i,         // LLaMA 3 models
         /mistral.*?instruct/i, // Mistral instruct models
@@ -96,7 +204,6 @@ const ModelDetector = ({
         /.*?instruct/i,       // Any instruct model
       ],
       ollama: [
-        // Ordered from most to least preferred
         /qwen/i,
         /llama3/i,
         /mistral/i,
@@ -112,56 +219,33 @@ const ModelDetector = ({
     // Get the priority list for the current server type
     const priorityList = modelPriority[serverType] || [];
     
+    console.log(`[ModelDetector] Finding best model from ${models.length} available models`);
+    
     // Try to match models against the priority list
     for (const pattern of priorityList) {
       const match = models.find(model => {
-        // Check both id and name fields if available
         const modelId = typeof model === 'string' ? model : (model.id || model.name || '');
         return pattern.test(modelId);
       });
       
       if (match) {
-        // Return the id of the matched model or the model itself if it's a string
-        return typeof match === 'string' ? match : (match.id || match.name);
+        const modelId = typeof match === 'string' ? match : (match.id || match.name);
+        console.log(`[ModelDetector] Selected best model: ${modelId}`);
+        return modelId;
       }
     }
     
     // If no match found, return the first model
-    return typeof models[0] === 'string' ? models[0] : (models[0]?.id || models[0]?.name);
-  };
-  
-  // Test the connection to the LLM server
-  const testLLMConnection = async () => {
-    setLoading(true);
-    
-    try {
-      const result = await dispatch(testConnection(serverType, apiUrl, selectedModel));
-      
-      setConnectionStatus({
-        status: result.success ? 'connected' : 'error',
-        message: result.message,
-        lastChecked: new Date().toLocaleTimeString()
-      });
-      
-      if (!result.success) {
-        setError(result.message || `Could not connect to ${serverType}`);
-      }
-    } catch (err) {
-      console.error('Connection test error:', err);
-      setError(`Connection test failed: ${err.message}`);
-      setConnectionStatus({
-        status: 'error',
-        message: err.message,
-        lastChecked: new Date().toLocaleTimeString()
-      });
-    } finally {
-      setLoading(false);
-    }
+    const firstModel = models[0];
+    const modelId = typeof firstModel === 'string' ? firstModel : (firstModel?.id || firstModel?.name);
+    console.log(`[ModelDetector] No preferred model found, using first model: ${modelId}`);
+    return modelId;
   };
   
   // Handle model selection change
   const handleModelChange = (e) => {
     const newModel = e.target.value;
+    console.log(`[ModelDetector] Model selected: ${newModel}`);
     setSelectedModel(newModel);
     if (onModelSelected) onModelSelected(newModel);
   };
@@ -177,7 +261,14 @@ const ModelDetector = ({
             value={selectedModel}
             onChange={handleModelChange}
             label="Default Model"
-            disabled={loading || models.length === 0}
+            disabled={loading}
+            MenuProps={{
+              PaperProps: {
+                style: {
+                  maxHeight: 300
+                }
+              }
+            }}
           >
             {models.map((model) => {
               const modelId = typeof model === 'string' ? model : (model.id || model.name);
@@ -190,6 +281,9 @@ const ModelDetector = ({
                 </MenuItem>
               );
             })}
+            {models.length === 0 && (
+              <MenuItem disabled>No models available</MenuItem>
+            )}
           </Select>
         </FormControl>
         
@@ -233,7 +327,7 @@ const ModelDetector = ({
       
       {/* Error Display */}
       {error && (
-        <Alert severity="error" sx={{ mt: 1 }} onClose={() => setError(null)}>
+        <Alert severity="warning" sx={{ mt: 1 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}

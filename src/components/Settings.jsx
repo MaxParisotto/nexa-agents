@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, Paper, Grid, Box, Tab, Tabs,
   Card, CardContent, TextField, Button, Switch, FormControlLabel
@@ -7,12 +7,50 @@ import SettingsTerminal from './Settings/SettingsTerminal';
 import { useSelector, useDispatch } from 'react-redux';
 import { updatePreference } from '../store/actions/systemActions';
 import OpenAISettings from './Settings/OpenAISettings.jsx';
+import { fetchModels } from '../store/actions/settingsActions';
+import ModelDetector from './Settings/ModelDetector'; // Add this import
 
 const Settings = () => {
   const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState(0);
   const systemPrefs = useSelector(state => state.system.preferences || {});
   const settings = useSelector(state => state.settings);
+  
+  // Add state for models
+  const [availableLmStudioModels, setAvailableLmStudioModels] = useState([]);
+  const [availableOllamaModels, setAvailableOllamaModels] = useState([]);
+  
+  // Load models when settings change
+  useEffect(() => {
+    if (settings?.lmStudio?.apiUrl) {
+      dispatch(fetchModels('lmStudio', settings.lmStudio.apiUrl))
+        .then(models => {
+          if (Array.isArray(models) && models.length > 0) {
+            setAvailableLmStudioModels(models);
+          }
+        })
+        .catch(err => console.error("Failed to load LM Studio models:", err));
+    }
+    
+    if (settings?.ollama?.apiUrl) {
+      dispatch(fetchModels('ollama', settings.ollama.apiUrl))
+        .then(models => {
+          if (Array.isArray(models) && models.length > 0) {
+            setAvailableOllamaModels(models);
+          }
+        })
+        .catch(err => console.error("Failed to load Ollama models:", err));
+    }
+  }, [settings?.lmStudio?.apiUrl, settings?.ollama?.apiUrl, dispatch]);
+  
+  // Handle model load events from ModelDetector
+  const handleLmStudioModelsLoaded = (models) => {
+    setAvailableLmStudioModels(models);
+  };
+  
+  const handleOllamaModelsLoaded = (models) => {
+    setAvailableOllamaModels(models);
+  };
   
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -149,22 +187,26 @@ const Settings = () => {
                   fullWidth
                   label="API URL"
                   margin="normal"
-                  defaultValue="http://localhost:11434"
+                  value={settings?.ollama?.apiUrl || "http://localhost:11434"}
+                  onChange={(e) => dispatch(updatePreference('ollama.apiUrl', e.target.value))}
                   sx={{ mb: 2 }}
                 />
-                <TextField
-                  fullWidth
-                  label="Default Model"
-                  margin="normal"
-                  defaultValue="llama2"
-                  sx={{ mb: 2 }}
+                
+                {/* Use ModelDetector for Ollama */}
+                <ModelDetector
+                  serverType="ollama"
+                  apiUrl={settings?.ollama?.apiUrl}
+                  defaultModel={settings?.ollama?.defaultModel}
+                  onModelsLoaded={handleOllamaModelsLoaded}
+                  onModelSelected={(model) => dispatch(updatePreference('ollama.defaultModel', model))}
                 />
-                <Button variant="contained" color="primary" sx={{ mr: 1 }}>
-                  Save
-                </Button>
-                <Button variant="outlined">
-                  Test Connection
-                </Button>
+                
+                {/* Show model count */}
+                {availableOllamaModels.length > 0 && (
+                  <Typography variant="caption" color="textSecondary">
+                    {availableOllamaModels.length} models available
+                  </Typography>
+                )}
               </CardContent>
             </Card>
           </Grid>
@@ -177,22 +219,26 @@ const Settings = () => {
                   fullWidth
                   label="API URL"
                   margin="normal"
-                  defaultValue="http://localhost:1234"
+                  value={settings?.lmStudio?.apiUrl || "http://localhost:1234"}
+                  onChange={(e) => dispatch(updatePreference('lmStudio.apiUrl', e.target.value))}
                   sx={{ mb: 2 }}
                 />
-                <TextField
-                  fullWidth
-                  label="Default Model"
-                  margin="normal"
-                  defaultValue="mistral-7b-instruct-v0.1.Q4_K_M"
-                  sx={{ mb: 2 }}
+                
+                {/* Use ModelDetector for LM Studio */}
+                <ModelDetector
+                  serverType="lmStudio"
+                  apiUrl={settings?.lmStudio?.apiUrl}
+                  defaultModel={settings?.lmStudio?.defaultModel}
+                  onModelsLoaded={handleLmStudioModelsLoaded}
+                  onModelSelected={(model) => dispatch(updatePreference('lmStudio.defaultModel', model))}
                 />
-                <Button variant="contained" color="primary" sx={{ mr: 1 }}>
-                  Save
-                </Button>
-                <Button variant="outlined">
-                  Test Connection
-                </Button>
+                
+                {/* Show model count */}
+                {availableLmStudioModels.length > 0 && (
+                  <Typography variant="caption" color="textSecondary">
+                    {availableLmStudioModels.length} models available
+                  </Typography>
+                )}
               </CardContent>
             </Card>
           </Grid>
