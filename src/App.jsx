@@ -1,17 +1,17 @@
 // Components
-import Header from './components/Header';
-import Dock from './components/Dock';
-import Dashboard from './components/Dashboard';
-import WorkflowEditor from './components/WorkflowEditor'; // Already correct import
-import Tasks from './components/Tasks';
-import Metrics from './components/Metrics';
-import Logs from './components/Logs';
-import Settings from './components/Settings';
-import ChatWidget from './components/ChatWidget';
-import ProjectManager from './components/ProjectManager';
-import Agora from './components/Agora/Agora';
-import Agents from './components/Agents/Agents';
-import NotificationsSystem from './components/NotificationsSystem';
+import Header from './components/Header.jsx';
+import Dock from './components/Dock.jsx';
+import Dashboard from './components/Dashboard.jsx';
+import WorkflowEditor from './components/WorkflowEditor.jsx';
+import Tasks from './components/Tasks.jsx';
+import Metrics from './components/Metrics.jsx';
+import Logs from './components/Logs.jsx';
+import Settings from './components/Settings.jsx';
+import ChatWidget from './components/ChatWidget.jsx';
+import ProjectManager from './components/ProjectManager.jsx'; // Changed from .js to .jsx
+import Agora from './components/Agora/Agora.jsx'; // Changed from .js to .jsx
+import Agents from './components/Agents/Agents.jsx';
+import NotificationsSystem from './components/NotificationsSystem.jsx';
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';

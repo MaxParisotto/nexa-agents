@@ -4,9 +4,9 @@ import {
   SET_LOG_FILTER,
   LOG_LEVELS,
   LOG_CATEGORIES
-} from '../actions/logActions';
+} from '../actions/logActions.js';
 
-const initialState = {
+export const logReducer = (state = {
   logs: [],
   filters: {
     levels: Object.values(LOG_LEVELS),
@@ -16,9 +16,7 @@ const initialState = {
     endDate: null
   },
   maxLogs: 1000 // Maximum number of logs to keep
-};
-
-const logsReducer = (state = initialState, action) => {
+}, action) => {
   switch (action.type) {
     case ADD_LOG: {
       const newLogs = [action.payload, ...state.logs];
@@ -89,4 +87,4 @@ export const getFilteredLogs = (state) => {
   });
 };
 
-export default logsReducer;
+export default logReducer;

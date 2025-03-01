@@ -4,7 +4,7 @@ import { validateSettings } from './SettingsUtils';
 import { Button, Form, Input, Switch, Card, message } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 
-export const SettingsForm = () => {
+const SettingsForm = () => {
   const { state, setField } = useSettings();
   const [form] = Form.useForm();
   const [errors, setErrors] = useState({});
@@ -99,3 +99,5 @@ export const SettingsForm = () => {
     </Card>
   );
 };
+
+export default SettingsForm;

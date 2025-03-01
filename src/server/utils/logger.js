@@ -3,12 +3,12 @@
  * Handles logging to console and files with proper formatting
  */
 
-const winston = require('winston');
-const path = require('path');
-const fs = require('fs');
+import winston from 'winston';
+import path from 'path';
+import fs from 'fs';
 
 // Create logs directory if it doesn't exist
-const LOGS_DIR = path.join(__dirname, '../../../logs');
+const LOGS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '../../../logs');
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
@@ -78,4 +78,4 @@ const cleanupRequestCache = () => {
 setInterval(cleanupRequestCache, 60000); // Run every minute
 
 // Export the configured logger
-module.exports = logger; 
+export default logger;

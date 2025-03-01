@@ -1,7 +1,7 @@
 {
   "lmStudio": {
     "apiUrl": "http://localhost:1234",
-    "defaultModel": "qwen2.5-7b-instruct-1m"
+    "defaultModel": "qwen2.5-0.5b-instruct-mlx"
   },
   "ollama": {
     "apiUrl": "http://localhost:11434",
@@ -9,7 +9,7 @@
   },
   "projectManager": {
     "apiUrl": "http://localhost:1234",
-    "model": "qwen2.5-7b-instruct-1m",
+    "model": "qwen2.5-0.5b-instruct-mlx",
     "serverType": "lmStudio",
     "parameters": {
       "temperature": 0.7,

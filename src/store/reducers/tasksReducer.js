@@ -1,66 +1,43 @@
+// Action Types
+const ADD_TASK = 'ADD_TASK';
+const UPDATE_TASK = 'UPDATE_TASK';
+const REMOVE_TASK = 'REMOVE_TASK';
+const CLEAR_TASKS = 'CLEAR_TASKS';
+
+// Initial state
 const initialState = {
   tasks: [],
-  loading: false,
-  error: null,
-  selectedTask: null,
-  taskQueue: [],
-  completedTasks: []
+  activeTaskId: null
 };
 
-const tasksReducer = (state = initialState, action) => {
+// Reducer function
+export function taskReducer(state = initialState, action) {
   switch (action.type) {
-    case 'FETCH_TASKS_REQUEST':
+    case ADD_TASK:
       return {
         ...state,
-        loading: true
+        tasks: [...state.tasks, action.payload]
       };
-    case 'FETCH_TASKS_SUCCESS':
-      return {
-        ...state,
-        loading: false,
-        tasks: action.payload,
-        error: null
-      };
-    case 'FETCH_TASKS_FAILURE':
-      return {
-        ...state,
-        loading: false,
-        error: action.payload
-      };
-    case 'ADD_TASK':
-      return {
-        ...state,
-        tasks: [...state.tasks, action.payload],
-        taskQueue: [...state.taskQueue, action.payload.id]
-      };
-    case 'UPDATE_TASK_STATUS':
+    case UPDATE_TASK:
       return {
         ...state,
         tasks: state.tasks.map(task =>
-          task.id === action.payload.id
-            ? { ...task, status: action.payload.status }
-            : task
+          task.id === action.payload.id ? { ...task, ...action.payload } : task
         )
       };
-    case 'COMPLETE_TASK':
+    case REMOVE_TASK:
       return {
         ...state,
-        tasks: state.tasks.map(task =>
-          task.id === action.payload.id
-            ? { ...task, completed: true }
-            : task
-        ),
-        completedTasks: [...state.completedTasks, action.payload.id],
-        taskQueue: state.taskQueue.filter(id => id !== action.payload.id)
+        tasks: state.tasks.filter(task => task.id !== action.payload)
       };
-    case 'SELECT_TASK':
+    case CLEAR_TASKS:
       return {
         ...state,
-        selectedTask: action.payload
+        tasks: []
       };
     default:
       return state;
   }
-};
+}
 
-export default tasksReducer;
+export default taskReducer;

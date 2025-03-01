@@ -3,13 +3,20 @@
  * Handles loading, saving, and validating application settings
  */
 
-const fs = require('fs');
-const path = require('path');
-const logger = require('../utils/logger');
-const settingsService = require('../services/settingsService');
+import fs from 'fs';
+import path from 'path';
+import logger from '../utils/logger.js';
+import { loadSettings, saveSettings, validateSettings, clearSettings } from '../services/settingsService.js';
+
+export { 
+  getSettingsController as getSettings,
+  saveSettingsController as saveSettings,
+  validateSettingsController as validateSettings,
+  clearSettingsController as clearSettings
+};
 
 // Config directory setup
-const CONFIG_DIR = path.join(__dirname, '../../../config');
+const CONFIG_DIR = path.join(process.cwd(), 'config');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
 
 // Ensure config directory exists
@@ -21,11 +28,11 @@ if (!fs.existsSync(CONFIG_DIR)) {
 /**
  * Get current settings
  */
-const getSettings = async (req, res) => {
+export const getSettingsController = async (req, res) => {
   try {
     logger.info('Loading settings');
     
-    const settings = await settingsService.loadSettings();
+    const settings = await loadSettings();
     return res.status(200).json(settings);
   } catch (error) {
     logger.error('Failed to load settings', { error: error.message });
@@ -39,7 +46,7 @@ const getSettings = async (req, res) => {
 /**
  * Save settings
  */
-const saveSettings = async (req, res) => {
+export const saveSettingsController = async (req, res) => {
   try {
     const settings = req.body;
     
@@ -50,7 +57,7 @@ const saveSettings = async (req, res) => {
     logger.info('Saving settings');
     
     // Validate settings before saving
-    const validationResult = await settingsService.validateSettings(settings);
+    const validationResult = await validateSettings(settings);
     
     if (!validationResult.isValid) {
       logger.warn('Invalid settings', { errors: validationResult.errors });
@@ -61,7 +68,7 @@ const saveSettings = async (req, res) => {
     }
     
     // Save validated settings
-    await settingsService.saveSettings(settings);
+    await saveSettings(settings);
     
     return res.status(200).json({ 
       success: true, 
@@ -79,7 +86,7 @@ const saveSettings = async (req, res) => {
 /**
  * Validate settings without saving
  */
-const validateSettings = async (req, res) => {
+export const validateSettingsController = async (req, res) => {
   try {
     const settings = req.body;
     
@@ -89,7 +96,7 @@ const validateSettings = async (req, res) => {
     
     logger.info('Validating settings');
     
-    const validationResult = await settingsService.validateSettings(settings);
+    const validationResult = await validateSettings(settings);
     
     return res.status(200).json(validationResult);
   } catch (error) {
@@ -104,11 +111,11 @@ const validateSettings = async (req, res) => {
 /**
  * Clear settings
  */
-const clearSettings = async (req, res) => {
+export const clearSettingsController = async (req, res) => {
   try {
     logger.info('Clearing settings');
     
-    await settingsService.clearSettings();
+    await clearSettings();
     
     return res.status(200).json({ 
       success: true, 
@@ -122,10 +129,3 @@ const clearSettings = async (req, res) => {
     });
   }
 };
-
-module.exports = {
-  getSettings,
-  saveSettings,
-  validateSettings,
-  clearSettings
-}; 

@@ -1,53 +1,40 @@
-import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 import { saveConfigToFile } from '../services/uplinkService.js';
 
-let wss;
-
-const startWebSocketServer = (port) => {
-  if (wss) {
-    wss.close();
-  }
-
-  wss = new WebSocket.Server({ port });
-  const clients = new Map();
-
-  console.log(`WebSocket Server running on ws://localhost:${port}`);
-
-  wss.on('connection', (ws, req) => {
+const startWebSocketServer = (io, port) => {
+  console.log(`WebSocket Server running on port ${port}`);
+  
+  io.on('connection', (socket) => {
     console.log("New WebSocket connection");
 
-    ws.on('message', (data) => {
+    socket.on('auth', (token) => {
       try {
-        const message = JSON.parse(data);
-        
-        if (message.type === "auth") {
-          const decoded = jwt.verify(message.token, process.env.JWT_SECRET);
-          ws.user = decoded.user;
-          console.log(`Authenticated user: ${ws.user}`);
-          ws.send(JSON.stringify({ type: "auth_success", message: "Welcome!" }));
-        }
-        else if (message.type === "message") {
-          console.log(`[${message.topic}] ${message.sender}: ${message.content}`);
-          broadcast(message);
-        }
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.user = decoded.user;
+        console.log(`Authenticated user: ${socket.user}`);
+        socket.emit('auth_success', { message: "Welcome!" });
       } catch (error) {
-        ws.send(JSON.stringify({ type: "error", message: "Invalid message format or auth failed." }));
+        socket.emit('error', { message: "Authentication failed" });
       }
     });
 
-    ws.on('close', () => {
+    socket.on('message', (message) => {
+      try {
+        console.log(`[${message.topic}] ${message.sender}: ${message.content}`);
+        io.emit('message', message);
+      } catch (error) {
+        socket.emit('error', { message: "Invalid message format" });
+      }
+    });
+
+    socket.on('disconnect', () => {
       console.log("Client disconnected");
     });
   });
 };
 
 const broadcast = (message) => {
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-    }
-  });
+  io.emit('message', message);
 };
 
 export const saveConfig = async (req, res) => {
@@ -69,12 +56,12 @@ export const saveConfig = async (req, res) => {
 
 export const restartServer = async (req, res) => {
   try {
-    if (!wss) {
+    if (!io) {
       throw new Error('WebSocket server not initialized');
     }
     
-    // Close existing connections
-    wss.clients.forEach(client => client.close());
+    // Disconnect all clients
+    io.disconnectSockets(true);
     
     res.json({ success: true, message: 'WebSocket server restarted' });
   } catch (error) {
@@ -83,5 +70,7 @@ export const restartServer = async (req, res) => {
   }
 };
 
-// Initialize WebSocket server with default port
-startWebSocketServer(8081);
+export const initializeUplinkController = (io) => {
+  // Initialize WebSocket server with default port
+  startWebSocketServer(io, 8081);
+};

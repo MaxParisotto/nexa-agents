@@ -3,20 +3,25 @@
  * Handles saving, loading, and validating settings
  */
 
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const settingsController = require('../controllers/settingsController');
+import {
+  getSettings,
+  saveSettings,
+  validateSettings,
+  clearSettings
+} from '../controllers/settingsController.js';
 
 // Get current settings
-router.get('/', settingsController.getSettings);
+router.get('/', getSettings);
 
 // Save new settings
-router.post('/', settingsController.saveSettings);
+router.post('/', saveSettings);
 
 // Validate settings
-router.post('/validate', settingsController.validateSettings);
+router.post('/validate', validateSettings);
 
 // Clear settings
-router.delete('/', settingsController.clearSettings);
+router.delete('/', clearSettings);
 
-module.exports = router; 
+export default router;

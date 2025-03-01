@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
+import { Terminal } from '@xterm/xterm'; // Updated from 'xterm'
+import { FitAddon } from '@xterm/addon-fit'; // Updated from 'xterm-addon-fit'
+import '@xterm/xterm/css/xterm.css'; // Updated from 'xterm/css/xterm.css'
 import { useSettings } from './SettingsContext';
 
-export const SettingsTerminal = () => {
+const SettingsTerminal = () => {
   const terminalRef = useRef(null);
   const fitAddon = useRef(new FitAddon());
   const { state } = useSettings();
@@ -88,3 +88,5 @@ export const SettingsTerminal = () => {
     />
   );
 };
+
+export default SettingsTerminal;

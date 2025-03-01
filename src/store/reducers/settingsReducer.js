@@ -11,9 +11,22 @@ import {
   LOAD_SETTINGS_REQUEST,
   LOAD_SETTINGS_SUCCESS,
   LOAD_SETTINGS_FAILURE
-} from '../actions/settingsActions';
+} from '../actions/settingsActions.js';
 
+// Action types
+const LOAD_SETTINGS = 'LOAD_SETTINGS';
+const UPDATE_SETTING = 'UPDATE_SETTING';
+const LOAD_MODELS = 'LOAD_MODELS';
+
+// Initial state
 const initialState = {
+  loading: true,
+  apiEndpoint: 'http://localhost:3001/api',
+  models: [],
+  theme: 'light',
+  language: 'en',
+  apiKey: '',
+  // Add more settings as needed
   lmStudio: {
     apiUrl: localStorage.getItem('lmStudioAddress') || 'http://localhost:1234',
     defaultModel: localStorage.getItem('defaultLmStudioModel') || '',
@@ -54,8 +67,25 @@ const validateModel = (model) => {
   return model;
 };
 
-const settingsReducer = (state = initialState, action) => {
+// Reducer function
+export function settingsReducer(state = initialState, action) {
   switch (action.type) {
+    case LOAD_SETTINGS:
+      return {
+        ...state,
+        ...action.payload,
+        loading: false
+      };
+    case UPDATE_SETTING:
+      return {
+        ...state,
+        [action.payload.key]: action.payload.value
+      };
+    case LOAD_MODELS:
+      return {
+        ...state,
+        models: action.payload
+      };
     case UPDATE_SETTINGS: {
       // Validate model names before updating state
       const lmStudioModel = validateModel(action.payload.lmStudio?.defaultModel) || state.lmStudio.defaultModel;
@@ -223,7 +253,7 @@ const settingsReducer = (state = initialState, action) => {
     default:
       return state;
   }
-};
+}
 
 // Selector: Get LLM server configurations as array
 export const selectLLMServers = (state) => [

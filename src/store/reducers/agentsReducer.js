@@ -1,4 +1,4 @@
-const initialState = {
+export const agentReducer = (state = {
   agents: [
     {
       id: 'project-manager',
@@ -13,9 +13,7 @@ const initialState = {
   loading: false,
   error: null,
   selectedAgent: null
-};
-
-const agentsReducer = (state = initialState, action) => {
+}, action) => {
   switch (action.type) {
     case 'FETCH_AGENTS_REQUEST':
       return {
@@ -26,7 +24,6 @@ const agentsReducer = (state = initialState, action) => {
       return {
         ...state,
         loading: false,
-        // Merge existing agents (preserving systemPrompt) with new data
         agents: action.payload.map(newAgent => {
           const existing = state.agents.find(a => a.id === newAgent.id);
           return existing ? {...existing, ...newAgent} : newAgent;
@@ -59,4 +56,4 @@ const agentsReducer = (state = initialState, action) => {
   }
 };
 
-export default agentsReducer;
+export default agentReducer;

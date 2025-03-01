@@ -1,5 +1,5 @@
 import express from 'express';
-import { saveConfig, restartServer } from '../controllers/uplinkController.js';
+import { saveConfig, restartServer, initializeUplinkController } from '../controllers/uplinkController.js';
 
 const router = express.Router();
 
@@ -9,4 +9,7 @@ router.post('/config', saveConfig);
 // Restart WebSocket server
 router.post('/restart', restartServer);
 
-export default router;
+export const createUplinkRouter = (io) => {
+  initializeUplinkController(io);
+  return router;
+};

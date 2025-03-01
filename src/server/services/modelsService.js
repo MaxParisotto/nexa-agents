@@ -3,9 +3,8 @@
  * Handles model-related operations like fetching model lists and testing connections
  */
 
-const axios = require('axios');
-const logger = require('../utils/logger');
-const settingsService = require('./settingsService');
+import axios from 'axios';
+import logger from '../utils/logger.js';
 
 /**
  * Cache to store model lists by provider + API URL
@@ -396,14 +395,38 @@ const testConnection = async (provider, apiUrl, model, serverType) => {
 };
 
 /**
- * Validate a model for a provider
+ * Validate model configuration
  */
-const validateModel = async (model, provider) => {
-  return settingsService.validateModel(model, provider);
+const validateModel = (modelConfig) => {
+  if (!modelConfig) {
+    throw new Error('Model configuration is required');
+  }
+  
+  const requiredFields = ['provider', 'apiUrl'];
+  const missingFields = requiredFields.filter(field => !modelConfig[field]);
+  
+  if (missingFields.length > 0) {
+    throw new Error(`Missing required model configuration fields: ${missingFields.join(', ')}`);
+  }
+  
+  // Validate provider
+  const validProviders = ['lmstudio', 'ollama', 'projectmanager'];
+  if (!validProviders.includes(modelConfig.provider.toLowerCase())) {
+    throw new Error(`Invalid provider: ${modelConfig.provider}. Must be one of: ${validProviders.join(', ')}`);
+  }
+  
+  // Validate API URL
+  try {
+    new URL(modelConfig.apiUrl);
+  } catch (error) {
+    throw new Error(`Invalid API URL: ${modelConfig.apiUrl}`);
+  }
+  
+  return true;
 };
 
-module.exports = {
+export {
   fetchModels,
   testConnection,
   validateModel
-}; 
+};

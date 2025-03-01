@@ -3,17 +3,17 @@
  * Handles listing, testing and validating language models
  */
 
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const modelsController = require('../controllers/modelsController');
+import { getModels, testProviderConnection, validateProviderModel } from '../controllers/modelsController.js';
 
 // Get models for a specific provider
-router.get('/:provider', modelsController.getModels);
+router.get('/:provider', getModels);
 
 // Test connection to a provider
-router.post('/test-connection', modelsController.testConnection);
+router.post('/test-connection', testProviderConnection);
 
 // Validate model for a provider
-router.post('/validate', modelsController.validateModel);
+router.post('/validate', validateProviderModel);
 
-module.exports = router; 
+export default router;

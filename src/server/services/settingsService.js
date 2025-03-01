@@ -4,12 +4,12 @@
  * Moved from frontend to backend for better separation of concerns
  */
 
-const fs = require('fs');
-const path = require('path');
-const logger = require('../utils/logger');
+import fs from 'fs';
+import path from 'path';
+import logger from '../utils/logger.js';
 
 // Config directory setup
-const CONFIG_DIR = path.join(__dirname, '../../../config');
+const CONFIG_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '../../../config');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
 
 // Default settings configuration
@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS = {
   },
   ollama: {
     apiUrl: 'http://localhost:11434',
-    defaultModel: 'llama2',
+    defaultModel: 'deepscaler:latest',
     loading: false,
     error: null,
     models: []
@@ -303,7 +303,7 @@ const clearSettings = async () => {
   }
 };
 
-module.exports = {
+export {
   loadSettings,
   saveSettings,
   validateSettings,
@@ -313,4 +313,4 @@ module.exports = {
   isValidUrl,
   isValidTemperature,
   isValidTopP
-}; 
+};

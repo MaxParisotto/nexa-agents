@@ -3,20 +3,27 @@
  * Handles API routes, middleware, and server initialization
  */
 
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
-const winston = require('winston');
-const fs = require('fs');
-const path = require('path');
-const bodyParser = require('body-parser');
-const logger = require('./utils/logger');
+import express from 'express';
+import http from 'http';
+import { Server as socketIo } from 'socket.io';
+import cors from 'cors';
+import winston from 'winston';
+import fs from 'fs';
+import path from 'path';
+import bodyParser from 'body-parser';
+import logger from './utils/logger.js';
+
+// Utility to get __dirname equivalent in ES modules
+const getDirname = (url) => {
+  const __filename = new URL('', url).pathname;
+  return path.dirname(__filename);
+};
 
 // Import routes
-const settingsRoutes = require('./routes/settings');
-const modelsRoutes = require('./routes/models');
-const testRoutes = require('./routes/test');
+import settingsRoutes from './routes/settings.js';
+import modelsRoutes from './routes/models.js';
+import testRoutes from './routes/test.js';
+import { createUplinkRouter } from './routes/uplink.js';
 
 const app = express();
 
@@ -94,17 +101,17 @@ const loggerWinston = winston.createLogger({
   transports: [
     new winston.transports.Console(),
     new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/error.log'), 
+      filename: path.join(getDirname(import.meta.url), '../../logs/error.log'), 
       level: 'error' 
     }),
     new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/combined.log') 
+      filename: path.join(getDirname(import.meta.url), '../../logs/combined.log') 
     })
   ]
 });
 
 // Create logs directory if it doesn't exist
-const LOGS_DIR = path.join(__dirname, '../../logs');
+const LOGS_DIR = path.join(getDirname(import.meta.url), '../../logs');
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
   loggerWinston.info('Created logs directory', { path: LOGS_DIR });
@@ -117,7 +124,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../../build')));
+app.use(express.static(path.join(getDirname(import.meta.url), '../../build')));
 
 // Request logger middleware
 app.use((req, res, next) => {
@@ -146,7 +153,7 @@ app.use((req, res, next) => {
 });
 
 // Configuration file paths
-const CONFIG_DIR = path.join(__dirname, '../../config');
+const CONFIG_DIR = path.join(getDirname(import.meta.url), '../../config');
 const JSON_CONFIG_PATH = path.join(CONFIG_DIR, 'nexa-config.json');
 const YAML_CONFIG_PATH = path.join(CONFIG_DIR, 'nexa-config.yaml');
 
@@ -156,14 +163,10 @@ if (!fs.existsSync(CONFIG_DIR)) {
   loggerWinston.info('Created config directory', { path: CONFIG_DIR });
 }
 
-// Import uplink routes
-import uplinkRoutes from './routes/uplink.js';
-
 // API Routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/models', modelsRoutes);
 app.use('/api/test', testRoutes);
-app.use('/api/uplink', uplinkRoutes);
 
 // API endpoint to save configuration
 app.post('/api/config/save', (req, res) => {
@@ -292,12 +295,16 @@ app.get('/api/config/load', (req, res) => {
 });
 
 const server = http.createServer(app);
-const io = socketIo(server, {
+const io = new socketIo(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
   }
 });
+
+// Initialize uplink router with io instance
+const uplinkRouter = createUplinkRouter(io);
+app.use('/api/uplink', uplinkRouter);
 
 // Try to load port from config file
 let PORT = process.env.PORT || 3001;
@@ -397,7 +404,7 @@ app.use((err, req, res, next) => {
 
 // Serve React app for any other routes
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../build', 'index.html'));
+  res.sendFile(path.join(getDirname(import.meta.url), '../../build', 'index.html'));
 });
 
 // Start server
@@ -408,4 +415,5 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
-module.exports = app; // Export for testing
+export { io }; // Export socket.io instance
+export default app; // Export for testing

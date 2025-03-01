@@ -3,8 +3,12 @@
  * Handles fetching models, testing connections, and model validation
  */
 
-const logger = require('../utils/logger');
-const modelsService = require('../services/modelsService');
+import logger from '../utils/logger.js';
+import { 
+  fetchModels as fetchProviderModels,
+  testConnection as testProviderConnectionService,
+  validateModel as validateProviderModelService
+} from '../services/modelsService.js';
 
 /**
  * Get models for a specific provider
@@ -32,7 +36,7 @@ const getModels = async (req, res) => {
     logger.info(`Fetching models for ${normalizedProvider}`, { apiUrl, serverType });
     
     try {
-      const models = await modelsService.fetchModels(normalizedProvider, apiUrl, serverType);
+      const models = await fetchProviderModels(normalizedProvider, apiUrl, serverType);
       
       // Special handling for projectManager to include server type
       if (normalizedProvider === 'projectmanager') {
@@ -111,7 +115,7 @@ const getModels = async (req, res) => {
 /**
  * Test connection to a provider
  */
-const testConnection = async (req, res) => {
+const testProviderConnection = async (req, res) => {
   try {
     const { provider, apiUrl, model, serverType } = req.body;
     
@@ -125,7 +129,7 @@ const testConnection = async (req, res) => {
     logger.info(`Testing connection to ${normalizedProvider}`, { apiUrl, model, serverType });
     
     try {
-      const result = await modelsService.testConnection(normalizedProvider, apiUrl, model, serverType);
+      const result = await testProviderConnectionService(normalizedProvider, apiUrl, model, serverType);
       
       // Special handling for projectManager to fix the provider name
       if (normalizedProvider === 'projectmanager') {
@@ -190,7 +194,7 @@ const testConnection = async (req, res) => {
 /**
  * Validate model for a provider
  */
-const validateModel = async (req, res) => {
+const validateProviderModel = async (req, res) => {
   try {
     const { provider, model } = req.body;
     
@@ -200,7 +204,7 @@ const validateModel = async (req, res) => {
     
     logger.info(`Validating model ${model} for ${provider}`);
     
-    const validationResult = await modelsService.validateModel(model, provider);
+    const validationResult = await validateProviderModelService(model, provider);
     
     return res.status(200).json(validationResult);
   } catch (error) {
@@ -220,8 +224,8 @@ const validateModel = async (req, res) => {
   }
 };
 
-module.exports = {
-  getModels,
-  testConnection,
-  validateModel
-}; 
+export { 
+  getModels, 
+  testProviderConnection,
+  validateProviderModel 
+};
