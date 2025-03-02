@@ -1,4 +1,5 @@
 import { logInfo, LOG_CATEGORIES } from './logActions';
+import apiClient from '../../utils/apiClient';
 
 // Action Types
 export const ADD_NOTIFICATION = 'ADD_NOTIFICATION';
@@ -353,50 +354,16 @@ export const fetchMetrics = () => async (dispatch) => {
   dispatch({ type: 'METRICS_LOADING', payload: 'metrics' });
   
   try {
-    // Add a timeout to the fetch request
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // Use API client instead of direct fetch
+    const data = await apiClient.metrics.getMetrics();
     
-    const response = await fetch('/api/metrics', {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-
-    // Check if response is OK and content-type is application/json
-    const contentType = response.headers.get('content-type');
-    if (!response.ok || !contentType || !contentType.includes('application/json')) {
-      throw new Error(`Invalid response: ${response.status} ${response.statusText}`);
-    }
-
-    // First get text to handle JSON parsing carefully
-    const text = await response.text();
-    
-    // Guard against empty responses
-    if (!text || text.trim() === '') {
-      throw new Error('Empty response from server');
-    }
-    
-    // Check for HTML content that would indicate an error page
-    if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
-      throw new Error('Server returned HTML instead of JSON');
-    }
-
-    try {
-      const data = JSON.parse(text);
-      dispatch({ type: 'UPDATE_METRICS', payload: data });
-      return data;
-    } catch (e) {
-      throw new Error(`Failed to parse JSON: ${e.message}`);
-    }
+    // Update metrics
+    dispatch({ type: 'UPDATE_METRICS', payload: data });
+    return data;
   } catch (error) {
     console.warn('Could not fetch metrics from API, using frontend calculations', error);
     
-    // Use local data when API fails
+    // Use mock data when API fails
     const mockMetrics = {
       cpu: {
         usage: Math.floor(Math.random() * 30) + 10,
@@ -427,46 +394,12 @@ export const fetchTokenMetrics = () => async (dispatch) => {
   dispatch({ type: 'METRICS_LOADING', payload: 'tokenMetrics' });
   
   try {
-    // Add a timeout to the fetch request
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // Use API client instead of direct fetch
+    const data = await apiClient.metrics.getTokenMetrics();
     
-    const response = await fetch('/api/metrics/tokens', {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    // Check if response is OK and content-type is application/json
-    const contentType = response.headers.get('content-type');
-    if (!response.ok || !contentType || !contentType.includes('application/json')) {
-      throw new Error(`Invalid response: ${response.status} ${response.statusText}`);
-    }
-    
-    // First get text to handle JSON parsing carefully
-    const text = await response.text();
-    
-    // Guard against empty responses
-    if (!text || text.trim() === '') {
-      throw new Error('Empty response from server');
-    }
-    
-    // Check for HTML content that would indicate an error page
-    if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
-      throw new Error('Server returned HTML instead of JSON');
-    }
-    
-    try {
-      const data = JSON.parse(text);
-      dispatch({ type: 'UPDATE_TOKEN_METRICS', payload: data });
-      return data;
-    } catch (e) {
-      throw new Error(`Failed to parse JSON: ${e.message}`);
-    }
+    // Update token metrics
+    dispatch({ type: 'UPDATE_TOKEN_METRICS', payload: data });
+    return data;
   } catch (error) {
     console.warn('Could not fetch token metrics from API', error);
     

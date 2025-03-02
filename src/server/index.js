@@ -56,6 +56,7 @@ import testRoutes from './routes/test.js';
 import { createUplinkRouter } from './routes/uplink.js';
 import statusRoutes from './routes/status.js';
 import metricsRoutes from './routes/metrics.js';
+import workflowsRoutes from './routes/workflows.js';
 
 // Initialize process error handlers right away to catch any startup errors
 process.on('uncaughtException', (error) => {
@@ -241,6 +242,7 @@ app.use('/api/models', modelsRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/uplink', uplinkRouter); // Now using the properly initialized uplinkRouter
+app.use('/api/workflows', workflowsRoutes); // Add workflows routes
 
 // API endpoint to save configuration
 app.post('/api/config/save', (req, res) => {

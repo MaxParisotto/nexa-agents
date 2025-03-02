@@ -69,8 +69,123 @@ const fetchWithRetry = async (apiCall, options = {}) => {
   return fallbackData;
 };
 
-// Define API methods with fallbacks
+/**
+ * API client to handle frontend to backend requests with error handling
+ */
+const API_URL = process.env.NODE_ENV === 'production' 
+  ? window.location.origin
+  : 'http://localhost:3001';
+
+// Add a timeout to all fetch requests
+const fetchWithTimeout = (url, options = {}, timeout = 5000) => {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Request timeout')), timeout)
+    )
+  ]);
+};
+
+/**
+ * Handle API response with better error checking
+ */
+const handleResponse = async (response) => {
+  const contentType = response.headers.get('content-type');
+  
+  if (!response.ok) {
+    // If response is not OK, try to extract error message, then throw
+    let errorMessage;
+    try {
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || `${response.status}: ${response.statusText}`;
+      } else {
+        errorMessage = `${response.status}: ${response.statusText}`;
+      }
+    } catch (e) {
+      errorMessage = `${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+  
+  // Return different types of responses based on content type
+  if (contentType && contentType.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch (error) {
+      console.error('Error parsing JSON response:', error);
+      throw new Error('Invalid JSON response from server');
+    }
+  } else if (contentType && contentType.includes('text/')) {
+    return response.text();
+  } else {
+    return response;
+  }
+};
+
+/**
+ * API client with dedicated methods for each API area
+ */
 const apiClient = {
+  // System metrics endpoints
+  metrics: {
+    // Get system metrics with fallback
+    async getMetrics() {
+      try {
+        // Try to use the preferred API path with proxy
+        const response = await fetchWithTimeout('/api/metrics');
+        return await handleResponse(response);
+      } catch (error) {
+        console.warn('Error fetching metrics through proxy, trying direct URL:', error);
+        try {
+          // Fallback to direct URL if proxy fails
+          const response = await fetchWithTimeout(`${API_URL}/api/metrics`);
+          return await handleResponse(response);
+        } catch (fallbackError) {
+          console.error('Both metrics fetch attempts failed:', fallbackError);
+          throw fallbackError;
+        }
+      }
+    },
+    
+    // Get token metrics with fallback
+    async getTokenMetrics() {
+      try {
+        // Try to use the preferred API path with proxy
+        const response = await fetchWithTimeout('/api/metrics/tokens');
+        return await handleResponse(response);
+      } catch (error) {
+        console.warn('Error fetching token metrics through proxy, trying direct URL:', error);
+        try {
+          // Fallback to direct URL if proxy fails
+          const response = await fetchWithTimeout(`${API_URL}/api/metrics/tokens`);
+          return await handleResponse(response);
+        } catch (fallbackError) {
+          console.error('Both token metrics fetch attempts failed:', fallbackError);
+          throw fallbackError;
+        }
+      }
+    }
+  },
+  
+  // Add other API endpoints here...
+  status: {
+    async getStatus() {
+      try {
+        const response = await fetchWithTimeout('/api/status');
+        return await handleResponse(response);
+      } catch (error) {
+        console.warn('Error getting status through proxy, trying direct URL');
+        try {
+          const response = await fetchWithTimeout(`${API_URL}/api/status`);
+          return await handleResponse(response);
+        } catch (fallbackError) {
+          return { online: false, error: fallbackError.message };
+        }
+      }
+    }
+  },
+
   // Settings
   settings: {
     loadSettings: async () => {
