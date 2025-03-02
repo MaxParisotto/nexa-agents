@@ -1,290 +1,183 @@
 import axios from 'axios';
 
-// Create base axios instance
+// Create a base axios instance with more reasonable timeout
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 5000, // Reduced from 10000 to 5000 for faster feedback
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
   }
 });
 
-/**
- * Enhanced fetch with retry mechanism and fallbacks
- * @param {Function} apiCall - The API call function to execute
- * @param {Object} options - Options for the fetch operation
- * @returns {Promise<Object>} The API response or fallback data
- */
-const fetchWithRetry = async (apiCall, options = {}) => {
-  const {
-    retries = 1,
-    retryDelay = 1000,
-    fallbackData = null,
-    silentFallback = false,
-    timeout = 5000,
-    logErrors = true
-  } = options;
+// Store abort controllers for ongoing requests
+const controllers = new Map();
+
+// Create a request registry to track latency/status for monitoring
+export const requestRegistry = {
+  // Format: endpoint -> { lastStatus, lastLatency, lastChecked, errorCount }
+  endpoints: new Map(),
   
-  let lastError;
-  
-  // Try the API call with retries
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      // Set a timeout for this specific request
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      
-      const response = await apiCall({ 
-        signal: controller.signal,
-        headers: {
-          // Add cache-busting for development
-          ...(process.env.NODE_ENV !== 'production' ? 
-            { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } : {})
-        }
+  // Register request attempt
+  registerRequest(endpoint) {
+    if (!this.endpoints.has(endpoint)) {
+      this.endpoints.set(endpoint, {
+        lastStatus: null,
+        lastLatency: null,
+        lastChecked: null,
+        errorCount: 0,
+        successCount: 0
       });
-      
-      clearTimeout(timeoutId);
-      return response.data;
-    } catch (error) {
-      lastError = error;
-      
-      if (logErrors) {
-        console.warn(`API request failed (attempt ${attempt + 1}/${retries + 1}):`, error.message);
-      }
-      
-      // Don't retry if we've reached the maximum attempts
-      if (attempt === retries) break;
-      
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+    return performance.now();
+  },
+  
+  // Register successful response
+  registerSuccess(endpoint, startTime) {
+    const endTime = performance.now();
+    const latency = Math.round(endTime - startTime);
+    
+    const info = this.endpoints.get(endpoint) || {
+      errorCount: 0,
+      successCount: 0
+    };
+    
+    this.endpoints.set(endpoint, {
+      lastStatus: 'success',
+      lastLatency: latency,
+      lastChecked: new Date(),
+      errorCount: info.errorCount,
+      successCount: info.successCount + 1
+    });
+    
+    return latency;
+  },
+  
+  // Register error
+  registerError(endpoint, error) {
+    const info = this.endpoints.get(endpoint) || {
+      lastLatency: null,
+      lastChecked: null,
+      errorCount: 0,
+      successCount: 0
+    };
+    
+    this.endpoints.set(endpoint, {
+      lastStatus: 'error',
+      lastLatency: info.lastLatency,
+      lastChecked: new Date(),
+      errorCount: info.errorCount + 1,
+      successCount: info.successCount,
+      lastError: error
+    });
+  },
+  
+  // Get metrics for all endpoints
+  getMetrics() {
+    return Array.from(this.endpoints.entries()).map(([endpoint, stats]) => ({
+      endpoint,
+      ...stats
+    }));
+  }
+};
+
+// Helper function for requests with proper cleanup and monitoring
+export const fetchWithRetry = async (url, options = {}) => {
+  const { method = 'GET', data, retry = 1, signal, timeout = 5000 } = options;
+  
+  // Create a controller for this request if not provided
+  const controller = signal ? null : new AbortController();
+  const requestSignal = signal || controller?.signal;
+  
+  // Store the controller with a unique ID
+  const requestId = `${method}-${url}-${Date.now()}`;
+  if (controller) {
+    controllers.set(requestId, controller);
+  }
+  
+  // Register the request attempt for monitoring
+  const startTime = requestRegistry.registerRequest(url);
+  
+  try {
+    // Make request with signal and specified timeout
+    const response = await api.request({
+      method,
+      url,
+      data,
+      signal: requestSignal,
+      timeout // Use the provided timeout
+    });
+    
+    // Register successful response
+    requestRegistry.registerSuccess(url, startTime);
+    
+    return response.data;
+  } catch (error) {
+    // Register the error
+    requestRegistry.registerError(url, error);
+    
+    // Don't retry if request was aborted or canceled
+    if (error.name === 'AbortError' || error.name === 'CanceledError' || axios.isCancel(error)) {
+      console.log(`Request to ${url} was aborted`);
+      throw new Error('request aborted');
+    }
+    
+    if (retry > 0) {
+      console.log(`Retrying request to ${url}, ${retry} attempts left`);
+      return fetchWithRetry(url, { 
+        ...options, 
+        retry: retry - 1,
+        timeout: Math.min(timeout * 1.5, 15000) // Increase timeout for retries but cap it
+      });
+    }
+    
+    console.error(`API request failed (attempt ${retry}/1):`, error.message);
+    throw error;
+  } finally {
+    // Clean up the controller
+    if (controller) {
+      controllers.delete(requestId);
     }
   }
-  
-  // If we got here, all attempts failed
-  if (!silentFallback) {
-    console.error('All API requests failed, using fallback data:', lastError?.message);
-  }
-  
-  // Return fallback data
-  return fallbackData;
 };
 
-/**
- * API client to handle frontend to backend requests with error handling
- */
-const API_URL = process.env.NODE_ENV === 'production' 
-  ? window.location.origin
-  : 'http://localhost:3001';
-
-// Add a timeout to all fetch requests
-const fetchWithTimeout = (url, options = {}, timeout = 5000) => {
-  return Promise.race([
-    fetch(url, options),
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Request timeout')), timeout)
-    )
-  ]);
-};
-
-/**
- * Handle API response with better error checking
- */
-const handleResponse = async (response) => {
-  const contentType = response.headers.get('content-type');
-  
-  if (!response.ok) {
-    // If response is not OK, try to extract error message, then throw
-    let errorMessage;
+// Cleanup function to abort all ongoing requests
+export const abortAllRequests = () => {
+  controllers.forEach(controller => {
     try {
-      if (contentType && contentType.includes('application/json')) {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || `${response.status}: ${response.statusText}`;
-      } else {
-        errorMessage = `${response.status}: ${response.statusText}`;
-      }
+      controller.abort();
     } catch (e) {
-      errorMessage = `${response.status}: ${response.statusText}`;
+      console.error('Error aborting request:', e);
     }
-    throw new Error(errorMessage);
-  }
-  
-  // Return different types of responses based on content type
-  if (contentType && contentType.includes('application/json')) {
-    try {
-      return await response.json();
-    } catch (error) {
-      console.error('Error parsing JSON response:', error);
-      throw new Error('Invalid JSON response from server');
-    }
-  } else if (contentType && contentType.includes('text/')) {
-    return response.text();
-  } else {
-    return response;
-  }
+  });
+  controllers.clear();
 };
 
-/**
- * API client with dedicated methods for each API area
- */
+// Add convenience methods for common operations
 const apiClient = {
-  // System metrics endpoints
-  metrics: {
-    // Get system metrics with fallback
-    async getMetrics() {
-      try {
-        // Try to use the preferred API path with proxy
-        const response = await fetchWithTimeout('/api/metrics');
-        return await handleResponse(response);
-      } catch (error) {
-        console.warn('Error fetching metrics through proxy, trying direct URL:', error);
-        try {
-          // Fallback to direct URL if proxy fails
-          const response = await fetchWithTimeout(`${API_URL}/api/metrics`);
-          return await handleResponse(response);
-        } catch (fallbackError) {
-          console.error('Both metrics fetch attempts failed:', fallbackError);
-          throw fallbackError;
-        }
-      }
-    },
-    
-    // Get token metrics with fallback
-    async getTokenMetrics() {
-      try {
-        // Try to use the preferred API path with proxy
-        const response = await fetchWithTimeout('/api/metrics/tokens');
-        return await handleResponse(response);
-      } catch (error) {
-        console.warn('Error fetching token metrics through proxy, trying direct URL:', error);
-        try {
-          // Fallback to direct URL if proxy fails
-          const response = await fetchWithTimeout(`${API_URL}/api/metrics/tokens`);
-          return await handleResponse(response);
-        } catch (fallbackError) {
-          console.error('Both token metrics fetch attempts failed:', fallbackError);
-          throw fallbackError;
-        }
-      }
-    }
+  // Status endpoint
+  status: {
+    getStatus: () => fetchWithRetry('/status')
   },
   
-  // Add other API endpoints here...
-  status: {
-    async getStatus() {
-      try {
-        const response = await fetchWithTimeout('/api/status');
-        return await handleResponse(response);
-      } catch (error) {
-        console.warn('Error getting status through proxy, trying direct URL');
-        try {
-          const response = await fetchWithTimeout(`${API_URL}/api/status`);
-          return await handleResponse(response);
-        } catch (fallbackError) {
-          return { online: false, error: fallbackError.message };
-        }
-      }
-    }
-  },
-
-  // Settings
+  // Settings endpoints
   settings: {
-    loadSettings: async () => {
-      const fallbackData = {
-        general: JSON.parse(localStorage.getItem('generalSettings') || '{}'),
-        lmStudio: {
-          apiUrl: localStorage.getItem('lmStudioAddress') || 'http://localhost:1234',
-          defaultModel: localStorage.getItem('defaultLmStudioModel') || '',
-          models: JSON.parse(localStorage.getItem('lmStudioModels') || '[]')
-        },
-        ollama: {
-          apiUrl: localStorage.getItem('ollamaAddress') || 'http://localhost:11434',
-          defaultModel: localStorage.getItem('defaultOllamaModel') || '',
-          models: JSON.parse(localStorage.getItem('ollamaModels') || '[]')
-        },
-        features: JSON.parse(localStorage.getItem('featureSettings') || '{}'),
-        // Use empty data as fallback for anything else
-      };
-      
-      return fetchWithRetry(
-        (config) => api.get('/settings', config),
-        { 
-          fallbackData,
-          silentFallback: true,
-          retries: 0 // Only try once for the initial load
-        }
-      );
-    },
-    
-    // Other settings methods...
+    getSettings: () => fetchWithRetry('/settings'),
+    updateSettings: (settings) => fetchWithRetry('/settings', { method: 'POST', data: settings }),
+    verifyApiKey: (data) => fetchWithRetry('/settings/verify-api-key', { method: 'POST', data })
   },
   
-  // Test endpoints
-  test: {
-    ping: async () => {
-      return fetchWithRetry(
-        (config) => api.get('/test/ping', config),
-        { 
-          fallbackData: { success: false, message: 'Server is offline' },
-          silentFallback: true,
-          retries: 0
-        }
-      );
-    },
-    
-    // Other test methods...
+  // Metrics endpoints with reduced timeout
+  metrics: {
+    getSystemMetrics: () => fetchWithRetry('/metrics/system', { timeout: 3000 }),
+    getTokenMetrics: () => fetchWithRetry('/metrics/tokens', { timeout: 3000 })
   },
   
-  // Server status
-  status: {
-    getStatus: async () => {
-      // Try the dedicated status endpoint first
-      try {
-        const response = await fetchWithRetry(
-          (config) => api.get('/status', { ...config, timeout: 2000 }),
-          {
-            retries: 0,
-            silentFallback: true,
-            timeout: 2000
-          }
-        );
-        
-        // If we get here, server is online
-        return {
-          online: true,
-          ...response
-        };
-      } catch (error) {
-        // If the status endpoint fails, try a simpler ping endpoint
-        try {
-          const pingResponse = await fetchWithRetry(
-            (config) => api.get('/test/ping', { ...config, timeout: 2000 }),
-            {
-              retries: 0,
-              silentFallback: true,
-              timeout: 2000
-            }
-          );
-          
-          if (pingResponse?.success) {
-            return {
-              online: true,
-              message: 'Server is online (minimal status)',
-              services: {}
-            };
-          }
-        } catch (innerError) {
-          // Both endpoints failed
-          console.log('Both status checks failed:', error.message, innerError?.message);
-        }
-        
-        // Return offline status
-        return {
-          online: false,
-          services: {},
-          message: 'Server is offline or unreachable'
-        };
-      }
-    }
+  // Models endpoints
+  models: {
+    getAvailableModels: () => fetchWithRetry('/models'),
+    setDefaultModel: (modelId) => fetchWithRetry('/models/default', { method: 'POST', data: { modelId } }),
+    updateModelSettings: (modelId, settings) => fetchWithRetry(`/models/${modelId}/settings`, { method: 'PUT', data: settings }),
+    testModel: (modelId) => fetchWithRetry(`/models/${modelId}/test`, { method: 'POST' })
   }
 };
 

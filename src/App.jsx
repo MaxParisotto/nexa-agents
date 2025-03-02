@@ -12,7 +12,7 @@ import ProjectManager from './components/ProjectManager.jsx'; // Changed from .j
 import Agora from './components/Agora/Agora.jsx'; // Changed from .js to .jsx
 import Agents from './components/Agents/Agents.jsx';
 import NotificationsSystem from './components/NotificationsSystem.jsx';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -21,7 +21,7 @@ import { Warning as WarningIcon } from '@mui/icons-material';
 import { Provider, useDispatch, useSelector } from 'react-redux';
 import store from './store';
 import { SettingsProvider } from './contexts/SettingsContext';
-import apiClient from './utils/apiClient';
+import apiClient, { fetchWithRetry, abortAllRequests } from './utils/apiClient';
 
 // Actions
 import { loadSettings, loadPersistedModels } from './store/actions/settingsActions';
@@ -55,49 +55,58 @@ function AppContent() {
     checking: true 
   });
 
-  // Check if the server is running with better handling
-  useEffect(() => {
-    const checkServer = async () => {
-      try {
-        setServerStatus(prev => ({ ...prev, checking: true }));
-        
-        // Use the enhanced API client instead of direct calls
-        const status = await apiClient.status.getStatus();
-        
-        setServerStatus({ 
-          checked: true, 
-          online: status.online, 
-          checking: false,
-          details: status
-        });
-        
-        // Only show notification if server is offline
-        if (!status.online) {
-          dispatch(addNotification({
-            type: 'warning',
-            message: 'Backend connection unavailable',
-            description: 'Using local settings. Some features may be limited.',
-            duration: 10000 // Show for longer time
-          }));
-        }
-      } catch (error) {
-        console.error('Error checking server status:', error);
-        setServerStatus({ 
-          checked: true, 
-          online: false, 
-          checking: false,
-          error: error.message
-        });
+  // Use ref to store interval ID
+  const serverCheckIntervalRef = useRef(null);
+
+  // Server status check with proper cleanup
+  const checkServer = async () => {
+    try {
+      const status = await fetchWithRetry('/status');
+      // Process status response
+      setServerStatus({ 
+        checked: true, 
+        online: status.online, 
+        checking: false,
+        details: status
+      });
+      
+      // Only show notification if server is offline
+      if (!status.online) {
+        dispatch(addNotification({
+          type: 'warning',
+          message: 'Backend connection unavailable',
+          description: 'Using local settings. Some features may be limited.',
+          duration: 10000 // Show for longer time
+        }));
       }
-    };
-    
-    // Run check immediately
+    } catch (error) {
+      // Handle error, but don't log if it's an abort error
+      if (error.message !== 'request aborted') {
+        console.error('Server check failed:', error);
+      }
+      setServerStatus({ 
+        checked: true, 
+        online: false, 
+        checking: false,
+        error: error.message
+      });
+    }
+  };
+
+  useEffect(() => {
+    // Initial check
     checkServer();
     
-    // Also set up periodic checking
-    const checkInterval = setInterval(checkServer, 30000); // Check every 30 seconds
+    // Set up interval
+    serverCheckIntervalRef.current = setInterval(checkServer, 10000);
     
-    return () => clearInterval(checkInterval);
+    // Clean up function
+    return () => {
+      // Clear interval
+      clearInterval(serverCheckIntervalRef.current);
+      // Abort any pending requests
+      abortAllRequests();
+    };
   }, [dispatch]);
 
   // Load settings and models from backend on startup with better error handling

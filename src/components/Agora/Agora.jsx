@@ -1,10 +1,20 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSelector, shallowEqual } from 'react-redux';
-import { createSelector } from 'reselect';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useSelector, useDispatch, shallowEqual } from 'react-redux';
+import { createSelector } from '@reduxjs/toolkit';
 import { Send, Tag, Add } from '@mui/icons-material';
 import { TextField, IconButton, Avatar, Typography } from '@mui/material';
 
-// Create memoized selectors properly
+// Create memoized selectors outside the component
+const selectAgoraData = createSelector(
+  state => state.agora.data,
+  data => data
+);
+
+const selectAgoraLoading = createSelector(
+  state => state.agora.loading,
+  loading => loading
+);
+
 const selectAgoraState = state => state.agora || { selected: [], selected2: [] };
 
 // Create stable selectors with createSelector
@@ -21,6 +31,11 @@ const selectAdditionalItems = createSelector(
 const selectAgents = state => state.agents?.active || [];
 
 const Agora = () => {
+  // Use memoized selectors
+  const agoraData = useSelector(selectAgoraData);
+  const isLoading = useSelector(selectAgoraLoading);
+  const dispatch = useDispatch();
+
   // Use selectors with proper equality comparisons
   const selected = useSelector(selectSelectedItems, shallowEqual);
   const selected2 = useSelector(selectAdditionalItems, shallowEqual);
