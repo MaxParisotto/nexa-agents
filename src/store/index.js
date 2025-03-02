@@ -1,27 +1,16 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { combineReducers } from 'redux';
-import logsReducer from './reducers/logsReducer';
-import settingsReducer from './reducers/settingsReducer';
-import systemReducer from './reducers/systemReducer';
-import taskReducer from './reducers/tasksReducer';
-import agentsReducer from './reducers/agentsReducer';
+import thunk from 'redux-thunk';
+import rootReducer from './reducers';
+import logReducer from './reducers/logReducer';
 
-// Combine all reducers
-const rootReducer = combineReducers({
-  logs: logsReducer,
-  settings: settingsReducer,
-  system: systemReducer,
-  tasks: taskReducer,
-  agents: agentsReducer
-});
-
-// Create the Redux store
+// Include all reducers here
 const store = configureStore({
-  reducer: rootReducer,
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: false
-    })
+  reducer: {
+    ...rootReducer,
+    logs: logReducer // Ensure logReducer is included
+  },
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(thunk),
+  devTools: process.env.NODE_ENV !== 'production',
 });
 
 export default store;
