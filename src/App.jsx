@@ -18,6 +18,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Provider, useDispatch, useSelector } from 'react-redux';
 import store from './store';
+import { SettingsProvider } from './contexts/SettingsContext';
 
 // Actions
 import { loadSettings, loadPersistedModels } from './store/actions/settingsActions';
@@ -160,43 +161,45 @@ function AppContent() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
-          <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
-          <div className="app-container">
-            <main className="content-full">
-              {settings.loading && !isConfigLoaded ? (
-                <div className="loading-container">
-                  <p>Loading settings...</p>
-                </div>
-              ) : (
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/workflow" element={<WorkflowEditor />} />
-                  <Route path="/tasks" element={<Tasks />} />
-                  <Route path="/metrics" element={<Metrics />} />
-                  <Route path="/logs" element={<Logs />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/agora" element={<Agora />} />
-                  <Route path="/agents" element={<Agents />} />
-                </Routes>
-              )}
-            </main>
+      <SettingsProvider>
+        <Router>
+          <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
+            <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+            <div className="app-container">
+              <main className="content-full">
+                {settings.loading && !isConfigLoaded ? (
+                  <div className="loading-container">
+                    <p>Loading settings...</p>
+                  </div>
+                ) : (
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/workflow" element={<WorkflowEditor />} />
+                    <Route path="/tasks" element={<Tasks />} />
+                    <Route path="/metrics" element={<Metrics />} />
+                    <Route path="/logs" element={<Logs />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/agora" element={<Agora />} />
+                    <Route path="/agents" element={<Agents />} />
+                  </Routes>
+                )}
+              </main>
+            </div>
+            
+            {/* Add the dock */}
+            <Dock />
+            
+            {/* ChatWidget component for interaction */}
+            <ChatWidget />
+            
+            {/* ProjectManager handles both agent workflows and user interaction */}
+            <ProjectManager />
+            
+            {/* Notifications system */}
+            <NotificationsSystem />
           </div>
-          
-          {/* Add the dock */}
-          <Dock />
-          
-          {/* ChatWidget component for interaction */}
-          <ChatWidget />
-          
-          {/* ProjectManager handles both agent workflows and user interaction */}
-          <ProjectManager />
-          
-          {/* Notifications system */}
-          <NotificationsSystem />
-        </div>
-      </Router>
+        </Router>
+      </SettingsProvider>
     </ThemeProvider>
   );
 }

@@ -10,6 +10,7 @@ import OpenAISettings from './Settings/OpenAISettings.jsx';
 import { fetchModels } from '../store/actions/settingsActions';
 import ModelDetector from './Settings/ModelDetector'; // Add this import
 import LmStudioDiagnostics from './LmStudioDiagnostics';
+import LogSettingsPanel from './Settings/LogSettingsPanel';
 
 // Import icons including the missing ExpandMoreIcon
 import {
@@ -77,6 +78,7 @@ const Settings = () => {
           <Tab label="LLM Providers" />
           <Tab label="OpenAI" />
           <Tab label="Advanced" />
+          <Tab label="Logs" /> {/* Add a new tab for logs */}
           <Tab label="Terminal" />
         </Tabs>
       </Paper>
@@ -352,8 +354,17 @@ const Settings = () => {
         </Grid>
       )}
       
-      {/* Terminal Tab */}
+      {/* Logs Tab - New */}
       {activeTab === 4 && (
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <LogSettingsPanel />
+          </Grid>
+        </Grid>
+      )}
+      
+      {/* Terminal Tab */}
+      {activeTab === 5 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card variant="outlined">

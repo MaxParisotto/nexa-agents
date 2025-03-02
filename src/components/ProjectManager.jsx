@@ -242,6 +242,34 @@ const ProjectManager = () => {
     }
   }, [settings, initialized]);
   
+  // Reduce frequency of LLM configuration checks
+  useEffect(() => {
+    if (settings?.lmStudio || settings?.ollama) {
+      // Store a timestamp in localStorage to track when we last did a full check
+      const lastCheckKey = 'lastLlmConfigCheck';
+      const lastCheck = localStorage.getItem(lastCheckKey);
+      const now = Date.now();
+      
+      // Only do a full check every 5 minutes (300000ms)
+      // This prevents excessive checks when settings change slightly
+      const checkInterval = 300000;
+      
+      if (!lastCheck || (now - parseInt(lastCheck)) > checkInterval) {
+        console.log('ProjectManager: Performing full LLM configuration check');
+        checkLlmConfiguration(settings);
+        localStorage.setItem(lastCheckKey, now.toString());
+      } else {
+        console.log('ProjectManager: Skipping full config check, using cached settings');
+        // Use cached settings instead of doing a full check
+        const cachedSettings = JSON.parse(sessionStorage.getItem('projectManagerSettings') || 'null');
+        if (cachedSettings) {
+          console.log('ProjectManager: Using cached settings from sessionStorage');
+        }
+      }
+    }
+  }, [settings?.lmStudio?.apiUrl, settings?.lmStudio?.defaultModel, 
+      settings?.ollama?.apiUrl, settings?.ollama?.defaultModel]);
+
   /**
    * Load settings from localStorage as a fallback
    * This helps ensure we don't miss settings if Redux is slow to initialize

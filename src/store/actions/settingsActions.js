@@ -17,6 +17,7 @@ import { logInfo, logError, logWarning, LOG_CATEGORIES } from './logActions';
 import { addNotification } from './systemActions';
 import configService from '../../services/configService';
 import api from '../../services/apiClient';
+import modelManager from '../../utils/ModelManager';
 
 // Track connection attempt timestamps to avoid repeated attempts
 const connectionAttempts = {
@@ -97,101 +98,39 @@ export const updateOpenAISettings = (settings) => {
 };
 
 // Thunk Actions
-export const fetchModels = (provider, apiUrl, serverType) => {
-  return async (dispatch) => {
+/**
+ * Fetch models from the specified provider
+ * 
+ * @param {string} provider Provider name ('lmStudio' or 'ollama')
+ * @param {string} apiUrl API URL
+ * @param {boolean} forceRefresh Force refresh of cached models
+ * @returns {Promise<Array>} List of models
+ */
+export const fetchModels = (provider, apiUrl, forceRefresh = false) => {
+  return async dispatch => {
+    dispatch({
+      type: 'FETCH_MODELS_REQUEST',
+      payload: { provider }
+    });
+    
     try {
-      dispatch(fetchModelsRequest(provider));
+      const models = await modelManager.getModels(provider, apiUrl, forceRefresh);
       
-      // Log the attempt with all parameters
-      console.log(`fetchModels: Fetching models for ${provider}`, { apiUrl, serverType });
+      dispatch({
+        type: 'FETCH_MODELS_SUCCESS',
+        payload: { provider, models }
+      });
       
-      // Special handling for projectManager - ensure provider name is properly cased
-      const normalizedProvider = provider.toLowerCase() === 'projectmanager' ? 'projectManager' : provider;
-      
-      let result;
-      try {
-        // Try to fetch models from API, passing serverType if available
-        result = await api.models.getModels(normalizedProvider, apiUrl, serverType);
-        
-        // Check if we have models or if there was an error
-        if (result.error && !result.fallback) {
-          throw new Error(result.error);
-        }
-        
-        if ((!result.models || !Array.isArray(result.models) || result.models.length === 0) && !result.fallback) {
-          throw new Error('No models found');
-        }
-        
-        // For projectManager, we might have fallback models
-        if (result.fallback && result.models && Array.isArray(result.models)) {
-          dispatch(addNotification({
-            type: 'info',
-            message: `Using default models for ${normalizedProvider}`,
-            description: 'Custom models can be added in Settings'
-          }));
-        }
-        
-        // Cache models in localStorage 
-        localStorage.setItem(`${normalizedProvider}Models`, JSON.stringify(result.models));
-        
-        dispatch(fetchModelsSuccess(normalizedProvider, result.models));
-        
-        return result.models;
-      } catch (error) {
-        const errorMessage = error.message || `Error fetching ${normalizedProvider} models`;
-        
-        // Update the UI with the error
-        dispatch(fetchModelsFailure(normalizedProvider, errorMessage));
-        
-        // Show a small notification
-        dispatch(addNotification({
-          type: 'warning',
-          message: `Could not fetch models for ${normalizedProvider}`,
-          description: 'Using cached models if available'
-        }));
-        
-        // Try to load cached models from localStorage
-        const cachedModels = localStorage.getItem(`${normalizedProvider}Models`);
-        if (cachedModels) {
-          try {
-            const models = JSON.parse(cachedModels);
-            if (Array.isArray(models) && models.length > 0) {
-              dispatch(fetchModelsSuccess(normalizedProvider, models));
-              return models;
-            }
-          } catch (e) {
-            // Ignore JSON parse errors
-          }
-        }
-        
-        // If no cached models, use defaults based on serverType for projectManager
-        if (normalizedProvider === 'projectManager') {
-          // Use provided serverType or default to 'lmStudio'
-          const effectiveServerType = serverType || 'lmStudio';
-          const defaultModels = effectiveServerType === 'ollama' ? 
-            ['llama2', 'mistral', 'mixtral'] :
-            ['qwen2.5-7b-instruct', 'llama2', 'mistral-7b-instruct'];
-            
-          dispatch(fetchModelsSuccess(normalizedProvider, defaultModels));
-          
-          // Cache these defaults
-          localStorage.setItem(`${normalizedProvider}Models`, JSON.stringify(defaultModels));
-          
-          dispatch(addNotification({
-            type: 'info',
-            message: 'Using default models',
-            description: 'No custom models were found'
-          }));
-          
-          return defaultModels;
-        }
-        
-        // Return empty array to prevent crashes
-        return [];
-      }
+      return models;
     } catch (error) {
-      // Last resort fallback for any unexpected errors
-      dispatch(fetchModelsFailure(provider, 'Unexpected error fetching models'));
+      dispatch({
+        type: 'FETCH_MODELS_FAILURE',
+        payload: { 
+          provider, 
+          error: error.message || 'Failed to fetch models' 
+        }
+      });
+      
       return [];
     }
   };

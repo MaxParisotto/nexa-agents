@@ -26,6 +26,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useSelector } from 'react-redux';
 
 import 'react-resizable/css/styles.css';
+import modelManager from '../utils/ModelManager';
 
 /**
  * ChatWidget component that provides a floating, resizable, draggable chat interface
@@ -139,8 +140,69 @@ const ChatWidget = () => {
   
   // Load models when settings change or server selection changes
   useEffect(() => {
-    fetchAvailableModels();
-  }, [settings, selectedServer]);
+    const fetchModels = async () => {
+      try {
+        setLoadingModels(true);
+        
+        if (selectedServer === 'lmStudio') {
+          const apiUrl = settings?.lmStudio?.apiUrl || 'http://localhost:1234';
+          const models = await modelManager.getLmStudioModels(apiUrl);
+          
+          // Fix: Add null check when setting models
+          if (Array.isArray(models)) {
+            setLmStudioModels(models);
+            
+            // Set default model if we have models and none is selected yet
+            if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
+              const defaultModel = settings?.lmStudio?.defaultModel;
+              if (defaultModel && models.includes(defaultModel)) {
+                setSelectedModel(defaultModel);
+              } else {
+                setSelectedModel(models[0]);
+              }
+            }
+          } else {
+            // Handle case where models is not an array
+            setLmStudioModels([]);
+          }
+        } else if (selectedServer === 'ollama') {
+          const apiUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
+          const models = await modelManager.getOllamaModels(apiUrl);
+          
+          // Fix: Add null check when setting models
+          if (Array.isArray(models)) {
+            setOllamaModels(models);
+            
+            // Set default model if we have models and none is selected yet
+            if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
+              const defaultModel = settings?.ollama?.defaultModel;
+              if (defaultModel && models.includes(defaultModel)) {
+                setSelectedModel(defaultModel);
+              } else {
+                setSelectedModel(models[0]);
+              }
+            }
+          } else {
+            // Handle case where models is not an array
+            setOllamaModels([]);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch models:', error);
+        // Ensure model arrays are initialized to prevent length errors
+        if (selectedServer === 'lmStudio') {
+          setLmStudioModels([]);
+        } else {
+          setOllamaModels([]);
+        }
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    // Only fetch models when the component mounts or settings change
+    fetchModels();
+  }, [settings?.lmStudio?.apiUrl, settings?.ollama?.apiUrl, selectedServer]);
   
   // Check if the LLM server is connected
   const checkLLMConnection = async () => {
@@ -165,7 +227,7 @@ const ChatWidget = () => {
       
       try {
         const ollamaUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
-        const baseUrl = ollamaUrl.startsWith('http') ? ollamaUrl : `http://${ollamaUrl}`;
+        const baseUrl = ollamaUrl.startsWith('http') ? ollama : `http://${ollamaUrl}`;
         await axios.get(`${baseUrl}/api/tags`, { timeout: 2000 });
         isOllamaConnected = true;
       } catch (err) {
@@ -431,9 +493,12 @@ const ChatWidget = () => {
     setSelectedModel(event.target.value);
   };
 
-  // Get current models list based on selected server
+  // Fix: Add null check for getAvailableModels
   const getAvailableModels = () => {
-    return selectedServer === 'lmStudio' ? lmStudioModels : ollamaModels;
+    // Ensure we always return an array even if the model lists are undefined
+    return selectedServer === 'lmStudio' 
+      ? (lmStudioModels || []) 
+      : (ollamaModels || []);
   };
 
   /**
