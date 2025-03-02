@@ -3,6 +3,26 @@ import workflowModel from '../models/Workflow.js';
 
 const router = express.Router();
 
+// Add this debug code at the beginning of the router file
+console.log('🔄 Workflows router loaded');
+
+// Add a debug route to test the router
+router.get('/debug', (req, res) => {
+  console.log('🔄 Workflows debug route accessed');
+  res.json({
+    message: 'Workflows API is working',
+    time: new Date().toISOString(),
+    routes: [
+      { method: 'GET', path: '/api/workflows', description: 'Get all workflows' },
+      { method: 'GET', path: '/api/workflows/:id', description: 'Get workflow by ID' },
+      { method: 'POST', path: '/api/workflows', description: 'Create new workflow' },
+      { method: 'PUT', path: '/api/workflows/:id', description: 'Update workflow' },
+      { method: 'DELETE', path: '/api/workflows/:id', description: 'Delete workflow' },
+      { method: 'POST', path: '/api/workflows/:id/run', description: 'Run workflow' }
+    ]
+  });
+});
+
 /**
  * Get all workflows
  * GET /api/workflows

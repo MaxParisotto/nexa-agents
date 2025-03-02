@@ -219,6 +219,20 @@ if (!fs.existsSync(CONFIG_DIR)) {
   loggerWinston.info('Created config directory', { path: CONFIG_DIR });
 }
 
+// Create data directory for workflows
+// Ensure data directory exists for workflows
+const DATA_DIR = path.join(getDirname(import.meta.url), '../../data');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  loggerWinston.info('Created data directory', { path: DATA_DIR });
+}
+
+const WORKFLOWS_DIR = path.join(DATA_DIR, 'workflows');
+if (!fs.existsSync(WORKFLOWS_DIR)) {
+  fs.mkdirSync(WORKFLOWS_DIR, { recursive: true });
+  loggerWinston.info('Created workflows directory', { path: WORKFLOWS_DIR });
+}
+
 // Create HTTP server
 const server = http.createServer(app);
 const io = new socketIo(server, {

@@ -206,16 +206,17 @@ const FeatureToggles = () => {
                   <ListItemText 
                     primary={featureInfo[featureKey]?.label || featureKey}
                     secondary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" component="span" color="text.secondary">
-                          {featureInfo[featureKey]?.description || ''}
-                        </Typography>
-                        <Chip 
-                          label={featureInfo[featureKey]?.stability || 'unknown'} 
-                          size="small" 
-                          color={getStabilityColor(featureInfo[featureKey]?.stability)}
-                        />
-                      </Box>
+                      <Typography component="span" variant="body2" color="textSecondary">
+                        {featureInfo[featureKey]?.description || ''}
+                        {" "}
+                        <Box component="span" sx={{ display: 'inline-block', ml: 1 }}>
+                          <Chip 
+                            label={featureInfo[featureKey]?.stability || 'unknown'} 
+                            size="small" 
+                            color={getStabilityColor(featureInfo[featureKey]?.stability)}
+                          />
+                        </Box>
+                      </Typography>
                     }
                   />
                 </ListItem>
