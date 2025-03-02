@@ -11,6 +11,12 @@ export const TOGGLE_FEATURE = 'TOGGLE_FEATURE';
 export const LOAD_SETTINGS_REQUEST = 'LOAD_SETTINGS_REQUEST';
 export const LOAD_SETTINGS_SUCCESS = 'LOAD_SETTINGS_SUCCESS';
 export const LOAD_SETTINGS_FAILURE = 'LOAD_SETTINGS_FAILURE';
+export const LOAD_SETTINGS = 'LOAD_SETTINGS';
+export const UPDATE_LM_STUDIO_SETTINGS = 'UPDATE_LM_STUDIO_SETTINGS';
+export const UPDATE_OLLAMA_SETTINGS = 'UPDATE_OLLAMA_SETTINGS';
+export const LOAD_PERSISTED_MODELS = 'LOAD_PERSISTED_MODELS';
+export const UPDATE_GENERAL_SETTINGS = 'UPDATE_GENERAL_SETTINGS';
+export const UPDATE_FEATURES = 'UPDATE_FEATURES';
 
 import axios from 'axios';
 import { logInfo, logError, logWarning, LOG_CATEGORIES } from './logActions';
@@ -94,6 +100,48 @@ export const updateOpenAISettings = (settings) => {
   return {
     type: 'UPDATE_OPENAI_SETTINGS',
     payload: settings
+  };
+};
+
+/**
+ * Update general application settings
+ * @param {Object} settings - General application settings
+ */
+export const updateGeneralSettings = (settings) => {
+  return (dispatch) => {
+    // Save to localStorage for persistence
+    try {
+      localStorage.setItem('generalSettings', JSON.stringify(settings));
+    } catch (error) {
+      console.error('Error saving general settings:', error);
+    }
+
+    // Dispatch the action to update Redux state
+    dispatch({
+      type: UPDATE_GENERAL_SETTINGS,
+      payload: settings
+    });
+  };
+};
+
+/**
+ * Update feature toggle settings
+ * @param {Object} features - Feature toggle settings
+ */
+export const updateFeatures = (features) => {
+  return (dispatch) => {
+    // Save to localStorage for persistence
+    try {
+      localStorage.setItem('featureSettings', JSON.stringify(features));
+    } catch (error) {
+      console.error('Error saving feature settings:', error);
+    }
+
+    // Dispatch the action to update Redux state
+    dispatch({
+      type: UPDATE_FEATURES,
+      payload: features
+    });
   };
 };
 

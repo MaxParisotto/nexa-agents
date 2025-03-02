@@ -6,7 +6,7 @@ import WorkflowEditor from './components/WorkflowEditor.jsx';
 import Tasks from './components/Tasks.jsx';
 import Metrics from './components/Metrics.jsx';
 import Logs from './components/Logs.jsx';
-import Settings from './components/Settings.jsx';
+import Settings from './components/Settings/Settings.jsx'; // Changed from .js to .jsx
 import ChatWidget from './components/ChatWidget.jsx';
 import ProjectManager from './components/ProjectManager.jsx'; // Changed from .js to .jsx
 import Agora from './components/Agora/Agora.jsx'; // Changed from .js to .jsx
@@ -181,6 +181,8 @@ function AppContent() {
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/agora" element={<Agora />} />
                     <Route path="/agents" element={<Agents />} />
+                    {/* Add catch-all route for 404 errors */}
+                    <Route path="*" element={<div>Page not found</div>} />
                   </Routes>
                 )}
               </main>

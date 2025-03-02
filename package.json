@@ -8,13 +8,17 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node src/server/index.js",
-    "dev": "concurrently \"npm run server\" \"vite\""
+    "dev": "concurrently \"npm run server\" \"vite\"",
+    "analyze": "vite build --mode=analyze",
+    "clean": "rimraf dist",
+    "build:clean": "npm run clean && npm run build",
+    "build:analyze": "npm run clean && npm run analyze"
   },
   "dependencies": {
     "@emotion/react": "^11.11.3",
     "@emotion/styled": "^11.11.0",
     "@monaco-editor/react": "^4.7.0",
-    "@mui/icons-material": "6.4.6",
+    "@mui/icons-material": "^6.4.6",
     "@mui/material": "6.4.6",
     "@mui/x-date-pickers": "7.27.1",
     "@reduxjs/toolkit": "^2.6.0",
@@ -63,7 +67,9 @@
     "concurrently": "9.1.2",
     "eslint": "^8.0.0",
     "nodemon": "^3.0.3",
-    "rimraf": "6.0.1"
+    "rimraf": "6.0.1",
+    "rollup-plugin-visualizer": "^5.14.0",
+    "webpack-bundle-analyzer": "^4.10.2"
   },
   "browserslist": {
     "production": [

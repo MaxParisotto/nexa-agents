@@ -10,7 +10,12 @@ import {
   TOGGLE_FEATURE,
   LOAD_SETTINGS_REQUEST,
   LOAD_SETTINGS_SUCCESS,
-  LOAD_SETTINGS_FAILURE
+  LOAD_SETTINGS_FAILURE,
+  UPDATE_LM_STUDIO_SETTINGS,
+  UPDATE_OLLAMA_SETTINGS,
+  LOAD_PERSISTED_MODELS,
+  UPDATE_GENERAL_SETTINGS,
+  UPDATE_FEATURES
 } from '../actions/settingsActions.js';
 
 // Action types
@@ -59,8 +64,41 @@ const initialState = {
   configLoading: false,
   configError: null,
   loading: false,
-  error: null
+  error: null,
+  general: {
+    applicationName: 'Nexa Agents',
+    theme: 'light',
+    telemetryEnabled: true,
+    autoSave: true,
+    autoSaveInterval: 5,
+    maxHistoryItems: 50
+  },
+  features: {
+    experimentalWorkflows: false,
+    advancedAgentConfig: false,
+    multiModelInference: true,
+    collaborativeEditing: false,
+    debugTools: false,
+    dataVisualization: true,
+    cloudSync: false,
+    remoteExecution: false
+  }
 };
+
+// Load any persisted settings from localStorage
+try {
+  const generalSettings = localStorage.getItem('generalSettings');
+  if (generalSettings) {
+    initialState.general = { ...initialState.general, ...JSON.parse(generalSettings) };
+  }
+  
+  const featureSettings = localStorage.getItem('featureSettings');
+  if (featureSettings) {
+    initialState.features = { ...initialState.features, ...JSON.parse(featureSettings) };
+  }
+} catch (error) {
+  console.error('Error loading persisted settings:', error);
+}
 
 const validateModel = (model) => {
   if (!model) return '';
@@ -255,6 +293,24 @@ export function settingsReducer(state = initialState, action) {
         ...state,
         openai: {
           ...state.openai,
+          ...action.payload
+        }
+      };
+
+    case UPDATE_GENERAL_SETTINGS:
+      return {
+        ...state,
+        general: {
+          ...state.general,
+          ...action.payload
+        }
+      };
+
+    case UPDATE_FEATURES:
+      return {
+        ...state,
+        features: {
+          ...state.features,
           ...action.payload
         }
       };

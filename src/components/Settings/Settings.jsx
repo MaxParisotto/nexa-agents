@@ -8,7 +8,7 @@ import SettingsTerminal from './SettingsTerminal';
 import { SettingsProvider } from '../../contexts/SettingsContext';
 
 /**
- * Settings page component
+ * Settings page component - simplified version with no scroll functionality
  */
 const Settings = () => {
   const [activeTab, setActiveTab] = useState(0);
