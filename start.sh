@@ -1,10 +1,18 @@
 #!/bin/bash
 
-# Kill any existing processes on ports 3000 and 5000
 echo "Cleaning up existing processes..."
-kill $(lsof -t -i:3000) 2>/dev/null || true
-kill $(lsof -t -i:5000) 2>/dev/null || true
+# Kill any existing processes
+pkill -f "node src/server/index.js" || true
+pkill -f "vite" || true
+sleep 1
 
-# Start the development servers
+# Check if the systeminformation package exists
+if ! npm list systeminformation | grep -q systeminformation; then
+    echo "The systeminformation package is not installed."
+    echo "Running installation script..."
+    bash ./install-deps.sh
+fi
+
 echo "Starting Nexa Agents development servers..."
+# Start the development server
 npm run dev

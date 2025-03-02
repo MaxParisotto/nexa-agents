@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Typography, Box, Button, Divider, Paper, Chip, IconButton, Card, CardContent, Grid } from '@mui/material';
 import {
   ReactFlow,
@@ -18,7 +18,8 @@ import { fetchAgents } from '../store/actions/agentActions';
 
 import 'reactflow/dist/style.css';
 import NodeConfigurationWizard from './NodeConfigurationWizard';
-import { nodeTypes } from './Agents/CustomNodes';
+// Import node types with a different name to avoid conflict
+import { nodeTypes as importedNodeTypes } from './Agents/CustomNodes';
 import WorkflowList from './Agents/WorkflowList';
 
 // Define initial nodes and edges
@@ -47,6 +48,19 @@ const WorkflowEditor = () => {
     modified: new Date().toISOString()
   });
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
+
+  // Memoize node types and edge types to fix the ReactFlow warning
+  const customNodeTypes = useMemo(() => ({
+    ...importedNodeTypes,
+    task: importedNodeTypes.task || (() => <div>Task Node</div>),
+    decision: importedNodeTypes.decision || (() => <div>Decision Node</div>),
+    start: importedNodeTypes.start || (() => <div>Start Node</div>),
+    end: importedNodeTypes.end || (() => <div>End Node</div>),
+  }), []);
+
+  const customEdgeTypes = useMemo(() => ({
+    custom: importedNodeTypes.customEdge || (props => <div {...props}>Custom Edge</div>),
+  }), []);
 
   // Load settings from localStorage
   useEffect(() => {
@@ -347,7 +361,8 @@ const WorkflowEditor = () => {
                   onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
                   onSelectionChange={onNodeSelectionChange}
-                  nodeTypes={nodeTypes}
+                  nodeTypes={customNodeTypes} // Use memoized node types
+                  edgeTypes={customEdgeTypes} // Use memoized edge types
                   fitView
                   attributionPosition="bottom-right"
                   onInit={setReactFlowInstance}

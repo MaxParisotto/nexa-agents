@@ -16,6 +16,11 @@ import { WebSocketServer } from 'ws';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import OpenAIUplinkServer from './uplink/openaiUplink.js';
+import MetricsService from './services/metricsService.js';
+import { ensureJsonResponses } from './middlewares/apiMiddleware.js';
+import { configureRoutes } from './routes/index.js';
+import { globalMetricsService } from './services/index.js';
+import { debugApiRequests } from './middlewares/debugMiddleware.js';
 
 // Load environment variables
 dotenv.config();
@@ -50,6 +55,7 @@ import modelsRoutes from './routes/models.js';
 import testRoutes from './routes/test.js';
 import { createUplinkRouter } from './routes/uplink.js';
 import statusRoutes from './routes/status.js';
+import metricsRoutes from './routes/metrics.js';
 
 // Initialize process error handlers right away to catch any startup errors
 process.on('uncaughtException', (error) => {
@@ -168,7 +174,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json());
-app.use(express.static(path.join(getDirname(import.meta.url), '../../build')));
+
+// Add the debug middleware
+app.use(debugApiRequests);
+
+// Add the middleware to ensure proper JSON responses
+app.use(ensureJsonResponses);
 
 // Request logger middleware
 app.use((req, res, next) => {
@@ -207,11 +218,29 @@ if (!fs.existsSync(CONFIG_DIR)) {
   loggerWinston.info('Created config directory', { path: CONFIG_DIR });
 }
 
-// API Routes
+// Create HTTP server
+const server = http.createServer(app);
+const io = new socketIo(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+// Initialize metrics service with socket.io instance
+const metricsService = new MetricsService(io);
+metricsService.start();
+
+// Initialize uplink router AFTER io has been created
+const uplinkRouter = createUplinkRouter(io);
+
+// API Routes - IMPORTANT: Define API routes BEFORE the catch-all route
+app.use('/api/metrics', metricsRoutes); // Put metrics first since we're having issues with it
 app.use('/api/settings', settingsRoutes);
 app.use('/api/models', modelsRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/status', statusRoutes);
+app.use('/api/uplink', uplinkRouter); // Now using the properly initialized uplinkRouter
 
 // API endpoint to save configuration
 app.post('/api/config/save', (req, res) => {
@@ -339,67 +368,26 @@ app.get('/api/config/load', (req, res) => {
   }
 });
 
-const server = http.createServer(app);
-const io = new socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+// JSON error handling middleware
+app.use((err, req, res, next) => {
+  if (err) {
+    console.error('Express error:', err);
+    
+    // Always return JSON for API routes rather than HTML error pages
+    if (req.path.startsWith('/api/')) {
+      return res.status(500).json({
+        error: 'Server error',
+        message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+      });
+    }
   }
+  next(err);
 });
 
-// Initialize uplink router with io instance
-const uplinkRouter = createUplinkRouter(io);
-app.use('/api/uplink', uplinkRouter);
+// Configure other API routes
+configureRoutes(app, io);
 
-// Try to load port from config file
-let PORT = process.env.PORT || 3001;
-try {
-  if (fs.existsSync(JSON_CONFIG_PATH)) {
-    const configContent = fs.readFileSync(JSON_CONFIG_PATH, 'utf8');
-    const config = JSON.parse(configContent);
-    if (config.port) {
-      PORT = parseInt(config.port, 10);
-      loggerWinston.info('Using port from configuration file', { port: PORT });
-    }
-  }
-} catch (error) {
-  loggerWinston.warn('Error loading port from config file', { error: error.message });
-  loggerWinston.info('Using default port', { port: PORT });
-}
-
-// Periodic cleanup of log cache
-setInterval(() => {
-  const now = Date.now();
-  let expiredCount = 0;
-  
-  // Clean up expired log cache entries (older than 5 minutes)
-  for (const [key, value] of logCache.messages.entries()) {
-    if (now - value.timestamp > 300000) {
-      logCache.messages.delete(key);
-      
-      // Clear any timers
-      if (logCache.resetTimers.has(key)) {
-        clearTimeout(logCache.resetTimers.get(key));
-        logCache.resetTimers.delete(key);
-      }
-      
-      expiredCount++;
-    }
-  }
-  
-  // Clean up request log cache entries (older than 10 minutes)
-  for (const [key, timestamp] of requestLogCache.entries()) {
-    if (now - timestamp > 600000) {
-      requestLogCache.delete(key);
-      expiredCount++;
-    }
-  }
-  
-  if (expiredCount > 0) {
-    loggerWinston.debug(`Cleaned up ${expiredCount} expired log cache entries`);
-  }
-}, 60000); // Run every minute
-
+// Socket.io connection handling
 io.on('connection', (socket) => {
   loggerWinston.info('New client connected', { id: socket.id });
 
@@ -435,6 +423,22 @@ io.on('connection', (socket) => {
     io.emit('metrics_updated', metrics);
   });
 });
+
+// Try to load port from config file
+let PORT = process.env.PORT || 3001;
+try {
+  if (fs.existsSync(JSON_CONFIG_PATH)) {
+    const configContent = fs.readFileSync(JSON_CONFIG_PATH, 'utf8');
+    const config = JSON.parse(configContent);
+    if (config.port) {
+      PORT = parseInt(config.port, 10);
+      loggerWinston.info('Using port from configuration file', { port: PORT });
+    }
+  }
+} catch (error) {
+  loggerWinston.warn('Error loading port from config file', { error: error.message });
+  loggerWinston.info('Using default port', { port: PORT });
+}
 
 // Create OpenAI Uplink server with proper error handling
 let openaiUplink = null;
@@ -487,9 +491,45 @@ wss.on('connection', (ws) => {
   // ... existing WebSocket server code ...
 });
 
+// Periodic cleanup of log cache
+setInterval(() => {
+  const now = Date.now();
+  let expiredCount = 0;
+  
+  // Clean up expired log cache entries (older than 5 minutes)
+  for (const [key, value] of logCache.messages.entries()) {
+    if (now - value.timestamp > 300000) {
+      logCache.messages.delete(key);
+      
+      // Clear any timers
+      if (logCache.resetTimers.has(key)) {
+        clearTimeout(logCache.resetTimers.get(key));
+        logCache.resetTimers.delete(key);
+      }
+      
+      expiredCount++;
+    }
+  }
+  
+  // Clean up request log cache entries (older than 10 minutes)
+  for (const [key, timestamp] of requestLogCache.entries()) {
+    if (now - timestamp > 600000) {
+      requestLogCache.delete(key);
+      expiredCount++;
+    }
+  }
+  
+  if (expiredCount > 0) {
+    loggerWinston.debug(`Cleaned up ${expiredCount} expired log cache entries`);
+  }
+}, 60000); // Run every minute
+
 // Handle graceful shutdown
 process.on('SIGINT', () => {
   logger.info('Shutting down server...');
+  
+  // Stop metrics service
+  globalMetricsService.stop();
   
   // Safely stop OpenAI uplink if it exists
   if (openaiUplink) {
@@ -522,7 +562,15 @@ process.on('SIGINT', () => {
   }, 5000);
 });
 
-// Serve React app for any other routes
+// This ensures API routes that don't exist return JSON errors instead of HTML
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    message: `API endpoint not found: ${req.originalUrl}`
+  });
+});
+
+// Serve React app for any other routes (must be after API routes)
 app.get('*', (req, res) => {
   res.sendFile(path.join(getDirname(import.meta.url), '../../build', 'index.html'));
 });
@@ -532,6 +580,7 @@ if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {
     loggerWinston.info(`Server running on port ${PORT}`);
     loggerWinston.info(`API available at http://localhost:${PORT}/api`);
+    globalMetricsService.start();
   });
 }
 

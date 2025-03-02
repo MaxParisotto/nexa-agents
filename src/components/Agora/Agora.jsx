@@ -1,9 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSelector, shallowEqual } from 'react-redux';
+import { createSelector } from 'reselect';
 import { Send, Tag, Add } from '@mui/icons-material';
 import { TextField, IconButton, Avatar, Typography } from '@mui/material';
 
+// Create memoized selectors properly
+const selectAgoraState = state => state.agora || { selected: [], selected2: [] };
+
+// Create stable selectors with createSelector
+const selectSelectedItems = createSelector(
+  [selectAgoraState],
+  (agoraState) => agoraState.selected || []
+);
+
+const selectAdditionalItems = createSelector(
+  [selectAgoraState],
+  (agoraState) => agoraState.selected2 || []
+);
+
+const selectAgents = state => state.agents?.active || [];
+
 const Agora = () => {
+  // Use selectors with proper equality comparisons
+  const selected = useSelector(selectSelectedItems, shallowEqual);
+  const selected2 = useSelector(selectAdditionalItems, shallowEqual);
+  
+  // Memoize this derived data
+  const processedItems = useMemo(() => {
+    return selected.map(item => ({
+      ...item,
+      processed: true
+    }));
+  }, [selected]);
+
+  // Use memoized selector for agents
+  const agents = useSelector(selectAgents, shallowEqual);
+
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [newMessage, setNewMessage] = useState('');
   const [messages, setMessages] = useState([]);
@@ -12,10 +44,6 @@ const Agora = () => {
     { id: 'agents', name: 'agents', unread: 0 },
     { id: 'system', name: 'system', unread: 5 }
   ]);
-
-  const agents = useSelector(state => 
-    (state.agents?.active || []).filter(agent => agent !== null)
-  );
 
   useEffect(() => {
     // Initial system message
@@ -28,7 +56,8 @@ const Agora = () => {
     }]);
   }, []);
 
-  const handleSendMessage = () => {
+  // Memoize the message handling function 
+  const handleSendMessage = useCallback(() => {
     if (newMessage.trim()) {
       const mentions = [];
       const content = newMessage.replace(/@(\w+)/g, (match, username) => {
@@ -50,7 +79,7 @@ const Agora = () => {
       }]);
       setNewMessage('');
     }
-  };
+  }, [newMessage, agents]);
 
   return (
     <div className="agora-container">

@@ -19,24 +19,15 @@ import {
 
 // Initial state
 const initialState = {
-  loading: false,
+  loading: {
+    metrics: false,
+    tokenMetrics: false
+  },
   notifications: [],
   errors: [],
   status: 'idle',
-  metrics: {
-    cpu: 0,
-    memory: 0,
-    disk: 0,
-    network: {
-      sent: 0,
-      received: 0
-    }
-  },
-  tokenMetrics: {
-    used: 0,
-    remaining: 0,
-    total: 0
-  },
+  metrics: {},
+  tokenMetrics: {},
   benchmarks: [],
   workspacePath: '',
   models: [],
@@ -98,17 +89,27 @@ export function systemReducer(state = initialState, action) {
     case UPDATE_METRICS:
       return {
         ...state,
-        metrics: {
-          ...state.metrics,
-          ...action.payload
+        metrics: action.payload || {}, // Ensure we don't set undefined
+        loading: {
+          ...state.loading,
+          metrics: false
         }
       };
     case UPDATE_TOKEN_METRICS:
       return {
         ...state,
-        tokenMetrics: {
-          ...state.tokenMetrics,
-          ...action.payload
+        tokenMetrics: action.payload || {},
+        loading: {
+          ...state.loading,
+          tokenMetrics: false
+        }
+      };
+    case 'METRICS_LOADING':
+      return {
+        ...state,
+        loading: {
+          ...state.loading,
+          [action.payload]: true
         }
       };
     case ADD_BENCHMARK_RESULT:
