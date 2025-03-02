@@ -5,6 +5,7 @@ import LlmSettings from './LlmSettings';
 import LogSettingsPanel from './LogSettingsPanel';
 import FeatureToggles from './FeatureToggles';
 import SettingsTerminal from './SettingsTerminal';
+import OpenAIUplinkSettings from './OpenAIUplinkSettings';
 import { SettingsProvider } from '../../contexts/SettingsContext';
 
 /**
@@ -30,6 +31,7 @@ const Settings = () => {
             <Tab label="LLM Providers" />
             <Tab label="Logs" />
             <Tab label="Features" />
+            <Tab label="OpenAI Uplink" />
           </Tabs>
         </Box>
 
@@ -54,6 +56,10 @@ const Settings = () => {
         
         {activeTab === 3 && (
           <FeatureToggles />
+        )}
+
+        {activeTab === 4 && (
+          <OpenAIUplinkSettings />
         )}
       </Container>
     </SettingsProvider>

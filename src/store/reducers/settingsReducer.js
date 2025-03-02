@@ -82,6 +82,15 @@ const initialState = {
     dataVisualization: true,
     cloudSync: false,
     remoteExecution: false
+  },
+  // Add OpenAI Uplink settings
+  openaiUplink: {
+    enabled: true,
+    port: 3002,
+    requireApiKey: true,
+    apiKey: localStorage.getItem('openaiUplinkApiKey') || '',
+    allowedActions: ['echo', 'systemInfo', 'queryAgent'],
+    customActions: []
   }
 };
 
@@ -311,6 +320,20 @@ export function settingsReducer(state = initialState, action) {
         ...state,
         features: {
           ...state.features,
+          ...action.payload
+        }
+      };
+
+    case 'UPDATE_OPENAI_UPLINK_SETTINGS':
+      // Save API key to localStorage if it exists
+      if (action.payload.apiKey) {
+        localStorage.setItem('openaiUplinkApiKey', action.payload.apiKey);
+      }
+      
+      return {
+        ...state,
+        openaiUplink: {
+          ...state.openaiUplink,
           ...action.payload
         }
       };

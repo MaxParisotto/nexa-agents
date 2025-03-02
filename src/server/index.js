@@ -12,12 +12,37 @@ import fs from 'fs';
 import path from 'path';
 import bodyParser from 'body-parser';
 import logger from './utils/logger.js';
+import { WebSocketServer } from 'ws';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import OpenAIUplinkServer from './uplink/openaiUplink.js';
+
+// Load environment variables
+dotenv.config();
 
 // Utility to get __dirname equivalent in ES modules
 const getDirname = (url) => {
   const __filename = new URL('', url).pathname;
   return path.dirname(__filename);
 };
+
+// Create __dirname equivalent for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load configuration
+const configPath = path.join(__dirname, '../config/config.json');
+let config = {}; // Initialize config object with defaults
+
+try {
+  if (fs.existsSync(configPath)) {
+    const configContent = fs.readFileSync(configPath, 'utf8');
+    config = JSON.parse(configContent);
+    logger.info('Using port from configuration file', config);
+  }
+} catch (error) {
+  logger.error('Error loading config file:', error);
+}
 
 // Import routes
 import settingsRoutes from './routes/settings.js';
@@ -425,6 +450,53 @@ if (process.env.NODE_ENV !== 'test') {
     loggerWinston.info(`API available at http://localhost:${PORT}/api`);
   });
 }
+
+// Create WebSocket server
+const wssPort = config.wssPort || process.env.WSS_PORT || 8081;
+const wss = new WebSocketServer({ port: wssPort });
+logger.info(`WebSocket Server running on port ${wssPort}`);
+console.log(`WebSocket Server running on port ${wssPort}`);
+
+// Create OpenAI Uplink server
+const openaiUplinkPort = config.openaiUplinkPort || process.env.OPENAI_UPLINK_PORT || 3002;
+const openaiUplink = new OpenAIUplinkServer({
+  port: openaiUplinkPort,
+  requireApiKey: config.requireUplinkApiKey !== false,
+  apiKey: config.openaiUplinkApiKey || process.env.OPENAI_UPLINK_API_KEY
+});
+
+// Register custom actions for the uplink
+openaiUplink.registerAction('queryAgent', async (params) => {
+  const { query, agentId } = params;
+  logger.info(`Received agent query: ${query} for agent ${agentId || 'default'}`);
+  
+  // Here you would typically forward this to your agent system
+  // For now, we'll just return a mock response
+  return {
+    response: `Processed query: ${query}`,
+    timestamp: new Date().toISOString(),
+    agentId: agentId || 'default'
+  };
+});
+
+// Start OpenAI Uplink server
+openaiUplink.start();
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+  // ... existing WebSocket server code ...
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  logger.info('Shutting down server...');
+  openaiUplink.stop();
+  wss.close();
+  server.close(() => {
+    logger.info('Server shutdown complete');
+    process.exit(0);
+  });
+});
 
 export { io }; // Export socket.io instance
 export default app; // Export for testing
