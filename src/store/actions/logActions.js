@@ -1,57 +1,95 @@
-// Action Types
+// Log categories
+export const LOG_CATEGORIES = {
+  SYSTEM: 'SYSTEM',
+  UI: 'UI',
+  NETWORK: 'NETWORK',
+  WORKFLOW: 'WORKFLOW',
+  CONFIG: 'CONFIG',
+  LLM: 'LLM'
+};
+
+// Log levels
+export const LOG_LEVELS = {
+  DEBUG: 'DEBUG',
+  INFO: 'INFO',
+  WARN: 'WARN',
+  ERROR: 'ERROR'
+};
+
+// Log action types
 export const ADD_LOG = 'ADD_LOG';
 export const CLEAR_LOGS = 'CLEAR_LOGS';
-export const SET_LOG_FILTER = 'SET_LOG_FILTER';
+export const FILTER_LOGS = 'FILTER_LOGS';
 
-// Log Levels Constants
-export const LOG_LEVELS = {
-  DEBUG: 'debug',
-  INFO: 'info',
-  WARN: 'warn',
-  ERROR: 'error'
-};
-
-// Log Categories
-export const LOG_CATEGORIES = {
-  SYSTEM: 'system',
-  AGENT: 'agent',
-  API: 'api',
-  WORKFLOW: 'workflow',
-  USER: 'user'
-};
-
-// Create a log entry with the given level
-const createLog = (level, message, category = LOG_CATEGORIES.SYSTEM, meta = {}) => ({
-  type: ADD_LOG,
-  payload: {
-    timestamp: new Date().toISOString(),
+/**
+ * Create a log entry with current timestamp
+ */
+const createLogEntry = (level, category, message, data = null) => {
+  return {
+    timestamp: new Date().toISOString(), // Always use current time
     level,
-    message,
     category,
-    meta
-  }
-});
+    message,
+    data
+  };
+};
 
-// Log action creators
-export const logDebug = (message, category, meta) => 
-  createLog(LOG_LEVELS.DEBUG, message, category, meta);
+/**
+ * Add a log entry
+ */
+export const addLog = (level, category, message, data = null) => {
+  return {
+    type: ADD_LOG,
+    payload: createLogEntry(level, category, message, data)
+  };
+};
 
-export const logInfo = (message, category, meta) => 
-  createLog(LOG_LEVELS.INFO, message, category, meta);
+/**
+ * Add a debug log entry
+ */
+export const logDebug = (category, message, data = null) => {
+  return addLog(LOG_LEVELS.DEBUG, category, message, data);
+};
 
-export const logWarning = (message, category, meta) => 
-  createLog(LOG_LEVELS.WARN, message, category, meta);
+/**
+ * Add an info log entry
+ */
+export const logInfo = (category, message, data = null) => {
+  return addLog(LOG_LEVELS.INFO, category, message, data);
+};
 
-export const logError = (message, category, meta) => 
-  createLog(LOG_LEVELS.ERROR, message, category, meta);
+/**
+ * Add a warning log entry
+ */
+export const logWarning = (category, message, data = null) => {
+  return addLog(LOG_LEVELS.WARN, category, message, data);
+};
 
-// Clear all logs
-export const clearLogs = () => ({
-  type: CLEAR_LOGS
-});
+/**
+ * Add an error log entry
+ */
+export const logError = (category, message, data = null) => {
+  return addLog(LOG_LEVELS.ERROR, category, message, data);
+};
 
-// Set log filter options
-export const setLogFilter = (filter) => ({
-  type: SET_LOG_FILTER,
-  payload: filter
-});
+/**
+ * Clear all logs
+ */
+export const clearLogs = () => {
+  return {
+    type: CLEAR_LOGS
+  };
+};
+
+/**
+ * Filter logs by level and/or category
+ */
+export const filterLogs = (levels = null, categories = null) => {
+  return {
+    type: FILTER_LOGS,
+    payload: {
+      levels,
+      categories
+    }
+  };
+};

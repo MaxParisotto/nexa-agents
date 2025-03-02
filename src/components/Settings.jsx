@@ -9,6 +9,12 @@ import { updatePreference } from '../store/actions/systemActions';
 import OpenAISettings from './Settings/OpenAISettings.jsx';
 import { fetchModels } from '../store/actions/settingsActions';
 import ModelDetector from './Settings/ModelDetector'; // Add this import
+import LmStudioDiagnostics from './LmStudioDiagnostics';
+
+// Import icons including the missing ExpandMoreIcon
+import {
+  ExpandMore as ExpandMoreIcon
+} from '@mui/icons-material';
 
 const Settings = () => {
   const dispatch = useDispatch();
@@ -19,6 +25,7 @@ const Settings = () => {
   // Add state for models
   const [availableLmStudioModels, setAvailableLmStudioModels] = useState([]);
   const [availableOllamaModels, setAvailableOllamaModels] = useState([]);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   
   // Load models when settings change
   useEffect(() => {
@@ -61,7 +68,7 @@ const Settings = () => {
   };
   
   return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" gutterBottom>Settings</Typography>
       
       <Paper sx={{ p: 1, mb: 3 }}>
@@ -358,6 +365,22 @@ const Settings = () => {
           </Grid>
         </Grid>
       )}
+
+      <Box sx={{ mt: 3 }}>
+        <Button 
+          variant="outlined" 
+          onClick={() => setShowDiagnostics(!showDiagnostics)}
+          startIcon={showDiagnostics ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+        >
+          {showDiagnostics ? 'Hide LM Studio Diagnostics' : 'Show LM Studio Diagnostics'}
+        </Button>
+        
+        {showDiagnostics && (
+          <Paper sx={{ mt: 2, p: 2 }}>
+            <LmStudioDiagnostics />
+          </Paper>
+        )}
+      </Box>
     </Container>
   );
 };

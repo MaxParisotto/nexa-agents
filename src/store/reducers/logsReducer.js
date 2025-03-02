@@ -1,7 +1,7 @@
 import {
   ADD_LOG,
   CLEAR_LOGS,
-  SET_LOG_FILTER,
+  FILTER_LOGS, // Changed from SET_LOG_FILTER to FILTER_LOGS
   LOG_LEVELS,
   LOG_CATEGORIES
 } from '../actions/logActions.js';
@@ -36,7 +36,7 @@ export const logReducer = (state = {
         logs: []
       };
 
-    case SET_LOG_FILTER:
+    case FILTER_LOGS: // Changed from SET_LOG_FILTER to FILTER_LOGS
       return {
         ...state,
         filters: {

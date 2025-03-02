@@ -19,6 +19,8 @@ import axios from 'axios';
 import LlmDebugUtil from '../utils/LlmDebugUtil';
 import { debounce } from 'lodash';
 import { getModelScore } from '../utils/LlmModelParser';
+import lmStudioApi from '../utils/LmStudioApi';
+import LmStudioEndpointFinder from '../utils/LmStudioEndpointFinder';
 
 /**
  * ProjectManager component
@@ -46,6 +48,48 @@ const ProjectManager = () => {
   
   // Add a new state for the Project Manager chat
   const [projectManagerChatListenerAdded, setProjectManagerChatListenerAdded] = useState(false);
+  
+  // Add projectManagerSettings state
+  const [projectManagerSettings, setProjectManagerSettings] = useState({
+    apiUrl: 'http://localhost:1234',
+    model: 'qwen2.5-7b-instruct',
+    serverType: 'lmStudio',
+    parameters: {
+      temperature: 0.7,
+      topP: 0.9,
+      maxTokens: 1024,
+      contextLength: 4096
+    }
+  });
+  
+  // Initialize ProjectManagerSettings from Redux or sessionStorage
+  useEffect(() => {
+    if (settings?.lmStudio?.apiUrl && settings?.lmStudio?.defaultModel) {
+      setProjectManagerSettings({
+        apiUrl: settings.lmStudio.apiUrl,
+        model: settings.lmStudio.defaultModel,
+        serverType: 'lmStudio',
+        parameters: {
+          temperature: 0.7,
+          topP: 0.9,
+          maxTokens: 1024,
+          contextLength: 4096
+        }
+      });
+    } else if (settings?.ollama?.apiUrl && settings?.ollama?.defaultModel) {
+      setProjectManagerSettings({
+        apiUrl: settings.ollama.apiUrl,
+        model: settings.ollama.defaultModel,
+        serverType: 'ollama',
+        parameters: {
+          temperature: 0.7,
+          topP: 0.9,
+          maxTokens: 1024,
+          contextLength: 4096
+        }
+      });
+    }
+  }, [settings]);
   
   // Custom logging function that saves logs to state and also outputs to console and Redux
   const log = (level, message, data = null) => {
@@ -88,12 +132,14 @@ const ProjectManager = () => {
     if (level === 'error') {
       dispatch(addNotification({
         type: 'error',
-        message: `ProjectManager: ${message}`
+        message: `ProjectManager: ${message}`,
+        timestamp: timestamp
       }));
     } else if (level === 'warn') {
       dispatch(addNotification({
         type: 'warning',
-        message: `ProjectManager: ${message}`
+        message: `ProjectManager: ${message}`,
+        timestamp: timestamp
       }));
     }
   };
@@ -526,8 +572,8 @@ const ProjectManager = () => {
   const handleChatMessage = async (event) => {
     log('info', 'ProjectManager received message:', event.detail);
     
-    // Extract the message from the event
-    const { content, role } = event.detail;
+    // Extract the message content, role, and settings from the event
+    const { content, role, settings: chatSettings } = event.detail;
     
     // Update chat history
     setChatHistory(prev => [...prev, { role, content }]);
@@ -535,85 +581,55 @@ const ProjectManager = () => {
     // Only process user messages
     if (role !== 'user') return;
     
-    // Check LLM configuration status first - force a check from all possible storage
-    // This is a more aggressive check than the regular checkLlmConfiguration
-    let isLlmConfigured = false;
-    
-    // First check if we've already confirmed we're configured
-    if (llmConfigured && llmProvider) {
-      isLlmConfigured = true;
-    } else {
-      // Next try a full configuration check including localStorage and sessionStorage
-      log('info', 'Checking LLM configuration before processing message');
-      
-      // Try Redux settings first
-      if (settings && (settings.lmStudio?.defaultModel || settings.ollama?.defaultModel)) {
-        isLlmConfigured = checkLlmConfiguration(false);
-      }
-      
-      // If Redux check failed, try sessionStorage next (fastest)
-      if (!isLlmConfigured) {
-        const sessionLlmUrl = sessionStorage.getItem('lmStudioUrl') || sessionStorage.getItem('ollamaUrl');
-        const sessionModel = sessionStorage.getItem('lmStudioModel') || sessionStorage.getItem('ollamaModel');
-        
-        if (sessionLlmUrl && sessionModel) {
-          log('info', 'Found LLM configuration in sessionStorage');
-          const provider = sessionStorage.getItem('lmStudioUrl') ? 'lmStudio' : 'ollama';
-          
-          // Manually set the LLM as configured since we've verified it exists in session
-          setLlmConfigured(true);
-          setLlmProvider(provider);
-          
-          // Create a temporary settings object to validate
-          const tempSettings = {
-            [provider]: {
-              apiUrl: sessionStorage.getItem(`${provider}Url`),
-              defaultModel: sessionStorage.getItem(`${provider}Model`)
-            }
-          };
-          
-          isLlmConfigured = validateLlmConfiguration(tempSettings, false);
-        }
-      }
-      
-      // Lastly, check localStorage as a last resort
-      if (!isLlmConfigured) {
-        loadSettingsFromLocalStorage();
-        // After loading from localStorage, if we're configured, update the flag
-        if (llmConfigured) {
-          isLlmConfigured = true;
-        }
-      }
-    }
-    
     // Process the message 
     try {
       log('info', 'Processing message:', content);
+      log('info', 'Using chat settings:', chatSettings || 'No settings provided');
       
       // First, send "thinking" status to the user
       sendMessageToChat("Let me process that request...");
       
       let response;
       
+      // Use the server type from the chat settings if available
+      const serverType = chatSettings?.serverType || (llmProvider || 'lmStudio');
+      const apiUrl = chatSettings?.apiUrl || 
+        (serverType === 'lmStudio' ? settings?.lmStudio?.apiUrl : settings?.ollama?.apiUrl);
+      const model = chatSettings?.model || 
+        (serverType === 'lmStudio' ? settings?.lmStudio?.defaultModel : settings?.ollama?.defaultModel);
+      
+      log('info', `Using server type: ${serverType}, model: ${model}, apiUrl: ${apiUrl}`);
+      
       // Handle debug commands
       if (content.toLowerCase() === 'debug' || content.toLowerCase() === 'debug info') {
         dumpDebugInfo();
         response = "I've displayed debug information on screen. You can also press Alt+D at any time to see this information.";
       } 
-      // Process with LLM or fallback
-      else if (isLlmConfigured) {
+      // Process with LLM using the specified server type
+      else if (apiUrl && model) {
         try {
-          log('info', `Attempting to process with LLM using provider ${llmProvider}...`);
-          response = await processWithLLM(content);
+          log('info', `Processing with ${serverType === 'lmStudio' ? 'LM Studio' : 'Ollama'}...`);
+          
+          if (serverType === 'lmStudio') {
+            response = await callOpenAICompatibleAPI(content, {
+              serverType: 'lmStudio',
+              apiUrl: apiUrl,
+              model: model
+            });
+          } else if (serverType === 'ollama') {
+            response = await callOllamaAPI(apiUrl, model, content);
+          } else {
+            throw new Error(`Unsupported server type: ${serverType}`);
+          }
+          
           log('info', 'LLM response received');
         } catch (llmError) {
-          log('error', 'Error with LLM processing, falling back to basic command processor', llmError);
-          // If LLM processing fails, fall back to basic command processing
+          log('error', `Error with ${serverType} processing, falling back to basic command processor`, llmError);
           response = await processCommandFallback(content);
         }
       } else {
         // No LLM configured, use basic command processing
-        log('info', 'No LLM configured, using basic command processor');
+        log('info', 'No LLM settings available, using basic command processor');
         response = await processCommandFallback(content);
       }
       
@@ -624,72 +640,6 @@ const ProjectManager = () => {
       
       // Send error message back to chat
       sendMessageToChat(`Sorry, I encountered an error: ${error.message}`);
-    }
-  };
-  
-  /**
-   * Process a message with the selected LLM using tool calling
-   */
-  const processWithLLM = async (message) => {
-    // Determine which LLM service to use based on settings
-    let apiUrl;
-    let modelName;
-    let useOpenAIFormat = false;
-    let provider = llmProvider;
-    
-    // First check Redux store settings
-    if (lmStudioSettings?.defaultModel && lmStudioSettings?.apiUrl) {
-      apiUrl = lmStudioSettings.apiUrl;
-      modelName = lmStudioSettings.defaultModel;
-      useOpenAIFormat = true;
-      provider = 'lmStudio';
-      log('info', `Using LM Studio from Redux store: ${apiUrl} with model ${modelName}`);
-    } else if (ollamaSettings?.defaultModel && ollamaSettings?.apiUrl) {
-      apiUrl = ollamaSettings.apiUrl;
-      modelName = ollamaSettings.defaultModel;
-      useOpenAIFormat = false;
-      provider = 'ollama';
-      log('info', `Using Ollama from Redux store: ${apiUrl} with model ${modelName}`);
-    } else {
-      // Try sessionStorage as fallback
-      provider = sessionStorage.getItem('lastConfiguredProvider');
-      
-      if (provider === 'lmStudio') {
-        apiUrl = sessionStorage.getItem('lmStudioUrl');
-        modelName = sessionStorage.getItem('lmStudioModel');
-        useOpenAIFormat = true;
-        log('info', `Using LM Studio from sessionStorage: ${apiUrl} with model ${modelName}`);
-      } else if (provider === 'ollama') {
-        apiUrl = sessionStorage.getItem('ollamaUrl');
-        modelName = sessionStorage.getItem('ollamaModel');
-        useOpenAIFormat = false;
-        log('info', `Using Ollama from sessionStorage: ${apiUrl} with model ${modelName}`);
-      } else {
-        // No LLM is configured
-        log('error', 'No LLM configuration available');
-        throw new Error('No LLM model configured. Please check your settings.');
-      }
-    }
-    
-    // Final validation to ensure we have all required values
-    if (!apiUrl || !modelName) {
-      log('error', 'Incomplete LLM configuration', { apiUrl, modelName, provider });
-      throw new Error('Incomplete LLM configuration. Please check your settings.');
-    }
-    
-    try {
-      // If we're using LM Studio or another OpenAI-compatible API
-      if (useOpenAIFormat) {
-        const response = await callOpenAICompatibleAPI(apiUrl, modelName, message);
-        return response;
-      } else {
-        // If we're using Ollama
-        const response = await callOllamaAPI(apiUrl, modelName, message);
-        return response;
-      }
-    } catch (error) {
-      log('error', 'Error in LLM processing', error);
-      throw error;
     }
   };
   
@@ -931,7 +881,16 @@ const ProjectManager = () => {
    * @param {string} content - The message content to send back to the chat widget
    */
   const sendMessageToChat = (content) => {
-    log('info', 'Sending message to chat', { contentPreview: content.substring(0, 50) + '...' });
+    // Add null check to prevent TypeError
+    if (content) {
+      log('info', 'Sending message to chat', { 
+        contentPreview: content.substring(0, Math.min(50, content.length)) + (content.length > 50 ? '...' : '') 
+      });
+    } else {
+      log('warn', 'Attempted to send empty message to chat');
+      content = "Sorry, I encountered an error processing your request.";
+    }
+    
     const event = new CustomEvent('project-manager-message', {
       detail: { message: content }
     });
@@ -1231,152 +1190,272 @@ When a user asks you to perform any action related to workflows or tasks, please
   
   /**
    * Calls the OpenAI-compatible API (e.g., LM Studio) with the specified parameters
-   * @param {string} apiUrl - The URL of the API
-   * @param {string} modelName - The name of the model to use
-   * @param {string} message - The message to send to the model
-   * @param {Object} parameters - Additional parameters for the model
-   * @returns {Promise<string>} - The response from the model
    */
-  const callOpenAICompatibleAPI = async (apiUrl, modelName, message, parameters = {}) => {
+  const callOpenAICompatibleAPI = async (prompt, options = {}) => {
+    const {
+      serverType = projectManagerSettings.serverType || 'lmStudio',
+      apiUrl = projectManagerSettings.apiUrl,
+      model = projectManagerSettings.model,
+      retryAttempt = 0,
+      maxRetries = 5, // Limit retries to prevent infinite loops
+      fallbackToAvailableModel = true // New option to try available models if current one fails
+    } = options;
+    
+    // Validate required parameters
+    if (!apiUrl) {
+      throw new Error('API URL not configured. Please check your settings.');
+    }
+    
+    if (!model) {
+      throw new Error('No model selected. Please select a model in settings.');
+    }
+    
     try {
-      // Ensure API URL is properly formatted
-      if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-        apiUrl = `http://${apiUrl}`;
+      log('info', `Making API request to ${serverType} (${apiUrl}) with model: ${model}, attempt: ${retryAttempt + 1}/${maxRetries + 1}`);
+      
+      // Format base URL
+      const baseUrl = apiUrl.startsWith('http') ? apiUrl : `http://${apiUrl}`;
+      const cleanBaseUrl = baseUrl.replace(/\/+$/, ''); // Remove trailing slashes
+      
+      // Check if models endpoint is available and get available models
+      let availableModels = [];
+      try {
+        const modelsResponse = await axios.get(`${cleanBaseUrl}/v1/models`, { 
+          timeout: 3000,
+          validateStatus: () => true // Accept any status code
+        });
+        
+        if (modelsResponse.status === 200 && modelsResponse.data?.data) {
+          availableModels = modelsResponse.data.data.map(m => m.id) || [];
+          log('info', `Models endpoint working, found ${availableModels.length} models`);
+          
+          // Verify if the requested model exists in the available models
+          if (availableModels.length > 0 && !availableModels.includes(model)) {
+            log('warn', `Model "${model}" not found in available models: ${availableModels.slice(0, 5).join(', ')}${availableModels.length > 5 ? '...' : ''}`);
+            
+            // If we're allowed to use a fallback model and this isn't already a retry
+            if (fallbackToAvailableModel && retryAttempt === 0 && availableModels.length > 0) {
+              // Try to find a similar model (simple substring match)
+              const similarModels = availableModels.filter(m => 
+                m.includes(model.split('-')[0]) || model.includes(m.split('-')[0])
+              );
+              
+              if (similarModels.length > 0) {
+                const fallbackModel = similarModels[0];
+                log('info', `Using similar available model "${fallbackModel}" instead of "${model}"`);
+                
+                // Call with the fallback model
+                return await callOpenAICompatibleAPI(prompt, {
+                  ...options,
+                  model: fallbackModel,
+                  fallbackToAvailableModel: false // Don't cascade fallbacks
+                });
+              }
+            }
+          }
+        } else {
+          log('warn', `Models endpoint returned status: ${modelsResponse.status}`);
+        }
+      } catch (error) {
+        log('warn', `Could not access models endpoint: ${error.message}`);
+        // Continue anyway, the chat endpoint might still work
       }
       
-      // Remove any trailing slashes
-      apiUrl = apiUrl.replace(/\/+$/, '');
-      
-      log('info', `Calling OpenAI-compatible API at ${apiUrl} with model ${modelName}`, {
-        parametersPreview: JSON.stringify(parameters).substring(0, 100)
-      });
-      
-      // Construct the full URL for the chat completions endpoint
+      // We'll focus only on the standard /v1/chat/completions endpoint
       const endpoint = '/v1/chat/completions';
-      const fullUrl = `${apiUrl}${endpoint}`;
+      const fullUrl = `${cleanBaseUrl}${endpoint}`;
       
-      log('debug', 'Using API endpoint', { fullUrl });
+      log('info', `Sending request to ${fullUrl}`);
       
-      // Prepare the system message
-      const systemMessage = `You are an AI assistant that manages workflows and agents in a visual workflow editor. 
-
-CAPABILITIES:
-1. You can help users create, list, run, and manage workflows.
-2. You can directly create and manage tasks and projects.
-3. You can generate complete workflows from natural language descriptions.
-
-ABOUT THE SYSTEM:
-This system helps users manage agent workflows consisting of AI agents, prompts, and outputs organized in a directed graph. The workflow editor allows users to visually connect these nodes to create automation pipelines.
-
-- Agent nodes: Represent AI models that can process text inputs
-- Prompt nodes: Define templates that feed into agents
-- Output nodes: Handle the results from agent processing
-
-FUNCTION CALLING:
-When a user asks you to perform any action related to workflows or tasks, please use function calling by creating a JSON object inside <tool_call></tool_call> tags.`;
+      // Prepare messages for the API
+      const messages = [{ role: 'user', content: prompt }];
       
-      // Prepare the messages array with proper role formatting
-      const messages = [
-        {
-          role: 'system',
-          content: systemMessage
-        },
-        {
-          role: 'user',
-          content: message
-        }
-      ];
-      
-      // Add chat history context if available
-      if (chatHistory && chatHistory.length > 0) {
-        const recentHistory = chatHistory.slice(-10);
-        if (recentHistory.length > 0) {
-          messages.splice(1, 0, ...recentHistory.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })));
-        }
-      }
-      
-      // Construct the request with only the essential parameters
-      const requestParams = {
-        model: modelName,
-        messages,
-        temperature: parameters.temperature || 0.7,
-        top_p: parameters.topP || 0.9,
-        max_tokens: parameters.maxTokens || 1024,
-        stream: false,
-        stop: null
+      // Create the request payload
+      const requestPayload = {
+        model: model,
+        messages: messages,
+        temperature: options.parameters?.temperature || 0.7,
+        top_p: options.parameters?.topP || 0.9,
+        max_tokens: options.parameters?.maxTokens || 1024
       };
       
-      // Log the full request details for debugging
-      log('debug', 'Sending chat request', {
-        url: fullUrl,
-        model: modelName,
-        messageCount: messages.length,
-        parameters: requestParams
-      });
-
-      // Make the API request with proper error handling
       try {
-        const response = await axios.post(
+        const apiResponse = await axios.post(
           fullUrl,
-          requestParams,
+          requestPayload,
           {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            timeout: 60000 // 60 second timeout
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 20000, // 20s timeout
+            validateStatus: (status) => {
+              // Consider both 200 (success) and 404 with model loading as valid responses
+              // We'll handle the 404 model loading case in the response handler
+              return status === 200;
+            }
           }
         );
         
-        log('debug', 'Raw API response', {
-          status: response.status,
-          statusText: response.statusText,
-          hasChoices: !!response.data?.choices,
-          dataKeys: Object.keys(response.data || {})
-        });
+        log('info', `Received response from LM Studio API, status: ${apiResponse.status}`);
         
-        // Validate response format
-        if (!response.data?.choices?.[0]?.message?.content) {
-          log('error', 'Invalid response format from API', response.data);
+        // Extract content from response
+        if (apiResponse.data?.choices && apiResponse.data.choices.length > 0) {
+          const responseContent = apiResponse.data.choices[0].message?.content || 
+                                apiResponse.data.choices[0].text;
+                                
+          if (responseContent) {
+            return responseContent;
+          } else {
+            log('warn', `Empty response content from API: ${JSON.stringify(apiResponse.data)}`);
+            throw new Error('Empty response from API');
+          }
+        } else {
+          log('error', 'Unexpected API response format:', apiResponse.data);
           throw new Error('Invalid response format from API');
         }
-        
-        return response.data.choices[0].message.content;
       } catch (error) {
-        // Enhanced error handling with detailed logging
-        log('error', 'API request failed', {
-          error: error.message,
+        // Detailed error logging
+        log('warn', 'API request error details:', {
           status: error.response?.status,
           statusText: error.response?.statusText,
           data: error.response?.data,
-          config: {
-            url: error.config?.url,
-            method: error.config?.method,
-            headers: error.config?.headers,
-            data: JSON.parse(error.config?.data || '{}')
-          }
+          message: error.message,
+          url: fullUrl,
+          model: model
         });
+
+        // Handle 404 errors specifically - these are often model loading issues
+        const is404Error = error.response?.status === 404;
+        const responseData = error.response?.data;
         
-        // Provide specific error messages
-        if (error.response?.status === 404) {
-          throw new Error(`API endpoint not found at ${fullUrl}. Please check your LM Studio configuration.`);
-        } else if (error.response?.status === 401) {
-          throw new Error('Unauthorized access to the API. Please check your authentication settings.');
-        } else if (!error.response) {
-          throw new Error(`Could not connect to LM Studio at ${apiUrl}. Please ensure the server is running.`);
+        // Check if this looks like a case where the model is still loading
+        const isModelLoading = is404Error && (
+          // Check for explicit loading messages
+          (typeof responseData?.error?.message === 'string' && 
+           responseData.error.message.includes('Loading')) ||
+          // Check for model not found messages that indicate JIT loading
+          (typeof responseData?.error?.message === 'string' && 
+           responseData.error.message.includes('Failed to load model')) ||
+          // Generic message check in error response
+          JSON.stringify(responseData || '').toLowerCase().includes('loading')
+        );
+
+        // If model is loading and we haven't exceeded max retries
+        if (isModelLoading && retryAttempt < maxRetries) {
+          // Exponential backoff with jitter
+          const baseDelay = Math.pow(2, retryAttempt) * 1000; // 1s, 2s, 4s, 8s...
+          const jitter = Math.random() * 1000; // Add up to 1s of jitter to prevent request storms
+          const delayMs = baseDelay + jitter;
+          
+          log('info', `Model "${model}" is loading, waiting ${Math.round(delayMs/1000)}s before retry ${retryAttempt + 1}/${maxRetries}`);
+          
+          // Show a notification to the user after a few retries
+          if (retryAttempt >= 2) {
+            dispatch(addNotification({
+              type: 'info',
+              message: `LM Studio is loading model "${model}"`, 
+              description: `Please wait, this may take a few moments. Retry ${retryAttempt + 1}/${maxRetries}`,
+              duration: 5000
+            }));
+          }
+          
+          // Wait for the backoff period
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          
+          // Retry the request with incremented retry count
+          return await callOpenAICompatibleAPI(prompt, {
+            ...options,
+            retryAttempt: retryAttempt + 1
+          });
         }
         
-        throw error;
+        // If we've run out of retries but we have available models, try a different one
+        if (retryAttempt >= maxRetries && fallbackToAvailableModel && availableModels.length > 0) {
+          // Filter out the current model that's failing
+          const otherModels = availableModels.filter(m => m !== model);
+          
+          if (otherModels.length > 0) {
+            // Try to find a similar model first
+            const similarModels = otherModels.filter(m => 
+              m.includes(model.split('-')[0]) || model.includes(m.split('-')[0])
+            );
+            
+            const fallbackModel = similarModels.length > 0 ? similarModels[0] : otherModels[0];
+            
+            log('info', `Model "${model}" failed to load after ${maxRetries} retries. Trying available model "${fallbackModel}" instead`);
+            
+            dispatch(addNotification({
+              type: 'warning',
+              message: `Switching to available model "${fallbackModel}"`,
+              description: `Model "${model}" failed to load after multiple attempts`,
+              duration: 5000
+            }));
+            
+            // Call with the fallback model
+            return await callOpenAICompatibleAPI(prompt, {
+              ...options,
+              model: fallbackModel,
+              retryAttempt: 0,
+              fallbackToAvailableModel: false // Don't cascade fallbacks
+            });
+          }
+        }
+        
+        // If we get here, all retries and fallbacks failed
+        if (retryAttempt >= maxRetries) {
+          log('error', `Failed to load model "${model}" after ${maxRetries} retries`);
+          throw new Error(`Model "${model}" failed to load after multiple attempts. Try selecting a different model or restart LM Studio.`);
+        }
+        
+        throw error; // Re-throw if not handled above
       }
     } catch (error) {
-      log('error', 'Error in OpenAI-compatible API call', {
-        error: error.message,
-        stack: error.stack
-      });
+      // Special handling for network issues
+      if (error.code === 'ECONNREFUSED' || error.code === 'ECONNABORTED') {
+        log('error', `Could not connect to server at ${apiUrl}. Please ensure LM Studio is running and the API server is enabled.`);
+        throw new Error(`Connection to ${serverType} failed: ${error.message}`);
+      }
+      
+      log('error', `${serverType} API request failed`, { error: error.message });
       throw error;
     }
+  };
+
+  /**
+   * Extract content from various API response formats
+   */
+  const extractResponseContent = (responseData) => {
+    if (responseData.choices && responseData.choices.length > 0) {
+      // Standard OpenAI format
+      return responseData.choices[0].message?.content || 
+             responseData.choices[0].text || 
+             responseData.choices[0].content;
+    } else if (responseData.response) {
+      // Ollama-like format
+      return responseData.response;
+    } else if (responseData.output || responseData.generated_text) {
+      // Other formats
+      return responseData.output || responseData.generated_text;
+    } else if (typeof responseData === 'string') {
+      // Direct string response
+      return responseData;
+    } else if (responseData.completion) {
+      // Some models return a completion field
+      return responseData.completion;
+    } else if (responseData.generations && responseData.generations.length > 0) {
+      // Some models return generations array
+      return responseData.generations[0].text || responseData.generations[0].content;
+    }
+    
+    // Fallback - try to find any text field in the response
+    const textFields = ['text', 'content', 'message', 'result', 'answer'];
+    for (const field of textFields) {
+      if (responseData[field]) {
+        return responseData[field];
+      }
+    }
+    
+    // If no content field was found, log the structure and throw error
+    console.error('Unexpected API response format:', responseData);
+    throw new Error('Could not extract content from API response');
   };
   
   // Add this function to implement the fallback command processor

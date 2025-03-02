@@ -15,6 +15,7 @@ import {
   ListItem,
   ListItemText,
   Avatar,
+  Alert,
 } from '@mui/material';
 import { Minimize as MinimizeIcon, OpenInFull as OpenInFullIcon, Send as SendIcon, Maximize as MaximizeIcon, Close as CloseIcon } from '@mui/icons-material';
 import { Resizable } from 'react-resizable';
@@ -32,27 +33,24 @@ import 'react-resizable/css/styles.css';
  */
 const ChatWidget = () => {
   const nodeRef = useRef(null);
-  const [server, setServer] = useState('lmstudio');
-  const [model, setModel] = useState('');
-  const [outputTarget, setOutputTarget] = useState('chat');
   const [message, setMessage] = useState('');
   const [conversation, setConversation] = useState([]);
-  const [lmStudioAddress, setLmStudioAddress] = useState('');
-  const [ollamaAddress, setOllamaAddress] = useState('');
-  const [models, setModels] = useState([]);
   const [width, setWidth] = useState(300);
   const [height, setHeight] = useState(400);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [minimized, setMinimized] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeStartDimensions, setResizeStartDimensions] = useState({ width: 0, height: 0 });
-  const [resizeStartPosition, setResizeStartPosition] = useState({ x: 0, y: 0 });
   const chatContainerRef = useRef(null);
   const [messageListenerAdded, setMessageListenerAdded] = useState(false);
   const settings = useSelector(state => state.settings);
+  
+  // Restore server selection state
+  const [selectedServer, setSelectedServer] = useState('lmStudio');
+  const [lmStudioModels, setLmStudioModels] = useState([]);
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [loadingModels, setLoadingModels] = useState(false);
+  
   const [connectionStatus, setConnectionStatus] = useState({
     status: 'checking',
     message: 'Checking connection...'
@@ -62,6 +60,10 @@ const ChatWidget = () => {
   const [expandedPosition, setExpandedPosition] = useState({ x: 0, y: 0 });
   // Store last dimensions before collapse to restore when expanding
   const [expandedDimensions, setExpandedDimensions] = useState({ width: 300, height: 400 });
+
+  // Add state to track communication with server type
+  const [currentServerType, setCurrentServerType] = useState('lmStudio');
+  const [isRequesting, setIsRequesting] = useState(false);
 
   useEffect(() => {
     // Setup event listener for dock toggling
@@ -96,99 +98,12 @@ const ChatWidget = () => {
       y: viewportHeight - height - 80 
     });
 
-    const storedLmStudioAddress = localStorage.getItem('lmStudioAddress') || '';
-    const storedOllamaAddress = localStorage.getItem('ollamaAddress') || '';
-    const storedDefaultLmStudioModel = localStorage.getItem('defaultLmStudioModel') || '';
-    const storedDefaultOllamaModel = localStorage.getItem('defaultOllamaModel') || '';
-    setLmStudioAddress(storedLmStudioAddress);
-    setOllamaAddress(storedOllamaAddress);
-
-    // Set default model based on selected server
-    if (server === 'lmstudio') {
-      setModel(storedDefaultLmStudioModel);
-    } else if (server === 'ollama') {
-      setModel(storedDefaultOllamaModel);
-    }
-
-    // Fetch models directly from APIs
-    const fetchModels = async () => {
-      try {
-        let response;
-        let url = '';
-        
-        if (server === 'lmstudio' && lmStudioAddress) {
-          url = `${lmStudioAddress}/v1/models`;
-          try {
-            console.log(`Attempting to fetch LM Studio models from ${url}`);
-            response = await axios.get(url, {
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              timeout: 2000 // 2 second timeout
-            });
-            if (response.data && response.data.data && Array.isArray(response.data.data)) {
-              setModels(response.data.data.map((model) => model.id));
-            } else {
-              console.error(
-                'Error: LM Studio /v1/models response is not in the expected format',
-                response.data
-              );
-              setModels([]);
-            }
-          } catch (error) {
-            console.error('Error fetching LM Studio models:', error);
-            console.error('Full error object:', error);
-            // Don't clear models if it's just a connection error - keep any previously loaded models
-            if (models.length === 0) {
-              // Only set default models if we don't have any
-              setModels([]);
-            }
-          }
-        } else if (server === 'ollama' && ollamaAddress) {
-          url = `${ollamaAddress}/api/tags`;
-          try {
-            console.log(`Attempting to fetch Ollama models from ${url}`);
-            response = await axios.get(url, {
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              timeout: 2000 // 2 second timeout
-            });
-            if (response.data && Array.isArray(response.data.models)) {
-              setModels(response.data.models.map((model) => model.name));
-            } else {
-              console.error(
-                'Error: Ollama /api/tags response is not in the expected format',
-                response.data
-              );
-              setModels([]);
-            }
-          } catch (error) {
-            console.error('Error fetching Ollama models:', error);
-            console.error('Full error object:', error);
-            // Don't clear models if it's just a connection error - keep any previously loaded models
-            if (models.length === 0) {
-              // Only set default models if we don't have any
-              setModels([]);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error in fetchModels outer try/catch:', error);
-        // Keep any existing models
-      }
-    };
-
-    fetchModels();
-
     return () => {
       window.removeEventListener('toggle-chat-widget', handleDockToggle);
     };
-  }, [lmStudioAddress, ollamaAddress, server]); // Removed width/height from dependencies
+  }, []); // Removed width/height from dependencies to avoid loops
 
   useEffect(() => {
-    // Let ProjectManager handle the welcome message, don't add our own
-    
     // Setup event listeners for project manager messages
     if (!messageListenerAdded) {
       window.addEventListener('project-manager-message', handleProjectManagerMessage);
@@ -221,6 +136,11 @@ const ChatWidget = () => {
     
     return () => clearInterval(checkInterval);
   }, [settings]);
+  
+  // Load models when settings change or server selection changes
+  useEffect(() => {
+    fetchAvailableModels();
+  }, [settings, selectedServer]);
   
   // Check if the LLM server is connected
   const checkLLMConnection = async () => {
@@ -276,10 +196,70 @@ const ChatWidget = () => {
   };
 
   /**
+   * Fetch available models for the selected server
+   */
+  const fetchAvailableModels = async () => {
+    try {
+      setLoadingModels(true);
+      
+      if (selectedServer === 'lmStudio') {
+        const apiUrl = settings?.lmStudio?.apiUrl || 'http://localhost:1234';
+        const baseUrl = apiUrl.startsWith('http') ? apiUrl : `http://${apiUrl}`;
+        
+        try {
+          const response = await axios.get(`${baseUrl}/v1/models`, { timeout: 5000 });
+          const models = response.data?.data?.map(model => model.id) || [];
+          setLmStudioModels(models);
+          
+          // Set default model if we have models and none is selected yet
+          if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
+            const defaultModel = settings?.lmStudio?.defaultModel;
+            if (defaultModel && models.includes(defaultModel)) {
+              setSelectedModel(defaultModel);
+            } else {
+              setSelectedModel(models[0]);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch LM Studio models:', error);
+          setLmStudioModels([]);
+        }
+      } else if (selectedServer === 'ollama') {
+        const apiUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
+        const baseUrl = apiUrl.startsWith('http') ? apiUrl : `http://${apiUrl}`;
+        
+        try {
+          const response = await axios.get(`${baseUrl}/api/tags`, { timeout: 5000 });
+          const models = response.data?.models?.map(model => model.name) || [];
+          setOllamaModels(models);
+          
+          // Set default model if we have models and none is selected yet
+          if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
+            const defaultModel = settings?.ollama?.defaultModel;
+            if (defaultModel && models.includes(defaultModel)) {
+              setSelectedModel(defaultModel);
+            } else {
+              setSelectedModel(models[0]);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch Ollama models:', error);
+          setOllamaModels([]);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching models:', error);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  /**
    * Handle messages from the ProjectManager agent
    */
   const handleProjectManagerMessage = (event) => {
     console.log('Received project-manager-message:', event.detail);
+    setIsRequesting(false);
     
     // Extract message content from event detail, handling both formats
     const message = typeof event.detail === 'object' ? (event.detail.message || event.detail.content) : event.detail;
@@ -294,6 +274,7 @@ const ChatWidget = () => {
       role: 'assistant',
       content: message,
       timestamp: new Date().toISOString(),
+      serverType: currentServerType // Add server type for reference
     };
     
     console.log('Adding message to conversation:', newMessage);
@@ -334,13 +315,31 @@ const ChatWidget = () => {
     };
     
     setConversation(prev => [...prev, userMessage, thinkingMessage]);
+    setIsRequesting(true);
     
     // Auto-scroll to bottom
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
     
-    console.log('Dispatching chat-message event with content:', message);
+    // Get API URL and model based on selected server
+    const apiUrl = selectedServer === 'lmStudio' 
+      ? (settings?.lmStudio?.apiUrl || 'http://localhost:1234')
+      : (settings?.ollama?.apiUrl || 'http://localhost:11434');
+    
+    const model = selectedModel || 
+      (selectedServer === 'lmStudio' 
+        ? settings?.lmStudio?.defaultModel 
+        : settings?.ollama?.defaultModel);
+    
+    // Save current server type to validate response against request
+    setCurrentServerType(selectedServer);
+    
+    console.log('Dispatching chat-message event with content:', message, {
+      serverType: selectedServer,
+      apiUrl,
+      model
+    });
     
     // Dispatch custom event to notify ProjectManager
     const event = new CustomEvent('chat-message', {
@@ -348,23 +347,17 @@ const ChatWidget = () => {
         content: message.trim(),
         role: 'user',
         timestamp: new Date().toISOString(),
-        serverType: server,
-        model: model,
-        apiUrl: server === 'lmstudio' ? lmStudioAddress : ollamaAddress
+        settings: {
+          serverType: selectedServer,
+          apiUrl: apiUrl,
+          model: model
+        }
       }
     });
     window.dispatchEvent(event);
     
     // Clear input field
     setMessage('');
-  };
-
-  const handleServerChange = (event) => {
-    setServer(event.target.value);
-  };
-
-  const handleModelChange = (event) => {
-    setModel(event.target.value);
   };
 
   const handleMessageChange = (event) => {
@@ -427,90 +420,20 @@ const ChatWidget = () => {
     setIsCollapsed(!isCollapsed);
   };
 
-  /**
-   * Handle mouse down event for dragging the widget
-   */
-  const handleMouseDown = (e) => {
-    if (e.target.closest('.resize-handle')) return;
-    if (e.target.closest('.chat-controls')) return;
-    
-    setIsDragging(true);
-    setDragStart({
-      x: e.clientX,
-      y: e.clientY,
-    });
+  // Handle server selection change
+  const handleServerChange = (event) => {
+    setSelectedServer(event.target.value);
+    setSelectedModel(''); // Reset selected model when changing server
+  };
+  
+  // Handle model selection change  
+  const handleModelChange = (event) => {
+    setSelectedModel(event.target.value);
   };
 
-  /**
-   * Handle mouse move event for dragging or resizing the widget
-   */
-  const handleMouseMove = (e) => {
-    if (isDragging) {
-      const deltaX = e.clientX - dragStart.x;
-      const deltaY = e.clientY - dragStart.y;
-      
-      setPosition({
-        x: position.x - deltaX,
-        y: position.y - deltaY,
-      });
-      
-      setDragStart({
-        x: e.clientX,
-        y: e.clientY,
-      });
-    } else if (isResizing) {
-      const deltaX = e.clientX - resizeStartPosition.x;
-      const deltaY = e.clientY - resizeStartPosition.y;
-      
-      setWidth(Math.max(300, resizeStartDimensions.width + deltaX));
-      setHeight(Math.max(400, resizeStartDimensions.height + deltaY));
-    }
-  };
-
-  /**
-   * Handle mouse up event to end dragging or resizing
-   */
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    setIsResizing(false);
-  };
-
-  /**
-   * Handle resize initialization
-   */
-  const handleResizeStart = (e) => {
-    e.stopPropagation();
-    setIsResizing(true);
-    setResizeStartDimensions({
-      width: width,
-      height: height,
-    });
-    setResizeStartPosition({
-      x: e.clientX,
-      y: e.clientY,
-    });
-  };
-
-  /**
-   * Toggle minimized state of the chat widget
-   */
-  const toggleMinimize = () => {
-    const newMinimized = !minimized;
-    setMinimized(newMinimized);
-    
-    // Dispatch event to update dock state
-    const event = new CustomEvent('chat-widget-state-change', {
-      detail: { isOpen: !newMinimized }
-    });
-    window.dispatchEvent(event);
-  };
-
-  /**
-   * Close the chat widget
-   */
-  const closeChat = () => {
-    // Hide the chat widget by setting it off-screen
-    setPosition({ x: -1000, y: -1000 });
+  // Get current models list based on selected server
+  const getAvailableModels = () => {
+    return selectedServer === 'lmStudio' ? lmStudioModels : ollamaModels;
   };
 
   /**
@@ -588,19 +511,44 @@ const ChatWidget = () => {
                 formatMessageContent(msg.content)
               )}
             </Typography>
-            <Typography 
-              variant="caption" 
-              color="textSecondary" 
+            <Box
               sx={{ 
-                display: 'block', 
-                textAlign: isUser ? 'right' : 'left',
-                fontSize: '0.7rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 mt: 0.5,
-                opacity: 0.8
               }}
             >
-              {formatTimestamp(msg.timestamp)}
-            </Typography>
+              <Typography 
+                variant="caption" 
+                color="textSecondary" 
+                sx={{ 
+                  fontSize: '0.7rem',
+                  opacity: 0.8
+                }}
+              >
+                {formatTimestamp(msg.timestamp)}
+              </Typography>
+              
+              {/* Display server type badge for assistant messages only */}
+              {!isUser && !isThinking && (
+                <Typography
+                  variant="caption"
+                  component="span"
+                  sx={{
+                    fontSize: '0.65rem',
+                    bgcolor: msg.serverType === 'lmStudio' ? 'info.main' : 'warning.main',
+                    color: 'white',
+                    borderRadius: '4px',
+                    px: 0.5,
+                    py: 0.1,
+                    opacity: 0.7
+                  }}
+                >
+                  {msg.serverType === 'lmStudio' ? 'LM Studio' : 'Ollama'}
+                </Typography>
+              )}
+            </Box>
           </Paper>
         </Box>
       </ListItem>
@@ -785,32 +733,52 @@ const ChatWidget = () => {
             
             {!isCollapsed && (
               <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflowY: 'hidden' }}>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <FormControl size="small" sx={{ flex: 1 }}>
-                    <InputLabel id="output-target-label">Output To</InputLabel>
-                    <Select labelId="output-target-label" value={outputTarget} label="Output Target" onChange={(e) => setOutputTarget(e.target.value)}>
-                      <MenuItem value="chat">Chat Only</MenuItem>
-                      <MenuItem value="agent">Agent</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small" sx={{ flex: 1 }}>
-                    <InputLabel id="server-label">Server</InputLabel>
-                    <Select labelId="server-label" id="server" value={server} label="Server" onChange={handleServerChange}>
-                      <MenuItem value="lmstudio">LM Studio</MenuItem>
+                {/* Add server and model selection UI */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  gap: 1
+                }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Server</InputLabel>
+                    <Select
+                      value={selectedServer}
+                      onChange={handleServerChange}
+                      label="Server"
+                      disabled={isRequesting}
+                    >
+                      <MenuItem value="lmStudio">LM Studio</MenuItem>
                       <MenuItem value="ollama">Ollama</MenuItem>
                     </Select>
                   </FormControl>
-                  <FormControl size="small" sx={{ flex: 2 }}>
-                    <InputLabel id="model-label">Model</InputLabel>
-                    <Select labelId="model-label" id="model" value={model} label="Model" onChange={handleModelChange}>
-                      {models.map((model) => (
+                  
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Model</InputLabel>
+                    <Select
+                      value={selectedModel}
+                      onChange={handleModelChange}
+                      label="Model"
+                      disabled={loadingModels || getAvailableModels().length === 0 || isRequesting}
+                    >
+                      {getAvailableModels().map(model => (
                         <MenuItem key={model} value={model}>
                           {model}
                         </MenuItem>
                       ))}
+                      {getAvailableModels().length === 0 && (
+                        <MenuItem value="" disabled>
+                          {loadingModels ? 'Loading models...' : 'No models available'}
+                        </MenuItem>
+                      )}
                     </Select>
                   </FormControl>
                 </Box>
+                
+                {connectionStatus.status === 'error' && (
+                  <Alert severity="warning" sx={{ py: 0.5 }}>
+                    {connectionStatus.message}
+                  </Alert>
+                )}
                 
                 <Box 
                   ref={chatContainerRef}
@@ -837,7 +805,26 @@ const ChatWidget = () => {
                     },
                   }}
                 >
-                  {conversation.map((msg, index) => renderMessage(msg, index))}
+                  <List>
+                    {conversation.map((msg, index) => renderMessage(msg, index))}
+                    
+                    {conversation.length === 0 && (
+                      <ListItem>
+                        <Paper 
+                          sx={{ 
+                            p: 2, 
+                            width: '100%', 
+                            textAlign: 'center',
+                            bgcolor: 'background.default'
+                          }}
+                        >
+                          <Typography variant="body2" color="textSecondary">
+                            Ask me anything about your projects or workflows!
+                          </Typography>
+                        </Paper>
+                      </ListItem>
+                    )}
+                  </List>
                 </Box>
                 
                 <Box sx={{ display: 'flex', gap: 1 }}>
@@ -863,7 +850,7 @@ const ChatWidget = () => {
                   <Button 
                     variant="contained" 
                     onClick={handleSendMessage}
-                    disabled={!message.trim() || !model}
+                    disabled={!message.trim()}
                     color="primary"
                   >
                     <SendIcon />
