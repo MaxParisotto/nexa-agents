@@ -12,13 +12,16 @@ import ProjectManager from './components/ProjectManager.jsx'; // Changed from .j
 import Agora from './components/Agora/Agora.jsx'; // Changed from .js to .jsx
 import Agents from './components/Agents/Agents.jsx';
 import NotificationsSystem from './components/NotificationsSystem.jsx';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { Box, Typography, Button } from '@mui/material';
+import { Warning as WarningIcon } from '@mui/icons-material';
 import { Provider, useDispatch, useSelector } from 'react-redux';
 import store from './store';
 import { SettingsProvider } from './contexts/SettingsContext';
+import apiClient from './utils/apiClient';
 
 // Actions
 import { loadSettings, loadPersistedModels } from './store/actions/settingsActions';
@@ -46,27 +49,58 @@ function AppContent() {
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
   const settings = useSelector(state => state.settings);
-  const [serverStatus, setServerStatus] = useState({ checked: false, running: false });
+  const [serverStatus, setServerStatus] = useState({ 
+    checked: false, 
+    online: false,
+    checking: true 
+  });
 
-  // Check if the server is running
+  // Check if the server is running with better handling
   useEffect(() => {
     const checkServer = async () => {
-      const running = await isServerRunning();
-      setServerStatus({ checked: true, running });
-      
-      if (!running) {
-        dispatch(addNotification({
-          type: 'warning',
-          message: 'Backend connection unavailable',
-          description: 'Using local settings. Some features may be limited.'
-        }));
+      try {
+        setServerStatus(prev => ({ ...prev, checking: true }));
+        
+        // Use the enhanced API client instead of direct calls
+        const status = await apiClient.status.getStatus();
+        
+        setServerStatus({ 
+          checked: true, 
+          online: status.online, 
+          checking: false,
+          details: status
+        });
+        
+        // Only show notification if server is offline
+        if (!status.online) {
+          dispatch(addNotification({
+            type: 'warning',
+            message: 'Backend connection unavailable',
+            description: 'Using local settings. Some features may be limited.',
+            duration: 10000 // Show for longer time
+          }));
+        }
+      } catch (error) {
+        console.error('Error checking server status:', error);
+        setServerStatus({ 
+          checked: true, 
+          online: false, 
+          checking: false,
+          error: error.message
+        });
       }
     };
     
+    // Run check immediately
     checkServer();
+    
+    // Also set up periodic checking
+    const checkInterval = setInterval(checkServer, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(checkInterval);
   }, [dispatch]);
 
-  // Load settings and models from backend on startup
+  // Load settings and models from backend on startup with better error handling
   useEffect(() => {
     const loadAppSettings = async () => {
       try {
@@ -78,8 +112,20 @@ function AppContent() {
         
         setIsConfigLoaded(true);
       } catch (error) {
+        console.error('Error loading settings:', error);
+        
         // We still consider config loaded even if we're using fallback values
         setIsConfigLoaded(true);
+        
+        // Show a notification only if it's not a connection refused error
+        // (since we already show a notification for that)
+        if (!error.message?.includes('Connection refused')) {
+          dispatch(addNotification({
+            type: 'error',
+            message: 'Failed to load settings',
+            description: 'Using default settings'
+          }));
+        }
       }
     };
     
@@ -158,6 +204,54 @@ function AppContent() {
     };
   }, [dispatch]);
 
+  // Create a server status component to show in the app
+  const ServerStatusMessage = useMemo(() => {
+    if (serverStatus.checking) {
+      return null; // Don't show anything while checking
+    }
+    
+    if (!serverStatus.online) {
+      return (
+        <Box sx={{ 
+          p: 1, 
+          bgcolor: 'warning.light', 
+          color: 'warning.contrastText',
+          borderRadius: 1,
+          mb: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <WarningIcon sx={{ mr: 1 }} />
+            <Typography variant="body2">
+              Backend server is offline - using local storage data
+            </Typography>
+          </Box>
+          <Button 
+            size="small" 
+            variant="outlined" 
+            color="inherit"
+            onClick={async () => {
+              setServerStatus(prev => ({ ...prev, checking: true }));
+              const status = await apiClient.status.getStatus();
+              setServerStatus({ 
+                checked: true, 
+                online: status.online, 
+                checking: false,
+                details: status
+              });
+            }}
+          >
+            Retry
+          </Button>
+        </Box>
+      );
+    }
+    
+    return null;
+  }, [serverStatus]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -167,6 +261,9 @@ function AppContent() {
             <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
             <div className="app-container">
               <main className="content-full">
+                {/* Show server status message when needed */}
+                {ServerStatusMessage}
+                
                 {settings.loading && !isConfigLoaded ? (
                   <div className="loading-container">
                     <p>Loading settings...</p>

@@ -49,9 +49,25 @@ import settingsRoutes from './routes/settings.js';
 import modelsRoutes from './routes/models.js';
 import testRoutes from './routes/test.js';
 import { createUplinkRouter } from './routes/uplink.js';
+import statusRoutes from './routes/status.js';
 
-// Import the OpenAI Uplink Server
-import { openaiUplinkServer } from './uplink/openaiUplinkServer.js';
+// Initialize process error handlers right away to catch any startup errors
+process.on('uncaughtException', (error) => {
+  console.error('UNCAUGHT EXCEPTION:', error);
+  // Log to file if logger is available
+  if (typeof logger !== 'undefined' && logger.error) {
+    logger.error('Uncaught exception:', error);
+  }
+  // Don't exit the process, just log the error
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+  // Log to file if logger is available
+  if (typeof logger !== 'undefined' && logger.error) {
+    logger.error('Unhandled rejection:', reason);
+  }
+});
 
 const app = express();
 
@@ -195,6 +211,7 @@ if (!fs.existsSync(CONFIG_DIR)) {
 app.use('/api/settings', settingsRoutes);
 app.use('/api/models', modelsRoutes);
 app.use('/api/test', testRoutes);
+app.use('/api/status', statusRoutes);
 
 // API endpoint to save configuration
 app.post('/api/config/save', (req, res) => {
@@ -419,23 +436,90 @@ io.on('connection', (socket) => {
   });
 });
 
-// After starting the WebSocket server, also start the OpenAI Uplink
+// Create OpenAI Uplink server with proper error handling
+let openaiUplink = null;
 try {
-  openaiUplinkServer.start();
-  logger.info(`OpenAI Uplink server started on port ${openaiUplinkServer.port}`);
-} catch (err) {
-  logger.error('Failed to start OpenAI Uplink server', err);
+  const openaiUplinkPort = config.openaiUplinkPort || process.env.OPENAI_UPLINK_PORT || 3002;
+  openaiUplink = new OpenAIUplinkServer({
+    port: openaiUplinkPort,
+    requireApiKey: config.requireUplinkApiKey !== false,
+    apiKey: config.openaiUplinkApiKey || process.env.OPENAI_UPLINK_API_KEY
+  });
+
+  // Register custom actions for the uplink
+  openaiUplink.registerAction('queryAgent', async (params) => {
+    const { query, agentId } = params;
+    logger.info(`Received agent query: ${query} for agent ${agentId || 'default'}`);
+    
+    // Here you would typically forward this to your agent system
+    // For now, we'll just return a mock response
+    return {
+      response: `Processed query: ${query}`,
+      timestamp: new Date().toISOString(),
+      agentId: agentId || 'default'
+    };
+  });
+} catch (error) {
+  console.error('Failed to create OpenAI Uplink server:', error);
+  logger.error('Failed to create OpenAI Uplink server', error);
 }
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  loggerWinston.error('Server error:', err);
-  res.status(500).json({
-    error: {
-      message: err.message || 'An unexpected error occurred',
-      code: err.code || 'INTERNAL_SERVER_ERROR'
+// Start OpenAI Uplink server safely
+if (openaiUplink) {
+  try {
+    openaiUplink.start();
+    logger.info(`OpenAI Uplink server started on port ${openaiUplink.port}`);
+  } catch (err) {
+    console.error('Failed to start OpenAI Uplink server:', err);
+    logger.error('Failed to start OpenAI Uplink server', err);
+    // Don't crash the whole server if uplink fails
+  }
+}
+
+// Create WebSocket server
+const wssPort = config.wssPort || process.env.WSS_PORT || 8081;
+const wss = new WebSocketServer({ port: wssPort });
+logger.info(`WebSocket Server running on port ${wssPort}`);
+console.log(`WebSocket Server running on port ${wssPort}`);
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+  // ... existing WebSocket server code ...
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  logger.info('Shutting down server...');
+  
+  // Safely stop OpenAI uplink if it exists
+  if (openaiUplink) {
+    try {
+      openaiUplink.stop();
+    } catch (err) {
+      console.error('Error stopping OpenAI Uplink server:', err);
     }
+  }
+  
+  // Stop WebSocket server
+  if (wss) {
+    try {
+      wss.close();
+    } catch (err) {
+      console.error('Error closing WebSocket server:', err);
+    }
+  }
+  
+  // Close main server
+  server.close(() => {
+    logger.info('Server shutdown complete');
+    process.exit(0);
   });
+  
+  // Force exit after 5 seconds if clean shutdown fails
+  setTimeout(() => {
+    console.error('Forcing server shutdown after timeout');
+    process.exit(1);
+  }, 5000);
 });
 
 // Serve React app for any other routes
@@ -450,53 +534,6 @@ if (process.env.NODE_ENV !== 'test') {
     loggerWinston.info(`API available at http://localhost:${PORT}/api`);
   });
 }
-
-// Create WebSocket server
-const wssPort = config.wssPort || process.env.WSS_PORT || 8081;
-const wss = new WebSocketServer({ port: wssPort });
-logger.info(`WebSocket Server running on port ${wssPort}`);
-console.log(`WebSocket Server running on port ${wssPort}`);
-
-// Create OpenAI Uplink server
-const openaiUplinkPort = config.openaiUplinkPort || process.env.OPENAI_UPLINK_PORT || 3002;
-const openaiUplink = new OpenAIUplinkServer({
-  port: openaiUplinkPort,
-  requireApiKey: config.requireUplinkApiKey !== false,
-  apiKey: config.openaiUplinkApiKey || process.env.OPENAI_UPLINK_API_KEY
-});
-
-// Register custom actions for the uplink
-openaiUplink.registerAction('queryAgent', async (params) => {
-  const { query, agentId } = params;
-  logger.info(`Received agent query: ${query} for agent ${agentId || 'default'}`);
-  
-  // Here you would typically forward this to your agent system
-  // For now, we'll just return a mock response
-  return {
-    response: `Processed query: ${query}`,
-    timestamp: new Date().toISOString(),
-    agentId: agentId || 'default'
-  };
-});
-
-// Start OpenAI Uplink server
-openaiUplink.start();
-
-// WebSocket connection handling
-wss.on('connection', (ws) => {
-  // ... existing WebSocket server code ...
-});
-
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  logger.info('Shutting down server...');
-  openaiUplink.stop();
-  wss.close();
-  server.close(() => {
-    logger.info('Server shutdown complete');
-    process.exit(0);
-  });
-});
 
 export { io }; // Export socket.io instance
 export default app; // Export for testing

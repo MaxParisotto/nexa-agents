@@ -24,16 +24,29 @@ const FeatureToggles = () => {
   const dispatch = useDispatch();
   const currentFeatures = useSelector(state => state.settings.features || {});
   
-  // Default features with fallbacks from Redux state
+  // Use actual features that are implemented in the application
   const [features, setFeatures] = useState({
-    experimentalWorkflows: currentFeatures.experimentalWorkflows ?? false,
-    advancedAgentConfig: currentFeatures.advancedAgentConfig ?? false,
-    multiModelInference: currentFeatures.multiModelInference ?? true,
-    collaborativeEditing: currentFeatures.collaborativeEditing ?? false,
-    debugTools: currentFeatures.debugTools ?? false,
-    dataVisualization: currentFeatures.dataVisualization ?? true,
-    cloudSync: currentFeatures.cloudSync ?? false,
-    remoteExecution: currentFeatures.remoteExecution ?? false
+    // Chat & Project Management
+    chatWidget: currentFeatures.chatWidget ?? true,
+    projectManager: currentFeatures.projectManager ?? true,
+    
+    // LLM Integrations
+    lmStudioIntegration: currentFeatures.lmStudioIntegration ?? true,
+    ollamaIntegration: currentFeatures.ollamaIntegration ?? true,
+    openaiUplink: currentFeatures.openaiUplink ?? true,
+    
+    // UI Features
+    connectionStatus: currentFeatures.connectionStatus ?? true,
+    darkMode: currentFeatures.darkMode ?? true,
+    
+    // Advanced Features
+    logViewer: currentFeatures.logViewer ?? true,
+    modelBenchmarking: currentFeatures.modelBenchmarking ?? true,
+    llmDiagnostics: currentFeatures.llmDiagnostics ?? true,
+    
+    // Experimental Features
+    multiModelInference: currentFeatures.multiModelInference ?? false,
+    agentCollaboration: currentFeatures.agentCollaboration ?? false
   });
   
   const [saved, setSaved] = useState(false);
@@ -53,46 +66,75 @@ const FeatureToggles = () => {
     }, 3000);
   };
   
-  // Feature metadata with descriptions and stability info
+  // Feature metadata with descriptions for actual implemented features
   const featureInfo = {
-    experimentalWorkflows: {
-      label: "Experimental Workflows",
-      description: "Enable experimental workflow features and templates",
-      stability: "experimental"
+    // Chat & Project Management
+    chatWidget: {
+      label: "Chat Widget",
+      description: "Enable the floating chat assistant widget",
+      stability: "stable"
     },
-    advancedAgentConfig: {
-      label: "Advanced Agent Configuration",
-      description: "Access advanced configuration options for AI agents",
+    projectManager: {
+      label: "Project Manager",
+      description: "Enable the project management and workflow system",
+      stability: "stable"
+    },
+    
+    // LLM Integrations
+    lmStudioIntegration: {
+      label: "LM Studio Integration",
+      description: "Connect to local LM Studio server for inference",
+      stability: "stable"
+    },
+    ollamaIntegration: {
+      label: "Ollama Integration",
+      description: "Connect to local Ollama server for inference",
+      stability: "stable"
+    },
+    openaiUplink: {
+      label: "OpenAI CustomGPT Uplink",
+      description: "Allow OpenAI CustomGPTs to connect via WebSocket",
       stability: "beta"
     },
+    
+    // UI Features
+    connectionStatus: {
+      label: "Connection Status Indicator",
+      description: "Show LLM server connection status in the interface",
+      stability: "stable"
+    },
+    darkMode: {
+      label: "Dark Mode Support",
+      description: "Allow toggling between light and dark themes",
+      stability: "stable"
+    },
+    
+    // Advanced Features
+    logViewer: {
+      label: "Log Viewer",
+      description: "View and filter application logs",
+      stability: "stable"
+    },
+    modelBenchmarking: {
+      label: "LLM Benchmarking",
+      description: "Test and compare model performance",
+      stability: "beta"
+    },
+    llmDiagnostics: {
+      label: "LLM Diagnostics",
+      description: "Advanced diagnostics for LLM server connections",
+      stability: "beta"
+    },
+    
+    // Experimental Features
     multiModelInference: {
       label: "Multi-Model Inference",
-      description: "Run inference across multiple AI models simultaneously",
-      stability: "stable"
-    },
-    collaborativeEditing: {
-      label: "Collaborative Editing",
-      description: "Allow multiple users to edit workflows simultaneously",
-      stability: "beta"
-    },
-    debugTools: {
-      label: "Debug Tools",
-      description: "Advanced debugging tools for workflow development",
-      stability: "beta"
-    },
-    dataVisualization: {
-      label: "Data Visualization",
-      description: "Advanced charts and visualization tools",
-      stability: "stable"
-    },
-    cloudSync: {
-      label: "Cloud Synchronization",
-      description: "Sync your workflows and settings to the cloud",
+      description: "Run inference across multiple models simultaneously",
       stability: "experimental"
     },
-    remoteExecution: {
-      label: "Remote Execution",
-      description: "Execute workflows on remote servers",
+    agentCollaboration: {
+      label: "Agent Collaboration",
+      description: "Allow multiple agents to work together on tasks",
       stability: "experimental"
     }
   };
@@ -108,6 +150,14 @@ const FeatureToggles = () => {
       default:
         return 'default';
     }
+  };
+
+  // Group features by category
+  const featureCategories = {
+    "Core Features": ["chatWidget", "projectManager", "darkMode"],
+    "LLM Providers": ["lmStudioIntegration", "ollamaIntegration", "openaiUplink"],
+    "Tools & Diagnostics": ["connectionStatus", "logViewer", "modelBenchmarking", "llmDiagnostics"],
+    "Experimental": ["multiModelInference", "agentCollaboration"]
   };
 
   return (
@@ -127,43 +177,51 @@ const FeatureToggles = () => {
           Enable or disable features. Some features are experimental and may not be fully stable.
         </Typography>
         
-        <List>
-          {Object.keys(features).map((featureKey) => (
-            <ListItem
-              key={featureKey}
-              secondaryAction={
-                <FormControlLabel
-                  control={
-                    <Switch
-                      edge="end"
-                      checked={features[featureKey]}
-                      onChange={handleChange(featureKey)}
-                      color="primary"
+        {Object.entries(featureCategories).map(([category, featureKeys]) => (
+          <Box key={category} sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+              {category}
+            </Typography>
+            
+            <List disablePadding>
+              {featureKeys.map((featureKey) => (
+                <ListItem
+                  key={featureKey}
+                  secondaryAction={
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          edge="end"
+                          checked={features[featureKey]}
+                          onChange={handleChange(featureKey)}
+                          color="primary"
+                        />
+                      }
+                      label=""
                     />
                   }
-                  label=""
-                />
-              }
-              disablePadding
-              sx={{ pt: 1, pb: 1 }}
-            >
-              <ListItemText 
-                primary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {featureInfo[featureKey]?.label || featureKey}
-                    <Chip 
-                      label={featureInfo[featureKey]?.stability || 'unknown'} 
-                      size="small" 
-                      color={getStabilityColor(featureInfo[featureKey]?.stability)}
-                      sx={{ ml: 1 }}
-                    />
-                  </Box>
-                }
-                secondary={featureInfo[featureKey]?.description || ''}
-              />
-            </ListItem>
-          ))}
-        </List>
+                  disablePadding
+                  sx={{ pt: 1, pb: 1 }}
+                >
+                  <ListItemText 
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {featureInfo[featureKey]?.label || featureKey}
+                        <Chip 
+                          label={featureInfo[featureKey]?.stability || 'unknown'} 
+                          size="small" 
+                          color={getStabilityColor(featureInfo[featureKey]?.stability)}
+                          sx={{ ml: 1 }}
+                        />
+                      </Box>
+                    }
+                    secondary={featureInfo[featureKey]?.description || ''}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+        ))}
         
         <Divider sx={{ my: 3 }} />
         

@@ -1,89 +1,59 @@
-/**
- * Server Checker Utility
- * Checks if the backend server is running and attempts to start it if needed
- */
+import axios from 'axios';
 
 /**
- * Checks if the server is running by making a request to the test endpoint
+ * Check if the backend server is running
  * @returns {Promise<boolean>} True if server is running, false otherwise
  */
 export const isServerRunning = async () => {
   try {
-    const response = await fetch('http://localhost:3001/api/test/test', {
-      signal: AbortSignal.timeout(2000)
+    // Try a lightweight endpoint for minimal overhead
+    const response = await axios.get('/api/test/ping', { 
+      timeout: 3000,
+      // Don't throw errors on bad status
+      validateStatus: () => true
     });
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-};
-
-/**
- * Attempts to start the server using the child_process API in Electron
- * Note: This only works in Electron environments with proper permissions
- * @returns {Promise<boolean>} True if server was started, false otherwise
- */
-export const startServer = async () => {
-  try {
-    // Check if we're in an Electron environment
-    if (window.require) {
-      const { exec } = window.require('child_process');
-      const path = window.require('path');
-      
-      // Get the project root path
-      const isDevMode = process.env.NODE_ENV === 'development';
-      const projectRoot = isDevMode 
-        ? process.cwd()
-        : path.join(process.resourcesPath, 'app');
-      
-      // Start the server in the background
-      const serverPath = path.join(projectRoot, 'src', 'server', 'index.js');
-      const logPath = path.join(projectRoot, 'logs', 'server.log');
-      
-      // Use nohup to keep the server running even if the parent process exits
-      const command = `nohup node ${serverPath} > ${logPath} 2>&1 &`;
-      
-      return new Promise((resolve) => {
-        exec(command, (error) => {
-          if (error) {
-            resolve(false);
-          } else {
-            // Wait a bit for the server to initialize
-            setTimeout(async () => {
-              // Verify the server is running
-              const running = await isServerRunning();
-              resolve(running);
-            }, 2000);
-          }
-        });
-      });
-    }
     
-    return false;
+    return response.status === 200;
   } catch (error) {
+    console.log('Server connection check failed:', error.message);
     return false;
   }
 };
 
 /**
- * Checks if the server is running and attempts to start it if not
- * @returns {Promise<boolean>} True if server is running or was started successfully
+ * Enhanced server status check with detailed information
+ * @returns {Promise<Object>} Status object with details about server state
  */
-export const ensureServerRunning = async () => {
-  // First check if the server is already running
-  const serverRunning = await isServerRunning();
-  
-  if (serverRunning) {
-    return true;
+export const checkServerStatus = async () => {
+  try {
+    const response = await axios.get('/api/status', { 
+      timeout: 3000,
+      validateStatus: () => true
+    });
+    
+    if (response.status === 200) {
+      return {
+        online: true,
+        status: response.status,
+        services: response.data?.services || {},
+        uptime: response.data?.uptime,
+        message: 'Server is online'
+      };
+    } else {
+      return {
+        online: false,
+        status: response.status,
+        message: `Server responded with status: ${response.status}`
+      };
+    }
+  } catch (error) {
+    return {
+      online: false,
+      status: null,
+      error: error.message || 'Unknown error',
+      message: 'Server is offline'
+    };
   }
-  
-  // Server is not running, try to start it
-  const started = await startServer();
-  return started;
 };
 
-export default {
-  isServerRunning,
-  startServer,
-  ensureServerRunning
-}; 
+export default { isServerRunning, checkServerStatus };
