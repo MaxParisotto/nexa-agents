@@ -21,6 +21,7 @@ import { ensureJsonResponses } from './middlewares/apiMiddleware.js';
 import { configureRoutes } from './routes/index.js';
 import { globalMetricsService } from './services/index.js';
 import { debugApiRequests } from './middlewares/debugMiddleware.js';
+import { metricsProxyMiddleware } from './middlewares/metricsProxyMiddleware.js';
 
 // Load environment variables
 dotenv.config();
@@ -55,7 +56,6 @@ import modelsRoutes from './routes/models.js';
 import testRoutes from './routes/test.js';
 import { createUplinkRouter } from './routes/uplink.js';
 import statusRoutes from './routes/status.js';
-import metricsRoutes from './routes/metrics.js';
 import workflowsRoutes from './routes/workflows.js';
 
 // Initialize process error handlers right away to catch any startup errors
@@ -243,14 +243,14 @@ const io = new socketIo(server, {
 });
 
 // Initialize metrics service with socket.io instance
-const metricsService = new MetricsService(io);
-metricsService.start();
+globalMetricsService.io = io; // Set the io instance on the global service
+globalMetricsService.start(); // Start the metrics collection
 
 // Initialize uplink router AFTER io has been created
 const uplinkRouter = createUplinkRouter(io);
 
 // API Routes - IMPORTANT: Define API routes BEFORE the catch-all route
-app.use('/api/metrics', metricsRoutes); // Put metrics first since we're having issues with it
+app.use('/api/metrics', metricsProxyMiddleware); // Add metrics proxy middleware
 app.use('/api/settings', settingsRoutes);
 app.use('/api/models', modelsRoutes);
 app.use('/api/test', testRoutes);

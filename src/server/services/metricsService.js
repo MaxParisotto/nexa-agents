@@ -1,50 +1,22 @@
 import os from 'os';
 import fs from 'fs';
-import path from 'path'; // Add missing path import
-
-// Try to import systeminformation but have a fallback if it's not available
-let si;
-try {
-  si = await import('systeminformation');
-} catch (e) {
-  console.warn('systeminformation package not available, using fallback metrics collection');
-  si = {
-    currentLoad: async () => ({ currentLoad: Math.random() * 30 + 10 }),
-    fsSize: async () => ([{ size: 1000000000, used: 500000000 }]),
-    networkStats: async () => ([]),
-    networkInterfaces: async () => ([]),
-    cpuTemperature: async () => ({ main: 50 }),
-    cpuSpeed: async () => ({ avg: 3000 })
-  };
-}
 
 /**
- * Service for gathering and caching system metrics
+ * Service for collecting and providing system metrics
  */
 class MetricsService {
-  constructor(io = null) {
+  constructor(io) {
     this.io = io;
+    this.isRunning = false;
     this.interval = null;
+    this.startTime = Date.now();
     this.metrics = {
-      cpu: {
-        usage: 0,
-        cores: os.cpus().length,
-        model: os.cpus()[0].model
-      },
-      memory: {
-        total: os.totalmem(),
-        free: os.freemem(),
-        used: os.totalmem() - os.freemem(),
-        usagePercent: ((os.totalmem() - os.freemem()) / os.totalmem()) * 100
-      },
-      uptime: os.uptime(),
-      serverUptime: process.uptime(),
-      timestamp: Date.now(),
-      platform: os.platform(),
-      hostname: os.hostname(),
-      load: os.loadavg()
+      cpu: { usage: 0, cores: os.cpus().length, model: os.cpus()[0]?.model || 'Unknown' },
+      memory: { total: 0, free: 0, used: 0, usagePercent: 0 },
+      uptime: 0,
+      serverUptime: 0,
+      timestamp: Date.now()
     };
-    
     this.tokenMetrics = {
       totalProcessed: 0,
       inputTokens: 0,
@@ -52,219 +24,149 @@ class MetricsService {
       byModel: {},
       timestamp: Date.now()
     };
-    
-    this.updateCounter = 0;
-    this.updateInterval = 3000; // 3 seconds
-    this.lastCpuInfo = null;
-    
-    // Create a cache directory if it doesn't exist
-    this.cacheDir = path.join(process.cwd(), 'cache');
-    if (!fs.existsSync(this.cacheDir)) {
-      fs.mkdirSync(this.cacheDir, { recursive: true });
-    }
-    
-    // Try to load cached metrics for initial values
-    this.loadCachedMetrics();
+    console.log('📊 MetricsService initialized');
   }
-  
+
   /**
    * Start collecting metrics at regular intervals
    */
   start() {
-    if (this.interval) return;
+    if (this.isRunning) {
+      console.log('📊 MetricsService is already running');
+      return;
+    }
+    
+    this.isRunning = true;
+    console.log('📊 MetricsService started');
     
     // Collect metrics immediately
     this.collectMetrics();
     
-    // Then collect at regular intervals
+    // Then collect them periodically
     this.interval = setInterval(() => {
       this.collectMetrics();
-    }, this.updateInterval);
-    
-    console.log(`Metrics service started, updating every ${this.updateInterval / 1000}s`);
-    return this;
+    }, 5000); // Every 5 seconds
   }
-  
+
   /**
-   * Stop the metrics collection
+   * Stop collecting metrics
    */
   stop() {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
-      console.log('Metrics service stopped');
     }
-    return this;
+    this.isRunning = false;
+    console.log('📊 MetricsService stopped');
   }
-  
+
   /**
-   * Load previously cached metrics if available
+   * Collect system metrics
    */
-  loadCachedMetrics() {
+  collectMetrics() {
     try {
-      const metricsPath = path.join(this.cacheDir, 'metrics.json');
-      const tokenPath = path.join(this.cacheDir, 'token_metrics.json');
+      // CPU usage is tricky to calculate accurately in Node.js without external libraries
+      // This is a simple approximation
+      const cpus = os.cpus();
+      let totalIdle = 0;
+      let totalTick = 0;
       
-      if (fs.existsSync(metricsPath)) {
-        const data = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
-        this.metrics = { ...this.metrics, ...data };
-      }
-      
-      if (fs.existsSync(tokenPath)) {
-        const data = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
-        this.tokenMetrics = { ...this.tokenMetrics, ...data };
-      }
-    } catch (e) {
-      console.error('Error loading cached metrics:', e);
-    }
-  }
-  
-  /**
-   * Save metrics to cache
-   */
-  saveMetricsToCache() {
-    try {
-      fs.writeFileSync(
-        path.join(this.cacheDir, 'metrics.json'),
-        JSON.stringify(this.metrics),
-        'utf8'
-      );
-      
-      fs.writeFileSync(
-        path.join(this.cacheDir, 'token_metrics.json'),
-        JSON.stringify(this.tokenMetrics),
-        'utf8'
-      );
-    } catch (e) {
-      console.error('Error saving metrics to cache:', e);
-    }
-  }
-  
-  /**
-   * Collect all system metrics
-   */
-  async collectMetrics() {
-    try {
-      // Only do full update every 3rd time to reduce CPU usage
-      // (some metrics are expensive to calculate)
-      const isFullUpdate = this.updateCounter % 3 === 0;
-      this.updateCounter++;
-      
-      // Get CPU usage using systeminformation
-      const cpuData = await si.currentLoad();
-      
-      // Update metrics object with new values
-      this.metrics.cpu.usage = parseFloat(cpuData.currentLoad.toFixed(1));
-      this.metrics.memory.free = os.freemem();
-      this.metrics.memory.total = os.totalmem();
-      this.metrics.memory.used = os.totalmem() - os.freemem();
-      this.metrics.memory.usagePercent = parseFloat(((this.metrics.memory.used / this.metrics.memory.total) * 100).toFixed(1));
-      this.metrics.uptime = os.uptime();
-      this.metrics.serverUptime = process.uptime();
-      this.metrics.timestamp = Date.now();
-      this.metrics.load = os.loadavg();
-      
-      // Do more expensive operations only on full updates
-      if (isFullUpdate) {
-        // Get disk information
-        try {
-          const diskData = await si.fsSize();
-          let totalSize = 0;
-          let totalUsed = 0;
-          
-          diskData.forEach(disk => {
-            totalSize += disk.size;
-            totalUsed += disk.used;
-          });
-          
-          this.metrics.disk = {
-            total: totalSize,
-            used: totalUsed,
-            free: totalSize - totalUsed,
-            usagePercent: parseFloat(((totalUsed / totalSize) * 100).toFixed(1))
-          };
-        } catch (e) {
-          console.error('Error getting disk info:', e);
+      for (const cpu of cpus) {
+        for (const type in cpu.times) {
+          totalTick += cpu.times[type];
         }
-        
-        // Get network interfaces and their stats
-        try {
-          const networkStats = await si.networkStats();
-          const interfaces = await si.networkInterfaces();
-          
-          this.metrics.network = {
-            interfaces: interfaces.map(i => ({ 
-              name: i.iface, 
-              ip: i.ip4 
-            })),
-            stats: networkStats.map(s => ({
-              interface: s.iface,
-              rx: s.rx_bytes,
-              tx: s.tx_bytes,
-              rxSec: s.rx_sec,
-              txSec: s.tx_sec
-            }))
-          };
-        } catch (e) {
-          console.error('Error getting network info:', e);
-        }
-        
-        // Save metrics to cache on full updates
-        this.saveMetricsToCache();
+        totalIdle += cpu.times.idle;
       }
       
-      // Emit updated metrics via Socket.IO if available
+      // Calculate CPU usage as a percentage (1 - idle/total)
+      const cpuUsage = Math.round((1 - totalIdle / totalTick) * 100);
+      
+      // Memory metrics
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      const usedMem = totalMem - freeMem;
+      const memUsagePercent = Math.round((usedMem / totalMem) * 100);
+      
+      // Update metrics
+      this.metrics = {
+        cpu: { 
+          usage: isNaN(cpuUsage) ? 0 : cpuUsage,
+          cores: cpus.length,
+          model: cpus[0]?.model || 'Unknown'
+        },
+        memory: {
+          total: totalMem,
+          free: freeMem,
+          used: usedMem,
+          usagePercent: memUsagePercent
+        },
+        uptime: Math.floor(os.uptime()),
+        serverUptime: Math.floor((Date.now() - this.startTime) / 1000),
+        timestamp: Date.now()
+      };
+      
+      // Emit metrics via socket.io if available
       if (this.io) {
-        this.io.emit('metrics_update', this.metrics);
+        this.io.emit('metrics', this.metrics);
       }
     } catch (error) {
-      console.error('Error collecting system metrics:', error);
+      console.error('Error collecting metrics:', error);
     }
   }
-  
+
   /**
    * Get current metrics
-   * @returns {Object} The current metrics
+   * @returns {Object} Current system metrics
    */
   getMetrics() {
+    console.log('📊 Returning current metrics');
     return this.metrics;
   }
-  
+
   /**
-   * Get token metrics
+   * Update token metrics
+   * @param {Object} data - Token usage data
+   */
+  updateTokenMetrics(data) {
+    try {
+      const { model, total, input, output } = data;
+      
+      // Update total token counts
+      this.tokenMetrics.totalProcessed += total;
+      this.tokenMetrics.inputTokens += input;
+      this.tokenMetrics.outputTokens += output;
+      
+      // Update per-model statistics
+      if (model) {
+        if (!this.tokenMetrics.byModel[model]) {
+          this.tokenMetrics.byModel[model] = 0;
+        }
+        this.tokenMetrics.byModel[model] += total;
+      }
+      
+      this.tokenMetrics.timestamp = Date.now();
+      
+      // Emit token metrics via socket.io if available
+      if (this.io) {
+        this.io.emit('token_metrics', this.tokenMetrics);
+      }
+    } catch (error) {
+      console.error('Error updating token metrics:', error);
+    }
+  }
+
+  /**
+   * Get current token metrics
    * @returns {Object} Current token metrics
    */
   getTokenMetrics() {
+    console.log('📊 Returning token metrics');
     return this.tokenMetrics;
-  }
-  
-  /**
-   * Update token metrics
-   * @param {Object} data Token usage data to add
-   */
-  updateTokenMetrics(data) {
-    // Increment counters
-    this.tokenMetrics.totalProcessed += data.total || 0;
-    this.tokenMetrics.inputTokens += data.input || 0;
-    this.tokenMetrics.outputTokens += data.output || 0;
-    this.tokenMetrics.timestamp = Date.now();
-    
-    // Update by model
-    if (data.model) {
-      if (!this.tokenMetrics.byModel[data.model]) {
-        this.tokenMetrics.byModel[data.model] = 0;
-      }
-      this.tokenMetrics.byModel[data.model] += data.total || 0;
-    }
-    
-    // Save updated token metrics
-    this.saveMetricsToCache();
-    
-    // Emit via Socket.IO if available
-    if (this.io) {
-      this.io.emit('token_metrics_update', this.tokenMetrics);
-    }
   }
 }
 
+// Create a global instance
+const globalMetricsService = new MetricsService();
+
+export { MetricsService, globalMetricsService };
 export default MetricsService;

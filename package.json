@@ -12,7 +12,8 @@
     "analyze": "vite build --mode=analyze",
     "clean": "rimraf dist",
     "build:clean": "npm run clean && npm run build",
-    "build:analyze": "npm run clean && npm run analyze"
+    "build:analyze": "npm run clean && npm run analyze",
+    "metrics": "chmod +x ./build-minimal-metrics.sh && ./build-minimal-metrics.sh"
   },
   "dependencies": {
     "@emotion/react": "^11.11.3",
