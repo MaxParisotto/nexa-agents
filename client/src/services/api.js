@@ -7,7 +7,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const NETWORK_CONFIG = {
   // Set to false to allow actual network requests to LLM providers
   // Set to true to completely suppress actual network requests
-  OFFLINE_MODE: false,
+  OFFLINE_MODE: false, // Set to false to use the actual server
   // Timeout for API requests (milliseconds)
   TIMEOUT: 5000, // Increased timeout for LLM connections
   // Whether to log API info messages
@@ -491,18 +491,419 @@ export const apiService = {
     }
   },
   
+  // Agent management methods
   getAgents: async () => {
     if (NETWORK_CONFIG.OFFLINE_MODE) {
-      return { data: [] };
+      // Return agents from local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return { data: localSettings.agents?.items || [] };
     }
     
     try {
       const serverAvailable = await checkBackendAvailability();
-      if (!serverAvailable) return { data: [] };
+      
+      if (!serverAvailable) {
+        // Return agents from local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        return { data: localSettings.agents?.items || [] };
+      }
       
       return await apiClient.get('/api/agents');
     } catch (err) {
-      return { data: [] };
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return { data: localSettings.agents?.items || [] };
+    }
+  },
+  
+  createAgent: async (agentData) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Add agent to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const newAgent = {
+        id: `agent-${Date.now()}`,
+        ...agentData
+      };
+      
+      const updatedSettings = {
+        ...localSettings,
+        agents: {
+          ...localSettings.agents,
+          items: [...(localSettings.agents?.items || []), newAgent]
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: newAgent };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Add agent to local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        const newAgent = {
+          id: `agent-${Date.now()}`,
+          ...agentData
+        };
+        
+        const updatedSettings = {
+          ...localSettings,
+          agents: {
+            ...localSettings.agents,
+            items: [...(localSettings.agents?.items || []), newAgent]
+          }
+        };
+        
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+        return { data: newAgent };
+      }
+      
+      return await apiClient.post('/api/agents', agentData);
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const newAgent = {
+        id: `agent-${Date.now()}`,
+        ...agentData
+      };
+      
+      const updatedSettings = {
+        ...localSettings,
+        agents: {
+          ...localSettings.agents,
+          items: [...(localSettings.agents?.items || []), newAgent]
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: newAgent };
+    }
+  },
+  
+  updateAgent: async (id, agentData) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Update agent in local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const updatedAgent = { id, ...agentData };
+      
+      const updatedSettings = {
+        ...localSettings,
+        agents: {
+          ...localSettings.agents,
+          items: (localSettings.agents?.items || []).map(agent => 
+            agent.id === id ? updatedAgent : agent
+          )
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: updatedAgent };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Update agent in local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        const updatedAgent = { id, ...agentData };
+        
+        const updatedSettings = {
+          ...localSettings,
+          agents: {
+            ...localSettings.agents,
+            items: (localSettings.agents?.items || []).map(agent => 
+              agent.id === id ? updatedAgent : agent
+            )
+          }
+        };
+        
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+        return { data: updatedAgent };
+      }
+      
+      return await apiClient.put(`/api/agents/${id}`, agentData);
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const updatedAgent = { id, ...agentData };
+      
+      const updatedSettings = {
+        ...localSettings,
+        agents: {
+          ...localSettings.agents,
+          items: (localSettings.agents?.items || []).map(agent => 
+            agent.id === id ? updatedAgent : agent
+          )
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: updatedAgent };
+    }
+  },
+  
+  deleteAgent: async (id) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Delete agent from local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      
+      const updatedSettings = {
+        ...localSettings,
+        agents: {
+          ...localSettings.agents,
+          items: (localSettings.agents?.items || []).filter(agent => agent.id !== id)
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: { success: true } };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Delete agent from local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        
+        const updatedSettings = {
+          ...localSettings,
+          agents: {
+            ...localSettings.agents,
+            items: (localSettings.agents?.items || []).filter(agent => agent.id !== id)
+          }
+        };
+        
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+        return { data: { success: true } };
+      }
+      
+      return await apiClient.delete(`/api/agents/${id}`);
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      
+      const updatedSettings = {
+        ...localSettings,
+        agents: {
+          ...localSettings.agents,
+          items: (localSettings.agents?.items || []).filter(agent => agent.id !== id)
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: { success: true } };
+    }
+  },
+  
+  // Tool management methods
+  getTools: async () => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Return tools from local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return { data: localSettings.tools?.items || [] };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Return tools from local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        return { data: localSettings.tools?.items || [] };
+      }
+      
+      return await apiClient.get('/api/tools');
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return { data: localSettings.tools?.items || [] };
+    }
+  },
+  
+  createTool: async (toolData) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Add tool to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const newTool = {
+        id: `tool-${Date.now()}`,
+        ...toolData
+      };
+      
+      const updatedSettings = {
+        ...localSettings,
+        tools: {
+          ...localSettings.tools,
+          items: [...(localSettings.tools?.items || []), newTool]
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: newTool };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Add tool to local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        const newTool = {
+          id: `tool-${Date.now()}`,
+          ...toolData
+        };
+        
+        const updatedSettings = {
+          ...localSettings,
+          tools: {
+            ...localSettings.tools,
+            items: [...(localSettings.tools?.items || []), newTool]
+          }
+        };
+        
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+        return { data: newTool };
+      }
+      
+      return await apiClient.post('/api/tools', toolData);
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const newTool = {
+        id: `tool-${Date.now()}`,
+        ...toolData
+      };
+      
+      const updatedSettings = {
+        ...localSettings,
+        tools: {
+          ...localSettings.tools,
+          items: [...(localSettings.tools?.items || []), newTool]
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: newTool };
+    }
+  },
+  
+  updateTool: async (id, toolData) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Update tool in local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const updatedTool = { id, ...toolData };
+      
+      const updatedSettings = {
+        ...localSettings,
+        tools: {
+          ...localSettings.tools,
+          items: (localSettings.tools?.items || []).map(tool => 
+            tool.id === id ? updatedTool : tool
+          )
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: updatedTool };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Update tool in local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        const updatedTool = { id, ...toolData };
+        
+        const updatedSettings = {
+          ...localSettings,
+          tools: {
+            ...localSettings.tools,
+            items: (localSettings.tools?.items || []).map(tool => 
+              tool.id === id ? updatedTool : tool
+            )
+          }
+        };
+        
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+        return { data: updatedTool };
+      }
+      
+      return await apiClient.put(`/api/tools/${id}`, toolData);
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      const updatedTool = { id, ...toolData };
+      
+      const updatedSettings = {
+        ...localSettings,
+        tools: {
+          ...localSettings.tools,
+          items: (localSettings.tools?.items || []).map(tool => 
+            tool.id === id ? updatedTool : tool
+          )
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: updatedTool };
+    }
+  },
+  
+  deleteTool: async (id) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Delete tool from local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      
+      const updatedSettings = {
+        ...localSettings,
+        tools: {
+          ...localSettings.tools,
+          items: (localSettings.tools?.items || []).filter(tool => tool.id !== id)
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: { success: true } };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Delete tool from local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        
+        const updatedSettings = {
+          ...localSettings,
+          tools: {
+            ...localSettings.tools,
+            items: (localSettings.tools?.items || []).filter(tool => tool.id !== id)
+          }
+        };
+        
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+        return { data: { success: true } };
+      }
+      
+      return await apiClient.delete(`/api/tools/${id}`);
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      
+      const updatedSettings = {
+        ...localSettings,
+        tools: {
+          ...localSettings.tools,
+          items: (localSettings.tools?.items || []).filter(tool => tool.id !== id)
+        }
+      };
+      
+      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, updatedSettings);
+      return { data: { success: true } };
     }
   },
   

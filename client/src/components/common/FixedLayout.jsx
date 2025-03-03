@@ -25,6 +25,8 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import LogoIcon from '@mui/icons-material/Memory';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import BuildIcon from '@mui/icons-material/Build';
 
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -93,6 +95,16 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
     },
     { 
       divider: true 
+    },
+    { 
+      name: 'AI Agents', 
+      path: '/agents', 
+      icon: <SmartToyIcon /> 
+    },
+    { 
+      name: 'Tools', 
+      path: '/tools', 
+      icon: <BuildIcon /> 
     },
     { 
       name: 'GPT Uplink', 

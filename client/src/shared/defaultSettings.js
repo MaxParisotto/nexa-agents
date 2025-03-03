@@ -5,6 +5,105 @@
  */
 
 export const DEFAULT_SETTINGS = {
+  agents: {
+    items: [
+      {
+        id: 'agent-default',
+        name: 'Assistant',
+        description: 'General purpose assistant that can help with various tasks',
+        providerId: 'provider-ollama',
+        model: 'llama3:8b',
+        enabled: true,
+        personality: 'Helpful, friendly, and concise',
+        directives: [
+          'Answer questions accurately and truthfully',
+          'Provide helpful information',
+          'Be respectful and professional'
+        ],
+        hierarchyLevel: 1,
+        tools: ['web-search', 'calculator', 'weather'],
+        systemPrompt: 'You are a helpful assistant that provides accurate and concise information.',
+        temperature: 0.7,
+        maxTokens: 2048
+      }
+    ],
+    hierarchyLevels: [
+      { id: 1, name: 'Assistant' },
+      { id: 2, name: 'Specialist' },
+      { id: 3, name: 'Expert' },
+      { id: 4, name: 'Manager' }
+    ]
+  },
+  tools: {
+    items: [
+      {
+        id: 'web-search',
+        name: 'Web Search',
+        description: 'Search the web for information',
+        enabled: true,
+        category: 'information',
+        parameters: [
+          {
+            name: 'query',
+            type: 'string',
+            required: true,
+            description: 'Search query'
+          },
+          {
+            name: 'limit',
+            type: 'number',
+            required: false,
+            default: 5,
+            description: 'Maximum number of results'
+          }
+        ]
+      },
+      {
+        id: 'calculator',
+        name: 'Calculator',
+        description: 'Perform mathematical calculations',
+        enabled: true,
+        category: 'utility',
+        parameters: [
+          {
+            name: 'expression',
+            type: 'string',
+            required: true,
+            description: 'Mathematical expression to evaluate'
+          }
+        ]
+      },
+      {
+        id: 'weather',
+        name: 'Weather',
+        description: 'Get weather information for a location',
+        enabled: true,
+        category: 'information',
+        parameters: [
+          {
+            name: 'location',
+            type: 'string',
+            required: true,
+            description: 'Location (city, country, etc.)'
+          },
+          {
+            name: 'units',
+            type: 'string',
+            required: false,
+            default: 'metric',
+            description: 'Units (metric or imperial)'
+          }
+        ]
+      }
+    ],
+    categories: [
+      { id: 'information', name: 'Information Retrieval' },
+      { id: 'utility', name: 'Utility' },
+      { id: 'communication', name: 'Communication' },
+      { id: 'productivity', name: 'Productivity' },
+      { id: 'development', name: 'Development' }
+    ]
+  },
   theme: {
     darkMode: true, // Default to dark mode
     primaryColor: '#4a76a8', // Primary blue color

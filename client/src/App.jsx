@@ -16,6 +16,8 @@ import MetricsPage from './components/metrics/MetricsPage';
 import Workflows from './components/workflows/Workflows';
 import WorkflowDetail from './components/workflows/WorkflowDetail';
 import LogsPage from './components/features/LogsPage';
+import AgentsPage from './components/agents/AgentsPage';
+import ToolsPage from './components/tools/ToolsPage';
 import NotFound from './components/common/NotFound';
 
 /**
@@ -39,6 +41,8 @@ export default function App() {
           <Route path="workflows" element={<Workflows />} />
           <Route path="workflows/:id" element={<WorkflowDetail />} />
           <Route path="logs" element={<LogsPage />} />
+          <Route path="agents" element={<AgentsPage />} />
+          <Route path="tools" element={<ToolsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

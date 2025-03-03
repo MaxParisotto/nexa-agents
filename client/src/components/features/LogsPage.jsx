@@ -61,7 +61,11 @@ const LogsPage = () => {
     
     // Initialize system logs if none exist
     if (allLogs.length === 0) {
-      initializeSystemLogs();
+      // Handle the async function properly
+      initializeSystemLogs().catch(error => {
+        console.error('Error initializing system logs:', error);
+        LogManager.error('SYSTEM', 'Error initializing system logs', { error: error.message });
+      });
     }
     
     return () => removeListener();
@@ -86,7 +90,7 @@ const LogsPage = () => {
   }, [filteredLogs, isTerminalView]);
 
   // Initialize system logs if none exist
-  const initializeSystemLogs = () => {
+  const initializeSystemLogs = async () => {
     // Log actual system information instead of using mockup data
     const systemInfo = {
       userAgent: navigator.userAgent,
@@ -98,26 +102,72 @@ const LogsPage = () => {
     };
     
     // Add real system logs
-    LogManager.info('SYSTEM', 'Application initialized', { version: process.env.npm_package_version || '0.1.0' });
+    LogManager.info('SYSTEM', 'Application initialized', { version: import.meta.env.VITE_APP_VERSION || '0.1.0' });
     LogManager.info('SYSTEM', 'Browser information', systemInfo);
     LogManager.info('NETWORK', 'Checking server connection');
     
+    // Get real network information
+    const networkInfo = {
+      online: navigator.onLine,
+      connection: navigator.connection ? {
+        effectiveType: navigator.connection.effectiveType,
+        downlink: navigator.connection.downlink,
+        rtt: navigator.connection.rtt,
+        saveData: navigator.connection.saveData
+      } : 'Not available',
+      userAgent: navigator.userAgent,
+      vendor: navigator.vendor,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Log real network information
+    LogManager.info('NETWORK', 'Network status', { online: navigator.onLine });
+    LogManager.info('NETWORK', 'Connection information', networkInfo);
+    
+    // Log real performance metrics
+    if (window.performance) {
+      const perfData = {
+        memory: window.performance.memory ? {
+          jsHeapSizeLimit: Math.round(window.performance.memory.jsHeapSizeLimit / (1024 * 1024)),
+          totalJSHeapSize: Math.round(window.performance.memory.totalJSHeapSize / (1024 * 1024)),
+          usedJSHeapSize: Math.round(window.performance.memory.usedJSHeapSize / (1024 * 1024))
+        } : 'Not available',
+        navigation: window.performance.getEntriesByType('navigation').length > 0 ? 
+          window.performance.getEntriesByType('navigation')[0] : 'Not available',
+        timing: window.performance.timing ? {
+          domComplete: window.performance.timing.domComplete - window.performance.timing.navigationStart,
+          domInteractive: window.performance.timing.domInteractive - window.performance.timing.navigationStart,
+          loadEvent: window.performance.timing.loadEventEnd - window.performance.timing.navigationStart
+        } : 'Not available'
+      };
+      
+      LogManager.debug('SYSTEM', 'Performance metrics', perfData);
+    }
+    
     // Attempt to fetch server status to generate real network logs
-    fetch('/api/health')
-      .then(response => {
-        if (response.ok) {
-          LogManager.info('NETWORK', 'Connected to server', { status: response.status });
-        } else {
-          LogManager.warn('NETWORK', 'Server responded with non-OK status', { status: response.status });
-        }
-        return response.json();
-      })
-      .then(data => {
+    try {
+      LogManager.info('NETWORK', 'Checking server connection');
+      
+      const response = await fetch('http://localhost:3001/api/health');
+      
+      if (response.ok) {
+        LogManager.info('NETWORK', 'Connected to server', { status: response.status });
+        const data = await response.json();
         LogManager.debug('API', 'Server health data received', data);
-      })
-      .catch(error => {
-        LogManager.error('NETWORK', 'Failed to connect to server', { error: error.message });
-      });
+      } else {
+        LogManager.warn('NETWORK', 'Server responded with non-OK status', { status: response.status });
+      }
+    } catch (error) {
+      LogManager.error('NETWORK', 'Failed to connect to server', { error: error.message });
+      
+      // If server connection fails, check Socket.IO connection
+      try {
+        LogManager.info('NETWORK', 'Checking Socket.IO connection');
+        LogManager.info('NETWORK', 'Socket.IO server should be available at ws://localhost:3001');
+      } catch (socketError) {
+        LogManager.error('NETWORK', 'Error checking Socket.IO connection', { error: socketError.message });
+      }
+    }
   };
 
   const handleLevelChange = (event) => {

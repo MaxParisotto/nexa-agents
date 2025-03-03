@@ -12,6 +12,8 @@ import GeneralSettings from './GeneralSettings';
 import LlmProviderSettings from './LlmProviderSettings';
 import UISettings from './UISettings';
 import AdvancedSettings from './AdvancedSettings';
+import AgentSettings from './AgentSettings';
+import ToolSettings from './ToolSettings';
 
 /**
  * Settings component for managing application settings
@@ -144,6 +146,8 @@ export default function Settings() {
         >
           <Tab label="General" />
           <Tab label="LLM Providers" />
+          <Tab label="AI Agents" />
+          <Tab label="Tools" />
           <Tab label="UI & Appearance" />
           <Tab label="Advanced" />
         </Tabs>
@@ -165,13 +169,27 @@ export default function Settings() {
       )}
       
       {activeTab === 2 && (
-        <UISettings 
+        <AgentSettings 
           settings={localSettings} 
           onUpdateSettings={handleUpdateSettings}
         />
       )}
       
       {activeTab === 3 && (
+        <ToolSettings 
+          settings={localSettings} 
+          onUpdateSettings={handleUpdateSettings}
+        />
+      )}
+      
+      {activeTab === 4 && (
+        <UISettings 
+          settings={localSettings} 
+          onUpdateSettings={handleUpdateSettings}
+        />
+      )}
+      
+      {activeTab === 5 && (
         <AdvancedSettings 
           settings={localSettings} 
           onUpdateSettings={handleUpdateSettings}
