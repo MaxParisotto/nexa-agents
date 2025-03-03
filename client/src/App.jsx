@@ -6,7 +6,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { useThemeContext } from './contexts/ThemeContext';
 
 // Import layout components
-import Layout from './components/common/Layout';
+import FixedLayout from './components/common/FixedLayout'; // Use the fixed layout component
 import NotFound from './components/common/NotFound';
 
 // Import page components 
@@ -31,9 +31,9 @@ function App() {
   return (
     <>
       <CssBaseline />
-      <div className="App">
+      <div className="app-root">
         <Routes>
-          <Route path="/" element={<Layout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
+          <Route path="/" element={<FixedLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
             {/* Redirect root to dashboard */}
             <Route index element={<Navigate to="/dashboard" replace />} />
             

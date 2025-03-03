@@ -5,6 +5,7 @@ import { StyledEngineProvider, GlobalStyles } from '@mui/material';
 
 import App from './App';
 import { ThemeContextProvider } from './contexts/ThemeContext';
+import reportWebVitals from './reportWebVitals';
 
 // Global styles to fix MUI integration issues
 const globalStyles = (
@@ -27,7 +28,9 @@ const globalStyles = (
   />
 );
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const root = ReactDOM.createRoot(document.getElementById('root'));
+
+root.render(
   <React.StrictMode>
     <StyledEngineProvider injectFirst>
       {globalStyles}
@@ -39,3 +42,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </StyledEngineProvider>
   </React.StrictMode>
 );
+
+// Performance measurement
+reportWebVitals();
