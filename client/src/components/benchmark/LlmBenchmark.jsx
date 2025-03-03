@@ -15,6 +15,7 @@ import InfoIcon from '@mui/icons-material/Info';
 
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
+import realBenchmarkService from '../../../../src/utils/RealBenchmarkService';
 
 /**
  * LLM Benchmark Component - Test and evaluate different language models
@@ -76,43 +77,134 @@ export default function LlmBenchmark() {
           return;
         }
       } catch (err) {
-        console.log('Backend unavailable, using mock data for benchmarks');
+        console.log('Backend unavailable, using local benchmark service');
       }
       
-      // If API call fails, use mock data (can be enhanced with actual model names)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // If API call fails, use the real local benchmark service
+      console.log('Running local benchmarks with real data...');
       
-      // Generate mock results using actual model information from settings
-      const mockResults = {
-        timestamp: new Date().toISOString(),
-        models: benchmarkConfig.models.map(modelId => {
-          // Parse the provider:model format
-          const [providerId, modelName] = modelId.split(':');
+      // Process selected models
+      const benchmarkPromises = benchmarkConfig.models.map(async (modelId) => {
+        // Parse the provider:model format
+        const [providerId, modelName] = modelId.split(':');
+        
+        // Find the provider data
+        const providerData = settings.llmProviders.find(p => p.id === providerId);
+        if (!providerData) {
+          return null;
+        }
+        
+        const providerName = providerData.name;
+        // Map provider type to the correct server type format expected by the benchmark service
+        let serverType = providerData.type; // 'ollama' or 'lmstudio'
+        if (serverType === 'lmstudio') {
+          serverType = 'lmStudio'; // Fix case sensitivity issue
+        }
+        const apiUrl = providerData.baseUrl;
+        
+        // Map benchmark types to RealBenchmarkService task types
+        const taskTypeMap = {
+          'reasoning': 'reasoning',
+          'factual': 'factual',
+          'coding': 'coding',
+          'creativity': 'creativity',
+          'math': 'reasoning'
+        };
+        
+        // Filter and map selected benchmarks to task types
+        const taskTypes = benchmarkConfig.benchmarks
+          .map(b => taskTypeMap[b] || 'completion')
+          .filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+        
+        // Run benchmark for this model
+        try {
+          const benchmarkResult = await realBenchmarkService.runBenchmark({
+            serverType,
+            apiUrl,
+            model: modelName,
+            taskTypes,
+            maxPrompts: benchmarkConfig.repetitions,
+            temperature: benchmarkConfig.temperature,
+            maxTokens: 256,
+            includeFunctionCalling: benchmarkConfig.benchmarks.includes('toolCalling')
+          });
           
-          // Find the provider data
-          const providerData = settings.llmProviders.find(p => p.id === providerId);
-          const providerName = providerData ? providerData.name : 'Unknown Provider';
-          
+          // Map the benchmark results to the expected format
           return {
             id: modelId,
             name: modelName,
             provider: providerName,
-            results: benchmarkConfig.benchmarks.map(benchmark => ({
-              category: benchmark,
-              score: Math.round(Math.random() * 1000) / 10, // Random score between 0-100
-              latency: Math.round(Math.random() * 2000 + 500), // Random latency between 500-2500ms
-              details: {
-                accuracy: Math.round(Math.random() * 1000) / 10,
-                coherence: Math.round(Math.random() * 1000) / 10,
-                relevance: Math.round(Math.random() * 1000) / 10,
+            results: benchmarkConfig.benchmarks.map(benchmarkType => {
+              // Find corresponding task in benchmark results
+              const taskType = taskTypeMap[benchmarkType] || 'factual';
+              const task = benchmarkResult.tasks.find(t => t.type === taskType);
+              
+              if (!task) {
+                return {
+                  category: benchmarkType,
+                  score: 0,
+                  latency: 0,
+                  details: {
+                    accuracy: 0,
+                    coherence: 0,
+                    relevance: 0
+                  }
+                };
               }
-            })),
-            overallScore: Math.round(Math.random() * 1000) / 10 // Random overall score
+              
+              // Use the actual quality-based scores from RealBenchmarkService
+              const score = task.averageScore;
+              
+              // Extract evaluation details from the first prompt result if available
+              const promptResult = task.prompts[0] || {};
+              const evaluationDetails = promptResult.evaluationDetails || {};
+              
+              return {
+                category: benchmarkType,
+                score: Math.round(score * 10) / 10,
+                latency: Math.round(task.averageResponseTime),
+                details: {
+                  // Map evaluation details to UI components
+                  accuracy: evaluationDetails.hasCorrectAnswer !== undefined 
+                    ? (evaluationDetails.hasCorrectAnswer ? 100 : 0)
+                    : Math.round(score * 10) / 10,
+                  coherence: evaluationDetails.explanationScore !== undefined
+                    ? Math.round(evaluationDetails.explanationScore * 10) / 10
+                    : Math.round(score * 0.8 * 10) / 10,
+                  relevance: evaluationDetails.match === 'exact' 
+                    ? 100 
+                    : evaluationDetails.match === 'partial' 
+                      ? 80 
+                      : Math.round(score * 0.9 * 10) / 10
+                }
+              };
+            }),
+            // Calculate overall score as average of all benchmark scores
+            overallScore: 0 // Will be calculated after all results are mapped
           };
-        })
+        } catch (err) {
+          console.error(`Error benchmarking model ${modelName}:`, err);
+          return null;
+        }
+      });
+      
+      // Wait for all benchmarks to complete
+      const modelResults = (await Promise.all(benchmarkPromises)).filter(Boolean);
+      
+      // Calculate overall scores
+      modelResults.forEach(model => {
+        if (model && model.results && model.results.length > 0) {
+          const totalScore = model.results.reduce((sum, r) => sum + r.score, 0);
+          model.overallScore = Math.round((totalScore / model.results.length) * 10) / 10;
+        }
+      });
+      
+      const results = {
+        timestamp: new Date().toISOString(),
+        models: modelResults
       };
       
-      setResults(mockResults);
+      setResults(results);
     } catch (err) {
       console.error('Error running benchmarks:', err);
       setError('Failed to run benchmarks. Please try again.');
@@ -159,7 +251,7 @@ export default function LlmBenchmark() {
     if (!results) return;
     
     const dataStr = JSON.stringify(results, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
     
     const exportFileDefaultName = `llm-benchmark-${new Date().toISOString().slice(0,10)}.json`;
     
