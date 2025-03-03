@@ -16,6 +16,8 @@
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.15.10",
     "@mui/material": "^5.15.10",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.3.0",
     "axios": "^1.6.7",
     "mui-color-input": "^2.0.1",
     "react": "^18.2.0",

@@ -15,6 +15,7 @@ import Agora from './components/agora/Agora';
 import MetricsPage from './components/metrics/MetricsPage';
 import Workflows from './components/workflows/Workflows';
 import WorkflowDetail from './components/workflows/WorkflowDetail';
+import LogsPage from './components/features/LogsPage';
 import NotFound from './components/common/NotFound';
 
 /**
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="agora" element={<Agora />} />
           <Route path="workflows" element={<Workflows />} />
           <Route path="workflows/:id" element={<WorkflowDetail />} />
+          <Route path="logs" element={<LogsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

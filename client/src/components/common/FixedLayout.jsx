@@ -23,6 +23,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import LogoIcon from '@mui/icons-material/Memory';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -83,6 +84,11 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
       name: 'Metrics', 
       path: '/metrics', 
       icon: <AssessmentIcon /> 
+    },
+    { 
+      name: 'Logs', 
+      path: '/logs', 
+      icon: <ListAltIcon /> 
     },
     { 
       divider: true 
