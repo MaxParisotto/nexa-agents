@@ -5,13 +5,13 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 // Flag to control network request behavior
 const NETWORK_CONFIG = {
+  // Set to false to allow actual network requests to LLM providers
   // Set to true to completely suppress actual network requests
-  // This improves performance and prevents console errors when we know there's no backend
-  OFFLINE_MODE: true,
+  OFFLINE_MODE: false,
   // Timeout for API requests (milliseconds)
-  TIMEOUT: 2000,
+  TIMEOUT: 5000, // Increased timeout for LLM connections
   // Whether to log API info messages
-  VERBOSE_LOGGING: false
+  VERBOSE_LOGGING: true
 };
 
 // Create axios instance with default config

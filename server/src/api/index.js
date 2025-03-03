@@ -56,6 +56,14 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Mount route modules
 app.use('/api/agents', agentsRoutes);
 app.use('/api/workflows', workflowsRoutes);

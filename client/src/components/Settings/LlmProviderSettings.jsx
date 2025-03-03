@@ -311,6 +311,44 @@ export default function LlmProviderSettings({ settings, onUpdateSettings }) {
                   <Button 
                     size="small" 
                     startIcon={<RefreshIcon />}
+                    onClick={async () => {
+                      // Create a temporary copy of the provider for testing
+                      const tempProvider = { ...provider };
+                      setTesting(true);
+                      
+                      try {
+                        const credentials = {
+                          baseUrl: tempProvider.baseUrl,
+                          apiKey: tempProvider.apiKey
+                        };
+                        
+                        const response = await apiService.getProviderModels(tempProvider.type, credentials);
+                        
+                        if (response?.data?.success && response.data.models) {
+                          // Update the provider with the new models
+                          const updatedProviders = settings.llmProviders.map(p => {
+                            if (p.id === tempProvider.id) {
+                              return {
+                                ...p,
+                                models: response.data.models,
+                                // Set default model if not already set
+                                defaultModel: p.defaultModel || (response.data.models.length > 0 ? response.data.models[0] : '')
+                              };
+                            }
+                            return p;
+                          });
+                          
+                          // Update settings
+                          onUpdateSettings('llmProviders', updatedProviders);
+                        } else {
+                          console.error('Failed to refresh models:', response?.data?.message);
+                        }
+                      } catch (err) {
+                        console.error('Error refreshing models:', err);
+                      } finally {
+                        setTesting(false);
+                      }
+                    }}
                   >
                     Refresh Models
                   </Button>

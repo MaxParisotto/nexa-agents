@@ -13,6 +13,8 @@ import Benchmark from './components/benchmark/LlmBenchmark';
 import GptUplink from './components/integrations/GptUplink';
 import Agora from './components/agora/Agora';
 import MetricsPage from './components/metrics/MetricsPage';
+import Workflows from './components/workflows/Workflows';
+import WorkflowDetail from './components/workflows/WorkflowDetail';
 import NotFound from './components/common/NotFound';
 
 /**
@@ -33,6 +35,8 @@ export default function App() {
           <Route path="metrics" element={<MetricsPage />} />
           <Route path="integrations/gpt-uplink" element={<GptUplink />} />
           <Route path="agora" element={<Agora />} />
+          <Route path="workflows" element={<Workflows />} />
+          <Route path="workflows/:id" element={<WorkflowDetail />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

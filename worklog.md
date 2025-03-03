@@ -37,3 +37,20 @@
 - Fixed missing export error in utils.js:
   - Added formatFileSize export as an alias for formatBytes
   - Resolved SyntaxError preventing application from loading properly
+- Fixed 404 error on /workflows route:
+  - Added missing routes for /workflows and /workflows/:id in App.jsx
+  - Imported and connected Workflows and WorkflowDetail components
+  - Fixed generateId function in utils.js to properly return the generated ID
+  - Updated Workflows.jsx to use the useWorkflows hook instead of mock data
+  - Updated WorkflowDetail.jsx to use the useWorkflows hook for fetching workflow details
+- Fixed LLM connection issues:
+  - Changed OFFLINE_MODE from true to false in api.js to allow actual network requests
+  - Increased API request timeout from 2000ms to 5000ms for better LLM connection reliability
+  - Enabled verbose logging to help with debugging connection issues
+  - Added missing onClick handler for "Refresh Models" button in LlmProviderSettings.jsx
+- Fixed API and UI errors:
+  - Added missing /api/health endpoint to server for health checks
+  - Fixed formatDate function in utils.js to properly handle invalid date values
+  - Updated WorkflowCard.jsx to handle undefined workflow.steps property
+  - Fixed 404 errors for API endpoints by ensuring proper server configuration
+  - Fixed LinearProgress color error in WorkflowCard.jsx by using a fixed color value

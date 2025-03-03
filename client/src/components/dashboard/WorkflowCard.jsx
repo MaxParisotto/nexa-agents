@@ -15,6 +15,11 @@ import { formatDate } from '../../shared/utils';
 export default function WorkflowCard({ workflow, onClick }) {
   // Calculate workflow progress
   const calculateProgress = () => {
+    // Check if steps exist
+    if (!workflow.steps || !Array.isArray(workflow.steps)) {
+      return 0;
+    }
+    
     const total = workflow.steps.length;
     if (!total) return 0;
     
@@ -97,7 +102,10 @@ export default function WorkflowCard({ workflow, onClick }) {
               Progress
             </Typography>
             <Typography variant="body2">
-              {workflow.steps.filter(s => s.status === 'completed').length}/{workflow.steps.length} steps
+              {workflow.steps && Array.isArray(workflow.steps) 
+                ? `${workflow.steps.filter(s => s.status === 'completed').length}/${workflow.steps.length} steps`
+                : '0/0 steps'
+              }
             </Typography>
           </Box>
           
@@ -105,7 +113,7 @@ export default function WorkflowCard({ workflow, onClick }) {
             variant="determinate" 
             value={calculateProgress()} 
             sx={{ height: 6, borderRadius: 1 }}
-            color={getStatusColor()}
+            color="primary"
           />
         </Box>
         

@@ -20,11 +20,22 @@ export const formatDate = (date, options = {}) => {
   const mergedOptions = { ...defaultOptions, ...options };
   
   try {
+    // Check if date is valid
+    if (!date) {
+      return 'N/A';
+    }
+    
     const dateObj = date instanceof Date ? date : new Date(date);
+    
+    // Check if date is valid (NaN check)
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid date';
+    }
+    
     return new Intl.DateTimeFormat('en-US', mergedOptions).format(dateObj);
   } catch (error) {
     console.error('Error formatting date:', error);
-    return String(date);
+    return 'Invalid date';
   }
 };
 
@@ -109,4 +120,6 @@ export const generateId = (length = 10) => {
   for (let i = 0; i < length; i++) {
     result += characters.charAt(Math.floor(Math.random() * characters.length));
   }
+  
+  return result;
 };

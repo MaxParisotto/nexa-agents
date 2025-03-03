@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Box, Typography, Button, Grid, 
   Paper, CircularProgress, Alert,
@@ -9,105 +9,17 @@ import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { useNavigate } from 'react-router-dom';
 
-// Import components
+// Import components and hooks
 import WorkflowCard from '../dashboard/WorkflowCard';
+import { useWorkflows } from '../../hooks/useWorkflows';
 
 /**
  * Workflows Component - Lists and manages workflows
  */
 export default function Workflows() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [workflows, setWorkflows] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Fetch workflows on component mount
-  useEffect(() => {
-    const fetchWorkflows = async () => {
-      setLoading(true);
-      try {
-        // In a real app, this would be an API call using apiService.getWorkflows()
-        // For now, let's use the mock data
-        
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // Mock data
-        const mockWorkflows = [
-          {
-            id: '1',
-            name: 'Content Generation Pipeline',
-            description: 'An end-to-end workflow for generating website content',
-            status: 'active',
-            steps: [
-              { id: 'step1', name: 'Research Topics', status: 'completed' },
-              { id: 'step2', name: 'Generate Outline', status: 'completed' },
-              { id: 'step3', name: 'Write Draft', status: 'in_progress' },
-              { id: 'step4', name: 'Edit & Refine', status: 'pending' },
-              { id: 'step5', name: 'Publish', status: 'pending' }
-            ],
-            createdAt: '2023-05-10T10:30:00Z',
-            updatedAt: '2023-05-10T14:22:00Z'
-          },
-          {
-            id: '2',
-            name: 'Customer Support Assistant',
-            description: 'Workflow for handling customer support requests',
-            status: 'completed',
-            steps: [
-              { id: 'step1', name: 'Ticket Analysis', status: 'completed' },
-              { id: 'step2', name: 'Response Generation', status: 'completed' },
-              { id: 'step3', name: 'Human Review', status: 'completed' },
-              { id: 'step4', name: 'Send Response', status: 'completed' }
-            ],
-            createdAt: '2023-05-08T09:15:00Z',
-            updatedAt: '2023-05-09T16:40:00Z'
-          },
-          {
-            id: '3',
-            name: 'Data Analysis Pipeline',
-            description: 'Process and analyze customer data',
-            status: 'draft',
-            steps: [
-              { id: 'step1', name: 'Data Collection', status: 'pending' },
-              { id: 'step2', name: 'Data Cleaning', status: 'pending' },
-              { id: 'step3', name: 'Analysis', status: 'pending' },
-              { id: 'step4', name: 'Report Generation', status: 'pending' }
-            ],
-            createdAt: '2023-05-12T11:20:00Z',
-            updatedAt: '2023-05-12T11:20:00Z'
-          },
-          {
-            id: '4',
-            name: 'Email Marketing Campaign',
-            description: 'Create and send targeted email campaigns',
-            status: 'paused',
-            steps: [
-              { id: 'step1', name: 'Audience Segmentation', status: 'completed' },
-              { id: 'step2', name: 'Content Creation', status: 'completed' },
-              { id: 'step3', name: 'Email Design', status: 'in_progress' },
-              { id: 'step4', name: 'Testing', status: 'pending' },
-              { id: 'step5', name: 'Scheduling', status: 'pending' },
-              { id: 'step6', name: 'Sending', status: 'pending' }
-            ],
-            createdAt: '2023-05-05T15:30:00Z',
-            updatedAt: '2023-05-07T09:45:00Z'
-          }
-        ];
-        
-        setWorkflows(mockWorkflows);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching workflows:', err);
-        setError('Failed to load workflows. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchWorkflows();
-  }, []);
+  const { workflows, loading, error } = useWorkflows();
   
   // Handle workflow click
   const handleWorkflowClick = (id) => {

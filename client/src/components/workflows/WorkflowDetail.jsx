@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Button, Chip, 
@@ -18,8 +18,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StopIcon from '@mui/icons-material/Stop';
 
-// Import utilities
+// Import utilities and hooks
 import { formatDate } from '../../shared/utils';
+import { useWorkflows } from '../../hooks/useWorkflows';
 
 /**
  * WorkflowDetail Component - Displays detail view of a workflow
@@ -27,86 +28,19 @@ import { formatDate } from '../../shared/utils';
 export default function WorkflowDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [workflow, setWorkflow] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { 
+    currentWorkflow: workflow, 
+    loading, 
+    error, 
+    fetchWorkflow,
+    updateWorkflow,
+    deleteWorkflow
+  } = useWorkflows();
   
   // Fetch workflow details on component mount
   useEffect(() => {
-    const fetchWorkflow = async () => {
-      setLoading(true);
-      try {
-        // In a real app, this would be an API call using apiService.getWorkflow(id)
-        // For now, let's use the mock data
-        
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // Mock data - normally you would filter this from an API
-        const mockWorkflow = {
-          id: id,
-          name: 'Content Generation Pipeline',
-          description: 'An end-to-end workflow for generating website content with AI assistance.',
-          status: 'active',
-          steps: [
-            { 
-              id: 'step1', 
-              name: 'Research Topics', 
-              status: 'completed',
-              description: 'Analyze trending topics and SEO data to determine content focus',
-              completedAt: '2023-05-10T11:30:00Z',
-              agent: 'Research Assistant'
-            },
-            { 
-              id: 'step2', 
-              name: 'Generate Outline', 
-              status: 'completed',
-              description: 'Create content structure with headings and key points',
-              completedAt: '2023-05-10T12:45:00Z',
-              agent: 'Content Planner'
-            },
-            { 
-              id: 'step3', 
-              name: 'Write Draft', 
-              status: 'in_progress',
-              description: 'Write full article draft based on the outline',
-              startedAt: '2023-05-10T13:00:00Z',
-              agent: 'Content Writer'
-            },
-            { 
-              id: 'step4', 
-              name: 'Edit & Refine', 
-              status: 'pending',
-              description: 'Improve writing quality, check facts, and optimize readability',
-              agent: 'Editor Bot'
-            },
-            { 
-              id: 'step5', 
-              name: 'Publish', 
-              status: 'pending',
-              description: 'Format and publish to the website with proper metadata',
-              agent: 'Publishing Agent'
-            }
-          ],
-          createdAt: '2023-05-10T10:30:00Z',
-          updatedAt: '2023-05-10T14:22:00Z',
-          createdBy: 'John Doe',
-          lastRunAt: '2023-05-10T10:45:00Z',
-          nextRunAt: null
-        };
-        
-        setWorkflow(mockWorkflow);
-        setError(null);
-      } catch (err) {
-        console.error(`Error fetching workflow ${id}:`, err);
-        setError('Failed to load workflow details. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchWorkflow();
-  }, [id]);
+    fetchWorkflow(id);
+  }, [id, fetchWorkflow]);
   
   // Get step status icon
   const getStepIcon = (status) => {
