@@ -1,143 +1,66 @@
-# Nexa Agents - AI Agent Orchestration System
+# Nexa Agents
 
-## Overview
+AI Agent Orchestration System with a clean separation between frontend and backend.
 
-Nexa Agents is a full-stack real-time AI agent orchestration system designed to enable autonomous team operations with minimal supervision. It features a modern React-based dashboard with WebSocket connectivity for live updates and comprehensive agent management capabilities.
+## Repository Structure
 
-## Core Components
+This project is organized into separate client and server applications:
 
-### Frontend Layer
-
-- **React Dashboard**
-  - Modern responsive web interface
-  - Real-time updates via WebSocket
-  - Drag-and-drop task assignment
-  - Redux state management
-  - Performance monitoring widgets
-
-### Backend Infrastructure
-
-- **WebSocket Server**
-  - Bidirectional real-time communication
-  - Event broadcasting system
-  - Client state synchronization
-  - Connection management
-
-- **Task Management API**
-  - RESTful endpoints
-  - WebSocket integration
-  - Load balancing
-  - Task queue management
-
-- **Rust Message Queue**
-  - High-performance message processing
-  - Publish/subscribe patterns
-  - In-memory storage with persistence options
-  - Intelligent load distribution
-
-### Agent System
-
-- **Containerized Agents**
-  - Isolated execution environments
-  - Standardized task interfaces
-  - Built-in monitoring
-  - Automatic error recovery
-
-### Data Management
-
-- **Database Layer**
-  - Real-time data persistence
-  - Performance metrics storage
-  - Historical analysis capabilities
-  - Task and agent state tracking
-
-- **Logging System**
-  - Centralized log aggregation
-  - Error tracking and reporting
-  - Audit trail maintenance
-  - System health monitoring
-
-### Configuration System
-
-- **Persistent Configuration**
-  - JSON/YAML file-based configuration
-  - Application settings persistence
-  - Environment-specific configuration
-  - Automatic loading on startup
-
-- **Configuration Editor**
-  - In-app Monaco editor for configuration files
-  - Real-time validation
-  - Syntax highlighting
-  - Save/load operations
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 16+ for the frontend and WebSocket server
-- Rust for the message queue (optional)
-- Docker for containerized agents (optional)
-
-### Installation
-
-1. Clone the repository
-
-```bash
-git clone https://github.com/yourusername/nexa-agents.git
-cd nexa-agents
+```
+nexa-agents/
+├── client/         # Frontend React application
+├── server/         # Backend Express/Node.js API server
+├── shared/         # Shared code between client and server
+└── nexa-workspace.code-workspace  # VS Code workspace configuration
 ```
 
-2; Install dependencies
+## Development with VS Code
+
+1. Open the VS Code workspace file:
+   ```
+   code nexa-workspace.code-workspace
+   ```
+
+2. Install the recommended extensions when prompted
+
+3. Open a terminal in VS Code and install dependencies:
+   ```
+   cd client && npm install
+   cd ../server && npm install
+   ```
+
+4. Start the development servers:
+   - Use the Vite extension to start the client
+   - Use the integrated terminal to run `cd server && npm run dev` for the backend
+   - Use the integrated terminal to run `cd server && npm run metrics` for the metrics service
+
+## Manual Development
+
+### Client
 
 ```bash
+cd client
 npm install
-```
-
-3; Start the development server
-
-```bash
 npm run dev
 ```
 
-## Configuration
+The frontend will be available at http://localhost:3000
 
-The application uses a file-based configuration system that supports both JSON and YAML formats. Configuration files are stored in the `config/` directory at the workspace root.
+### Server
 
-### Configuration Files
-
-- `config/nexa-config.json` - Main configuration file (JSON format)
-- `config/nexa-config.yaml` - Alternative configuration file (YAML format)
-
-### Configuration Properties
-
-```json
-{
-  "lmStudio": {
-    "apiUrl": "http://localhost:1234",
-    "defaultModel": "model-name"
-  },
-  "ollama": {
-    "apiUrl": "http://localhost:11434",
-    "defaultModel": "llama2"
-  },
-  "nodeEnv": "development",
-  "port": 3001
-}
+```bash
+cd server
+npm install
+npm run dev
 ```
 
-### Loading Configuration
+The API server will run on http://localhost:3001
 
-Configuration is automatically loaded when the application starts. The system will:
+### Metrics Service
 
-1. Attempt to load the configuration from the file
-2. Fall back to values stored in localStorage if the file is not found
-3. Use default values if neither file nor localStorage entries exist
+```bash
+cd server
+npm run metrics
+```
 
-### Managing Configuration
-
-You can manage configuration through:
-
-- The **Settings** page in the application UI
-- Directly editing the configuration files
-- Using the test script: `node src/scripts/test-config.js`
+The metrics service will run on http://localhost:3005

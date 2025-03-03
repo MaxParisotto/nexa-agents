@@ -1,11 +1,11 @@
 // Components
 import Header from './components/Header.jsx';
 import Dock from './components/Dock.jsx';
-import Dashboard from './components/Dashboard.jsx';
+import Dashboard from './components/features/Dashboard/Dashboard.jsx';
 import WorkflowEditor from './components/WorkflowEditor.jsx';
 import Tasks from './components/Tasks.jsx';
 import Metrics from './components/Metrics.jsx';
-import Logs from './components/Logs.jsx';
+import Logs from './components/features/Logs.jsx';
 import Settings from './components/Settings/Settings.jsx'; // Changed from .js to .jsx
 import ChatWidget from './components/ChatWidget.jsx';
 import ProjectManager from './components/ProjectManager.jsx'; // Changed from .js to .jsx

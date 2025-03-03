@@ -1,0 +1,20 @@
+{
+  "trailingSlash": false,
+  "cleanUrls": false,
+  "public": "dist",
+  "redirects": [
+    { "source": "/api/*", "destination": "http://localhost:3001/api/:splat" }
+  ],
+  "rewrites": [
+    { "source": "/**", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/**",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ]
+}

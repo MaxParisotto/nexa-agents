@@ -1,62 +1,34 @@
 #!/bin/bash
 
-echo "Cleaning up existing processes..."
-pkill -f "node src/server/index.js" || true
-pkill -f "nexa-metrics" || true
+# Enhanced development environment setup script
 
-echo "Starting Nexa Agents development servers..."
+# Configuration
+FRONTEND_PROCESS="node src/server/index.js"
+METRICS_PROCESS="nexa-metrics"
+LOG_FILE="dev.log"
 
-# Check if Rust is installed
-if ! command -v cargo &> /dev/null; then
-    echo "Cargo not found. Metrics service will not be available."
-    echo "Starting in fallback mode without metrics service."
-    SKIP_RUST=true
-else
-    SKIP_RUST=false
-fi
+# Initialize logging
+echo "Starting Nexa Agents development environment - $(date)" > $LOG_FILE
 
-if [ "$SKIP_RUST" = "false" ]; then
-    # Build and start the Rust API proxy service
-    echo "Building metrics & API proxy service..."
-    cd metrics-service
-    
-    # Check if build directory exists
-    if [ ! -d "target" ]; then
-        mkdir -p target/debug
-    fi
-    
-    cargo build
+# Cleanup existing processes
+echo "Cleaning up existing processes..." | tee -a $LOG_FILE
+pkill -f "$FRONTEND_PROCESS" >> $LOG_FILE 2>&1 || true
+pkill -f "$METRICS_PROCESS" >> $LOG_FILE 2>&1 || true
 
-    # Check if the build was successful
-    if [ -f "target/debug/nexa-metrics" ]; then
-        echo "Starting metrics service..."
-        ./target/debug/nexa-metrics &
-        PROXY_PID=$!
-        echo "API Proxy started with PID $PROXY_PID"
-        echo "Proxy server available at http://localhost:3005"
-    else
-        echo "Failed to build metrics service. Starting in fallback mode."
-        SKIP_RUST=true
-    fi
-    cd ..
-    sleep 1 # Give proxy time to start
-fi
+# Start development servers
+echo "Starting frontend and backend development servers..." | tee -a $LOG_FILE
+npm run dev &
+DEV_PID=$!
 
-# Start the frontend development server with the backend
-# Instead of starting the backend separately, we use the dev script directly
-echo "Starting frontend and backend development servers..."
-npm run dev
-
-# Define cleanup function
+# Cleanup function
 cleanup() {
-    echo "Shutting down services..."
-    if [ "$SKIP_RUST" = "false" ] && [ -n "$PROXY_PID" ]; then
-        kill $PROXY_PID 2>/dev/null || true
-    fi
+    echo "Shutting down services..." | tee -a $LOG_FILE
+    kill $DEV_PID 2>/dev/null || true
+    echo "Development environment stopped - $(date)" >> $LOG_FILE
     exit 0
 }
 
-# Register cleanup function for termination signals
+# Register cleanup for termination signals
 trap cleanup SIGINT SIGTERM EXIT
 
 # Wait for child processes

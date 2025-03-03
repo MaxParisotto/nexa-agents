@@ -1,19 +1,19 @@
-/**
- * Models API routes
- * Handles listing, testing and validating language models
- */
-
 import express from 'express';
+import logger from '../utils/logger.js';
+
 const router = express.Router();
-import { getModels, testProviderConnection, validateProviderModel } from '../controllers/modelsController.js';
 
-// Get models for a specific provider
-router.get('/:provider', getModels);
+// Get all models
+router.get('/', (req, res) => {
+  logger.debug('Fetching models');
+  res.json({ models: [] });
+});
 
-// Test connection to a provider
-router.post('/test-connection', testProviderConnection);
-
-// Validate model for a provider
-router.post('/validate', validateProviderModel);
+// Get model by ID
+router.get('/:id', (req, res) => {
+  const { id } = req.params;
+  logger.debug(`Fetching model with ID: ${id}`);
+  res.json({ model: { id } });
+});
 
 export default router;

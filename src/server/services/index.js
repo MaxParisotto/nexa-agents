@@ -1,11 +1,11 @@
-import MetricsService from './metricsService.js';
-import path from 'path';
+import metricsService from './metricsService.js';
+import modelsService from './modelsService.js';
+import settingsService from './settingsService.js';
+import uplinkService from './uplinkService.js';
 
-// Create a global instance of the metrics service
-const globalMetricsService = new MetricsService();
-
-// Export services
 export {
-  globalMetricsService,
-  MetricsService
+  metricsService,
+  modelsService,
+  settingsService,
+  uplinkService
 };

@@ -17,11 +17,11 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import OpenAIUplinkServer from './uplink/openaiUplink.js';
 import MetricsService from './services/metricsService.js';
-import { ensureJsonResponses } from './middlewares/apiMiddleware.js';
+import { ensureJsonResponses } from './middleware/apiMiddleware.js';
 import { configureRoutes } from './routes/index.js';
 import { globalMetricsService } from './services/index.js';
-import { debugApiRequests } from './middlewares/debugMiddleware.js';
-import { metricsProxyMiddleware } from './middlewares/metricsProxyMiddleware.js';
+import { debugApiRequests } from './middleware/debugMiddleware.js';
+import { metricsProxyMiddleware } from './middleware/metricsProxyMiddleware.js';
 
 // Load environment variables
 dotenv.config();

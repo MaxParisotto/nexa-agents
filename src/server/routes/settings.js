@@ -1,27 +1,19 @@
-/**
- * Settings API routes
- * Handles saving, loading, and validating settings
- */
-
 import express from 'express';
+import logger from '../utils/logger.js';
+
 const router = express.Router();
-import {
-  getSettings,
-  saveSettings,
-  validateSettings,
-  clearSettings
-} from '../controllers/settingsController.js';
 
-// Get current settings
-router.get('/', getSettings);
+// Get settings
+router.get('/', (req, res) => {
+  logger.debug('Fetching settings');
+  res.json({ settings: {} });
+});
 
-// Save new settings
-router.post('/', saveSettings);
-
-// Validate settings
-router.post('/validate', validateSettings);
-
-// Clear settings
-router.delete('/', clearSettings);
+// Update settings
+router.post('/', (req, res) => {
+  const settings = req.body;
+  logger.debug('Updating settings', { settings });
+  res.json({ success: true });
+});
 
 export default router;

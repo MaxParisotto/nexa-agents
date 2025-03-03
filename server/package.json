@@ -1,0 +1,29 @@
+{
+  "name": "nexa-agents-server",
+  "version": "1.0.0",
+  "description": "Nexa Agents Backend Server",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "metrics": "chmod +x ./run-metrics.sh && ./run-metrics.sh",
+    "metrics:rust": "cd src/gateway && cargo run",
+    "build:metrics": "cd src/gateway && cargo build --release",
+    "lint": "eslint src --ext .js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.4",
+    "express": "4.18.2",
+    "node-fetch": "^2.7.0",
+    "socket.io": "^4.7.4",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "nodemon": "^3.0.3",
+    "prettier": "^2.8.8"
+  }
+}
