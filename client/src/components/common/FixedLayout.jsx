@@ -18,7 +18,8 @@ import {
   Badge,
   BottomNavigation,
   BottomNavigationAction,
-  Paper
+  Paper,
+  Stack
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -96,45 +97,83 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
       overflow: 'hidden',
       position: 'relative'
     }}>
-      {/* Top App Bar */}
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+      {/* Top App Bar - Made more compact with horizontally aligned buttons */}
+      <AppBar position="static" elevation={1}>
+        <Toolbar 
+          variant="dense" 
+          sx={{ 
+            minHeight: { xs: '48px', sm: '52px' }, 
+            px: { xs: 1, sm: 2 },
+            display: 'flex',
+            justifyContent: 'space-between', // Ensures space between title and buttons
+            alignItems: 'center' // Vertically centers content
+          }}
+        >
+          {/* App Title */}
+          <Typography 
+            variant="subtitle1" 
+            noWrap 
+            component="div" 
+            sx={{ 
+              fontWeight: 500,
+              fontSize: { xs: '0.9rem', sm: '1rem' }
+            }}
+          >
             Nexa Agents
           </Typography>
           
-          {/* Desktop navigation icons */}
-          <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+          {/* Desktop navigation icons - Using Stack for consistent horizontal spacing */}
+          <Stack 
+            direction="row" 
+            spacing={1} 
+            alignItems="center"
+            sx={{ display: { xs: 'none', md: 'flex' } }}
+          >
             <Tooltip title="Toggle theme">
-              <IconButton color="inherit" onClick={toggleDarkMode}>
-                {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+              <IconButton 
+                color="inherit" 
+                onClick={toggleDarkMode}
+                size="small"
+              >
+                {darkMode ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
               </IconButton>
             </Tooltip>
             
             <Tooltip title="Notifications">
-              <IconButton color="inherit">
-                <Badge badgeContent={3} color="error">
-                  <NotificationsIcon />
+              <IconButton 
+                color="inherit"
+                size="small"
+              >
+                <Badge 
+                  badgeContent={3} 
+                  color="error" 
+                  sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', height: '16px', minWidth: '16px' } }}
+                >
+                  <NotificationsIcon fontSize="small" />
                 </Badge>
               </IconButton>
             </Tooltip>
             
             <Tooltip title="Help">
-              <IconButton color="inherit">
-                <HelpIcon />
+              <IconButton 
+                color="inherit"
+                size="small"
+              >
+                <HelpIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             
             <IconButton
+              size="small"
               edge="end"
               aria-label="account of current user"
               aria-haspopup="true"
               onClick={handleProfileMenuOpen}
               color="inherit"
             >
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.dark' }}>U</Avatar>
+              <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.dark', fontSize: '0.8rem' }}>U</Avatar>
             </IconButton>
-          </Box>
+          </Stack>
           
           {/* Mobile menu icon */}
           <Box sx={{ display: { xs: 'flex', md: 'none' } }}>
@@ -143,8 +182,10 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
               aria-label="more actions"
               aria-haspopup="true"
               onClick={handleMobileMenuOpen}
+              size="small"
+              edge="end"
             >
-              <MenuIcon />
+              <MenuIcon fontSize="small" />
             </IconButton>
           </Box>
         </Toolbar>
@@ -234,13 +275,14 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
         </MenuItem>
       </Menu>
       
-      {/* Main Content */}
+      {/* Main Content - Adjusted top padding to account for smaller header */}
       <Box 
         component="main" 
         sx={{ 
           flexGrow: 1,
           overflow: 'auto',
-          p: 3,
+          px: 3,
+          pt: 2,
           pb: isMobile ? 7 : 3, // Add extra padding at bottom for mobile to account for bottom nav
         }}
       >
@@ -257,7 +299,7 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
           zIndex: theme.zIndex.appBar,
           borderTop: `1px solid ${theme.palette.divider}`,
         }} 
-        elevation={3}
+        elevation={2}
       >
         <BottomNavigation
           showLabels
@@ -265,6 +307,7 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
           onChange={(event, newValue) => {
             handleNav(newValue);
           }}
+          sx={{ minHeight: '56px', height: '56px' }}
         >
           {navItems.map((item) => (
             <BottomNavigationAction 
@@ -272,7 +315,14 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
               label={item.text} 
               icon={item.icon} 
               value={item.path}
-              sx={isMobile ? { minWidth: 'auto' } : {}}
+              sx={{ 
+                minWidth: 'auto',
+                py: 0.5,
+                '& .MuiBottomNavigationAction-label': {
+                  fontSize: '0.7rem',
+                  marginTop: '2px'
+                }
+              }}
             />
           ))}
         </BottomNavigation>
