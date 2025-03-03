@@ -74,6 +74,14 @@ export const formatBytes = (bytes, decimals = 2) => {
 };
 
 /**
+ * Alias for formatBytes - Convert file size in bytes to a human-readable format
+ * @param {number} bytes - The size in bytes
+ * @param {number} decimals - Number of decimal places
+ * @returns {string} Formatted size with unit
+ */
+export const formatFileSize = formatBytes;
+
+/**
  * Debounce a function call
  * @param {Function} func - The function to debounce
  * @param {number} delay - Delay in milliseconds

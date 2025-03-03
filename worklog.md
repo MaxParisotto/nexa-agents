@@ -18,3 +18,10 @@
   - Added Discord-like chat interface with channels and messages
   - Fixed socket.js file extension and imports
   - Added SocketProvider to main.jsx
+- Fixed 404 error on /metrics route:
+  - Added missing route for /metrics in App.jsx
+  - Connected the route to the MetricsPage component
+  - Resolved navigation issue between sidebar link and actual route
+- Fixed missing export error in utils.js:
+  - Added formatFileSize export as an alias for formatBytes
+  - Resolved SyntaxError preventing application from loading properly

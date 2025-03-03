@@ -12,6 +12,7 @@ import Settings from './components/settings/Settings';
 import Benchmark from './components/benchmark/LlmBenchmark';
 import GptUplink from './components/integrations/GptUplink';
 import Agora from './components/agora/Agora';
+import MetricsPage from './components/metrics/MetricsPage';
 import NotFound from './components/common/NotFound';
 
 /**
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="settings" element={<Settings />} />
           <Route path="benchmark" element={<Benchmark />} />
+          <Route path="metrics" element={<MetricsPage />} />
           <Route path="integrations/gpt-uplink" element={<GptUplink />} />
           <Route path="agora" element={<Agora />} />
           <Route path="*" element={<NotFound />} />
