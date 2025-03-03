@@ -92,13 +92,13 @@ The server now uses a more complete API implementation that includes all the req
 - Checked the code in `client/src/components/features/Tasks.jsx` and found a LinearProgress component without a variant prop
 - Checked the code in `client/src/components/settings/LlmProviderSettings.jsx` and found a state update during render
 
-#### Root Cause
+Root Cause
 
 1. **LinearProgress Error**: In `Tasks.jsx`, there was a LinearProgress component without a variant prop. When no variant is specified, it defaults to "indeterminate", but somewhere in the component tree, it was being set to "determinate" or "buffer" without a corresponding value prop.
 
 2. **React Warning**: In `LlmProviderSettings.jsx`, there was a call to `onUpdateSettings` during the render phase, which is not allowed in React. This was happening in a conditional check at the beginning of the component.
 
-#### Solution
+Solution
 
 1. **LinearProgress Fix**: Added an explicit `variant="indeterminate"` prop to the LinearProgress component in `Tasks.jsx` to ensure it doesn't try to use "determinate" or "buffer" without a value prop.
 
@@ -107,7 +107,7 @@ The server now uses a more complete API implementation that includes all the req
    - Move the `onUpdateSettings` call from the render phase to a useEffect hook
    - Added a conditional check to return a loading state if settings is null or undefined
 
-### Implementation
+Implementation
 
 1. **Fixed LinearProgress in Tasks.jsx**
    - Added `variant="indeterminate"` to the LinearProgress component
@@ -117,14 +117,14 @@ The server now uses a more complete API implementation that includes all the req
    - Added a useEffect hook to initialize llmProviders if missing
    - Added a conditional check to return a loading state if settings is null or undefined
 
-### Testing
+Testing
 
 The changes should fix both errors:
 
 - The LinearProgress component now explicitly has a variant="indeterminate" prop
 - The state update in LlmProviderSettings now happens in a useEffect hook instead of during render
 
-## 2025-03-03 (continued)
+2025-03-03 (continued)
 
 ### Issue Investigation: TypeError in AgentSettings Component
 
@@ -133,11 +133,11 @@ The changes should fix both errors:
 - The error occurs when trying to edit an agent in the settings page
 - Checked the code in `client/src/components/settings/AgentSettings.jsx` and found that the error occurs in the Autocomplete component
 
-### Root Cause
+Root Cause
 
 The error occurs in the `handleEditAgent` function when setting the state for editing an agent. The function was not checking if the `tools` and `directives` properties exist on the agent object before trying to access them. If these properties are undefined, trying to access their `length` property would cause the error.
 
-### Solution
+Solution
 
 Modified the `handleEditAgent` function to ensure that `tools` and `directives` are always arrays, even if they are undefined in the original agent data:
 
@@ -155,7 +155,7 @@ const handleEditAgent = (agent) => {
 };
 ```
 
-### Testing
+Testing
 
 The change should fix the TypeError when editing an agent in the settings page.
 
@@ -164,7 +164,7 @@ The change should fix the TypeError when editing an agent in the settings page.
 After testing, I found that there were still some places in the AgentSettings component where we were trying to access properties of potentially undefined objects. I added more optional chaining operators to fix these issues:
 
 1. Added optional chaining for `settings?.llmProviders?.find()` in multiple places
-2. Added optional chaining for `settings?.agents?.hierarchyLevels?.find()` 
+2. Added optional chaining for `settings?.agents?.hierarchyLevels?.find()`
 3. Set a default empty object for the settings prop: `{ settings = {}, onUpdateSettings }`
 
 These changes ensure that the component doesn't try to access properties of undefined objects, which would cause "Cannot read properties of undefined" errors.
@@ -195,11 +195,12 @@ I also fixed the LinearProgress error in the Tasks component:
 1. Added `variant="indeterminate"` to the LinearProgress component in the Tasks.jsx file
 
 This ensures that the LinearProgress component doesn't try to use the "determinate" or "buffer" variant without a corresponding value prop, which was causing the error:
-```
-MUI: You need to provide a value prop when using the determinate or buffer variant of LinearProgress.
-```
 
-## 2025-03-03 (continued)
+``
+MUI: You need to provide a value prop when using the determinate or buffer variant of LinearProgress.
+``
+
+2025-03-03 (continued)
 
 ### Issue Investigation: Project Manager Tab Stuck on Loading
 
@@ -208,11 +209,11 @@ MUI: You need to provide a value prop when using the determinate or buffer varia
 - The API endpoint `/api/tools` was returning a 404 error, causing the component to get stuck in a loading state
 - The component was not handling the case when the API call fails
 
-### Root Cause
+Root Cause
 
 The issue is that the ProjectManagerSettings component was trying to fetch tools from the API endpoint `/api/tools`, but this endpoint was returning a 404 error. The component didn't have proper error handling or fallback mechanisms, so it would get stuck in a loading state when the API call failed.
 
-### Solution
+Solution
 
 Modified the ProjectManagerSettings component to:
 
@@ -227,7 +228,7 @@ Modified the ProjectManagerSettings component to:
 3. **Improved the loading state UI**:
    - Added a loading message to the loading state to provide better feedback to the user
 
-### Testing
+Testing
 
 The changes should fix the issue with the Project Manager tab being stuck on loading:
 
