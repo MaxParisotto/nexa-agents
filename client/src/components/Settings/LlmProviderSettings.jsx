@@ -109,6 +109,7 @@ export default function LlmProviderSettings({ settings, onUpdateSettings }) {
       if (providerType) {
         setNewProvider(prev => ({
           ...prev,
+          baseUrl: providerType.url || prev.baseUrl
         }));
       }
     }

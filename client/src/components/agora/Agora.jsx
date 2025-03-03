@@ -1,390 +1,370 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box, Typography, Paper, Button, Divider, Grid, Card, CardContent,
-  CardActions, Chip, Alert, TextField, CircularProgress, FormControl,
-  InputLabel, Select, MenuItem, Dialog, DialogTitle, DialogContent,
-  DialogActions
+  Box, Typography, Paper, TextField, IconButton, Avatar, 
+  Divider, CircularProgress, Alert, Chip
 } from '@mui/material';
 
-import AddIcon from '@mui/icons-material/Add';
-import DownloadIcon from '@mui/icons-material/Download';
-import ShareIcon from '@mui/icons-material/Share';
-import InstallDesktopIcon from '@mui/icons-material/InstallDesktop';
-import FeedbackIcon from '@mui/icons-material/Feedback';
-
+import { Send, Tag, Add } from '@mui/icons-material';
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
+import { useSocket } from '../../services/socket.jsx';
 
 /**
- * Agora Component - Model marketplace and community hub
+ * Agora Component - Discord-like chat interface for agent collaboration
  */
 export default function Agora() {
   const { settings } = useSettings();
+  const { socket, connected } = useSocket();
+  const [selectedChannel, setSelectedChannel] = useState('general');
+  const [newMessage, setNewMessage] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [channels, setChannels] = useState([
+    { id: 'general', name: 'general', unread: 0 },
+    { id: 'agents', name: 'agents', unread: 0 },
+    { id: 'system', name: 'system', unread: 0 }
+  ]);
   const [loading, setLoading] = useState(false);
-  const [models, setModels] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [installDialogOpen, setInstallDialogOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(null);
-  const [targetProviderId, setTargetProviderId] = useState('');
-  const [installingModel, setInstallingModel] = useState(false);
+  const [agents, setAgents] = useState([]);
 
-  // Mock categories
-  const categories = [
-    { id: 'all', name: 'All Models' },
-    { id: 'featured', name: 'Featured' },
-    { id: 'small', name: 'Small (<4GB)' },
-    { id: 'medium', name: 'Medium (4-10GB)' },
-    { id: 'large', name: 'Large (10+GB)' },
-    { id: 'vision', name: 'Vision' },
-    { id: 'embedding', name: 'Embeddings' }
-  ];
-
-  // Get available LLM providers that use Ollama
-  const getOllamaProviders = () => {
-    if (!settings?.llmProviders) return [];
-    return settings.llmProviders.filter(p => p.type === 'ollama' && p.enabled);
-  };
-
-  // Load models from Agora
+  // Fetch agents
   useEffect(() => {
-    const fetchModels = async () => {
-      setLoading(true);
+    const fetchAgents = async () => {
       try {
-        // In a real app, you would fetch this from an API
-        // For now, using mock data
-        const mockModels = [
-          {
-            id: 'llama3-8b',
-            name: 'Llama 3 8B',
-            description: 'Meta\'s Llama 3 8B model, optimized for general purpose use',
-            publisher: 'Meta',
-            category: ['featured', 'medium'],
-            tags: ['general', 'popular'],
-            size: '4.8GB',
-            downloads: 125684,
-            rating: 4.8,
-            lastUpdated: '2023-04-15',
-            compatibleProviders: ['ollama', 'lmstudio'],
-            installCommand: 'ollama pull llama3:8b',
-            imageUrl: 'https://ollama.com/public/images/llama.png'
-          },
-          {
-            id: 'llama3-70b',
-            name: 'Llama 3 70B',
-            description: 'Meta\'s largest Llama 3 model with state-of-the-art performance',
-            publisher: 'Meta',
-            category: ['large'],
-            tags: ['powerful', 'featured'],
-            size: '39.2GB',
-            downloads: 87331,
-            rating: 4.9,
-            lastUpdated: '2023-04-15',
-            compatibleProviders: ['ollama'],
-            installCommand: 'ollama pull llama3:70b',
-            imageUrl: 'https://ollama.com/public/images/llama.png'
-          },
-          {
-            id: 'mixtral-8x7b',
-            name: 'Mixtral 8x7B',
-            description: 'Mixtral\'s powerful mixture of experts model',
-            publisher: 'Mistral AI',
-            category: ['featured', 'large'],
-            tags: ['moe', 'powerful'],
-            size: '26GB',
-            downloads: 95421,
-            rating: 4.7,
-            lastUpdated: '2023-03-20',
-            compatibleProviders: ['ollama', 'lmstudio'],
-            installCommand: 'ollama pull mixtral:8x7b',
-            imageUrl: 'https://ollama.com/public/images/mixtral.png'
-          },
-          {
-            id: 'phi3-mini',
-            name: 'Phi-3 Mini',
-            description: 'Microsoft\'s compact but powerful Phi-3 model',
-            publisher: 'Microsoft',
-            category: ['small'],
-            tags: ['efficient', 'fast'],
-            size: '3.8GB',
-            downloads: 68432,
-            rating: 4.5,
-            lastUpdated: '2023-04-10',
-            compatibleProviders: ['ollama', 'lmstudio'],
-            installCommand: 'ollama pull phi3:mini',
-            imageUrl: 'https://ollama.com/public/images/phi.png'
-          },
-          {
-            id: 'clip-vision',
-            name: 'CLIP Vision',
-            description: 'OpenAI\'s CLIP vision model for image understanding',
-            publisher: 'OpenAI',
-            category: ['vision', 'small'],
-            tags: ['vision', 'multimodal'],
-            size: '2.5GB',
-            downloads: 54231,
-            rating: 4.6,
-            lastUpdated: '2023-02-28',
-            compatibleProviders: ['ollama'],
-            installCommand: 'ollama pull clip:vision',
-            imageUrl: 'https://ollama.com/public/images/clip.png'
-          },
-          {
-            id: 'all-minilm',
-            name: 'All-MiniLM Embeddings',
-            description: 'Efficient embedding model for text retrieval',
-            publisher: 'Microsoft',
-            category: ['embedding', 'small'],
-            tags: ['embeddings', 'retrieval'],
-            size: '120MB',
-            downloads: 42156,
-            rating: 4.4,
-            lastUpdated: '2023-01-15',
-            compatibleProviders: ['ollama', 'lmstudio'],
-            installCommand: 'ollama pull all-minilm',
-            imageUrl: 'https://ollama.com/public/images/minilm.png'
-          }
-        ];
-        
-        setModels(mockModels);
+        const response = await apiService.getAgents();
+        if (response && response.data) {
+          setAgents(response.data);
+        }
       } catch (error) {
-        console.error('Failed to fetch models:', error);
-      } finally {
-        setLoading(false);
+        console.error('Failed to fetch agents:', error);
       }
     };
 
-    fetchModels();
+    fetchAgents();
   }, []);
 
-  // Filter models based on selected category and search query
-  const filteredModels = models.filter(model => {
-    // Filter by category
-    const categoryMatch = selectedCategory === 'all' || 
-      model.category.includes(selectedCategory);
-    
-    // Filter by search query
-    const searchMatch = searchQuery === '' ||
-      model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      model.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      model.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    return categoryMatch && searchMatch;
-  });
+  // Initialize with system message
+  useEffect(() => {
+    setMessages([{
+      id: 1,
+      author: 'Nexa System',
+      content: 'Welcome to Agora collaboration space!',
+      timestamp: new Date().toLocaleTimeString(),
+      avatar: '/static/images/avatar/system.png'
+    }]);
+  }, []);
 
-  // Open install dialog
-  const handleInstall = (model) => {
-    setSelectedModel(model);
-    setInstallDialogOpen(true);
+  // Socket event listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    // Listen for new messages
+    const handleNewMessage = (data) => {
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        author: data.author || 'Unknown',
+        content: data.content,
+        mentions: data.mentions || [],
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: data.avatar || '/static/images/avatar/default.png'
+      }]);
+
+      // Update unread count if not in the current channel
+      if (data.channel && data.channel !== selectedChannel) {
+        setChannels(prev => prev.map(channel => 
+          channel.id === data.channel 
+            ? { ...channel, unread: channel.unread + 1 } 
+            : channel
+        ));
+      }
+    };
+
+    socket.on('new_message', handleNewMessage);
+
+    // Cleanup
+    return () => {
+      socket.off('new_message', handleNewMessage);
+    };
+  }, [socket, selectedChannel]);
+
+  // Handle sending a message
+  const handleSendMessage = useCallback(() => {
+    if (!newMessage.trim()) return;
+
+    const mentions = [];
+    const content = newMessage.replace(/@(\w+)/g, (match, username) => {
+      const agent = agents.find(a => a.name === username);
+      if (agent) {
+        mentions.push(agent.id);
+        return `@${username}`;
+      }
+      return match;
+    });
+
+    // Add message to local state
+    const message = {
+      id: messages.length + 1,
+      author: 'You',
+      content,
+      mentions,
+      channel: selectedChannel,
+      timestamp: new Date().toLocaleTimeString(),
+      avatar: '/static/images/avatar/user.png'
+    };
+
+    setMessages(prev => [...prev, message]);
+    setNewMessage('');
+
+    // Send message via socket if connected
+    if (socket && connected) {
+      socket.emit('send_message', {
+        content,
+        mentions,
+        channel: selectedChannel
+      });
+    }
+  }, [newMessage, agents, messages.length, selectedChannel, socket, connected]);
+
+  // Handle channel selection
+  const handleChannelSelect = (channelId) => {
+    setSelectedChannel(channelId);
+    
+    // Mark channel as read
+    setChannels(prev => prev.map(channel => 
+      channel.id === channelId ? { ...channel, unread: 0 } : channel
+    ));
   };
 
-  // Handle model installation
-  const handleConfirmInstall = async () => {
-    if (!selectedModel || !targetProviderId) return;
-    
-    setInstallingModel(true);
-    
-    try {
-      // In a real app, you would call an API to install the model
-      // For now, simulate installation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Success message
-      console.log(`Installed ${selectedModel.name} for provider ${targetProviderId}`);
-      
-      // Close dialog and reset state
-      setInstallDialogOpen(false);
-      setSelectedModel(null);
-      setTargetProviderId('');
-    } catch (error) {
-      console.error('Failed to install model:', error);
-    } finally {
-      setInstallingModel(false);
+  // CSS styles
+  const styles = {
+    container: {
+      display: 'flex',
+      height: 'calc(100vh - 180px)',
+      minHeight: '500px',
+      borderRadius: 1,
+      overflow: 'hidden',
+      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
+    },
+    sidebar: {
+      width: '240px',
+      backgroundColor: 'background.paper',
+      borderRight: '1px solid',
+      borderColor: 'divider',
+      display: 'flex',
+      flexDirection: 'column'
+    },
+    sidebarHeader: {
+      padding: 2,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderBottom: '1px solid',
+      borderColor: 'divider'
+    },
+    channelList: {
+      flex: 1,
+      overflowY: 'auto',
+      padding: 1
+    },
+    channelItem: {
+      display: 'flex',
+      alignItems: 'center',
+      padding: '8px 12px',
+      borderRadius: 1,
+      cursor: 'pointer',
+      marginBottom: 0.5,
+      '&:hover': {
+        backgroundColor: 'action.hover'
+      },
+      '&.active': {
+        backgroundColor: 'primary.main',
+        color: 'primary.contrastText'
+      }
+    },
+    unreadBadge: {
+      backgroundColor: 'error.main',
+      color: 'error.contrastText',
+      borderRadius: '50%',
+      padding: '2px 6px',
+      fontSize: '0.75rem',
+      marginLeft: 'auto'
+    },
+    main: {
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: 'background.default'
+    },
+    messageHeader: {
+      padding: 2,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 1,
+      borderBottom: '1px solid',
+      borderColor: 'divider'
+    },
+    messageContainer: {
+      flex: 1,
+      overflowY: 'auto',
+      padding: 2
+    },
+    message: {
+      display: 'flex',
+      marginBottom: 2
+    },
+    messageContent: {
+      marginLeft: 1.5,
+      flex: 1
+    },
+    messageAuthorLine: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 1
+    },
+    messageInput: {
+      padding: 2,
+      borderTop: '1px solid',
+      borderColor: 'divider'
+    },
+    mention: {
+      color: 'primary.main',
+      fontWeight: 500,
+      backgroundColor: 'primary.light',
+      padding: '2px 4px',
+      borderRadius: 0.5,
+      marginRight: 0.5
     }
   };
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Agora Model Hub</Typography>
+      <Typography variant="h4" gutterBottom>Agora</Typography>
       
       <Alert severity="info" sx={{ mb: 3 }}>
-        Welcome to Agora, the community model hub for Nexa Agents. Browse, download, and install 
-        models directly to your local LLM providers.
+        Welcome to Agora, the collaboration space for Nexa Agents. Chat with agents and team members in real-time.
       </Alert>
       
-      {/* Search and Filter */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              placeholder="Search models..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              variant="outlined"
-              size="small"
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Category</InputLabel>
-              <Select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                label="Category"
-              >
-                {categories.map((category) => (
-                  <MenuItem key={category.id} value={category.id}>
-                    {category.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Paper>
-      
-      {/* Models Grid */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : filteredModels.length === 0 ? (
-        <Alert severity="warning">
-          No models found matching your criteria. Try adjusting your filters.
+      {/* Connection status */}
+      {!connected && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Not connected to server. Messages will be stored locally until connection is restored.
         </Alert>
-      ) : (
-        <Grid container spacing={3}>
-          {filteredModels.map((model) => (
-            <Grid item key={model.id} xs={12} sm={6} md={4}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ 
-                  height: 140, 
-                  backgroundImage: `url(${model.imageUrl})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  bgcolor: 'action.hover'
-                }} />
-                
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                    <Typography variant="h6" component="div" gutterBottom>
-                      {model.name}
-                    </Typography>
-                    <Chip 
-                      label={model.size} 
-                      size="small" 
-                      color={
-                        parseFloat(model.size) < 5 ? 'success' : 
-                        parseFloat(model.size) < 15 ? 'primary' : 
-                        'warning'
-                      } 
-                      variant="outlined" 
-                    />
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" paragraph>
-                    {model.description}
-                  </Typography>
-                  
-                  <Typography variant="caption" display="block">
-                    Publisher: <strong>{model.publisher}</strong>
-                  </Typography>
-                  
-                  <Typography variant="caption" display="block" gutterBottom>
-                    Downloads: {model.downloads.toLocaleString()}
-                  </Typography>
-                  
-                  <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {model.tags.map((tag) => (
-                      <Chip key={tag} label={tag} size="small" />
-                    ))}
-                  </Box>
-                </CardContent>
-                
-                <Divider />
-                
-                <CardActions sx={{ justifyContent: 'space-between' }}>
-                  <Button 
-                    startIcon={<InstallDesktopIcon />}
-                    variant="contained" 
-                    size="small"
-                    onClick={() => handleInstall(model)}
-                  >
-                    Install
-                  </Button>
-                  <Button 
-                    startIcon={<ShareIcon />}
-                    size="small"
-                  >
-                    Share
-                  </Button>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
       )}
       
-      {/* Installation Dialog */}
-      <Dialog 
-        open={installDialogOpen} 
-        onClose={() => setInstallDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Install {selectedModel?.name}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ py: 1 }}>
-            <Typography variant="body2" paragraph>
-              Select a provider to install this model to:
-            </Typography>
-            
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Target Provider</InputLabel>
-              <Select
-                value={targetProviderId}
-                onChange={(e) => setTargetProviderId(e.target.value)}
-                label="Target Provider"
+      {/* Chat interface */}
+      <Paper sx={styles.container}>
+        {/* Channels Sidebar */}
+        <Box sx={styles.sidebar}>
+          <Box sx={styles.sidebarHeader}>
+            <Typography variant="subtitle1">Channels</Typography>
+            <IconButton size="small">
+              <Add fontSize="small" />
+            </IconButton>
+          </Box>
+          
+          <Box sx={styles.channelList}>
+            {channels.map(channel => (
+              <Box 
+                key={channel.id}
+                sx={{
+                  ...styles.channelItem,
+                  ...(selectedChannel === channel.id ? { 
+                    backgroundColor: 'primary.main',
+                    color: 'primary.contrastText'
+                  } : {})
+                }}
+                onClick={() => handleChannelSelect(channel.id)}
               >
-                {getOllamaProviders().map((provider) => (
-                  <MenuItem key={provider.id} value={provider.id}>
-                    {provider.name} ({provider.baseUrl})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            
-            {selectedModel && (
-              <Box sx={{ mt: 2, bgcolor: 'action.hover', p: 2, borderRadius: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Installation Command:
-                </Typography>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                  {selectedModel.installCommand}
-                </Typography>
+                <Tag fontSize="small" sx={{ mr: 1 }} />
+                <Typography variant="body2">{channel.name}</Typography>
+                {channel.unread > 0 && (
+                  <Box component="span" sx={styles.unreadBadge}>
+                    {channel.unread}
+                  </Box>
+                )}
               </Box>
-            )}
-            
-            {getOllamaProviders().length === 0 && (
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                No compatible providers found. Add and configure an Ollama provider in Settings first.
-              </Alert>
+            ))}
+          </Box>
+        </Box>
+
+        {/* Main Chat Area */}
+        <Box sx={styles.main}>
+          <Box sx={styles.messageHeader}>
+            <Tag fontSize="small" />
+            <Typography variant="subtitle1">#{selectedChannel}</Typography>
+          </Box>
+
+          <Box sx={styles.messageContainer}>
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              messages
+                .filter(msg => !msg.channel || msg.channel === selectedChannel)
+                .map(message => (
+                <Box key={message.id} sx={styles.message}>
+                  <Avatar src={message.avatar} sx={{ width: 32, height: 32 }} />
+                  <Box sx={styles.messageContent}>
+                    <Box sx={styles.messageAuthorLine}>
+                      <Typography variant="body2" fontWeight="500">
+                        {message.author}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {message.timestamp}
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2">
+                      {message.content.split(' ').map((word, i) => {
+                        if (word.startsWith('@')) {
+                          const username = word.substring(1);
+                          const isValidMention = agents.some(a => a.name === username);
+                          
+                          if (isValidMention) {
+                            return (
+                              <Chip
+                                key={i}
+                                label={word}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                sx={{ mr: 0.5 }}
+                              />
+                            );
+                          }
+                        }
+                        return <span key={i}>{word} </span>;
+                      })}
+                    </Typography>
+                  </Box>
+                </Box>
+              ))
             )}
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInstallDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={handleConfirmInstall}
-            variant="contained"
-            disabled={!targetProviderId || installingModel || getOllamaProviders().length === 0}
-            startIcon={installingModel && <CircularProgress size={16} />}
-          >
-            {installingModel ? 'Installing...' : 'Install'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+
+          <Box sx={styles.messageInput}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              placeholder={`Message #${selectedChannel}`}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              InputProps={{
+                endAdornment: (
+                  <IconButton 
+                    size="small"
+                    onClick={handleSendMessage}
+                    disabled={!newMessage.trim()}
+                  >
+                    <Send fontSize="small" />
+                  </IconButton>
+                )
+              }}
+            />
+          </Box>
+        </Box>
+      </Paper>
     </Box>
   );
 }
