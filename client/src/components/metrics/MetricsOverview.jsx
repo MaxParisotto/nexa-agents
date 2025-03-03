@@ -1,78 +1,87 @@
 import React from 'react';
-import { Grid, Typography, Box } from '@mui/material';
+import { Grid } from '@mui/material';
+import MetricsCard from './MetricsCard';
 import MemoryIcon from '@mui/icons-material/Memory';
 import StorageIcon from '@mui/icons-material/Storage';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import ListAltIcon from '@mui/icons-material/ListAlt';
-import MetricsCard from './MetricsCard';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import { formatFileSize } from '../../shared/utils';
 
 /**
- * Metrics Overview Component - Shows a summary of system metrics
+ * MetricsOverview Component - Displays system metrics overview cards
  * 
  * @param {Object} props - Component props
- * @param {Object} props.metrics - System metrics data
+ * @param {Object} props.metrics - Metrics data
  */
 export default function MetricsOverview({ metrics }) {
-  if (!metrics) {
-    return null;
-  }
+  if (!metrics) return null;
   
-  // Format memory as GB
-  const formatMemory = (bytes) => {
-    const GB = 1024 * 1024 * 1024;
-    return (bytes / GB).toFixed(2) + ' GB';
-  };
+  // Format memory as percentage
+  const memoryPercent = metrics.memory_total ? 
+    ((metrics.memory_used / metrics.memory_total) * 100).toFixed(1) : 0;
+  
+  // Format disk usage as percentage
+  const diskPercent = metrics.disk_usage?.total ? 
+    ((metrics.disk_usage.used / metrics.disk_usage.total) * 100).toFixed(1) : 0;
   
   // Format uptime
   const formatUptime = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const days = Math.floor(hours / 24);
+    if (!seconds) return 'Unknown';
     
-    if (days > 0) {
-      return `${days}d ${hours % 24}h`;
-    }
-    
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
+    
+    let result = '';
+    if (days > 0) result += `${days}d `;
+    if (hours > 0 || days > 0) result += `${hours}h `;
+    result += `${minutes}m`;
+    
+    return result;
   };
-  
-  const memoryUsagePercent = (metrics.memory_used / metrics.memory_total) * 100;
   
   return (
     <Grid container spacing={3}>
+      {/* CPU Metrics */}
       <Grid item xs={12} sm={6} md={3}>
         <MetricsCard
           title="CPU Usage"
-          value={`${metrics.cpu_usage.toFixed(1)}%`}
+          value={`${metrics.cpu_usage?.toFixed(1)}%`}
           progress={metrics.cpu_usage}
-          icon={<MemoryIcon fontSize="large" color="primary" />}
+          icon={<MemoryIcon color="primary" />}
           color="primary"
         />
       </Grid>
       
+      {/* Memory Metrics */}
       <Grid item xs={12} sm={6} md={3}>
         <MetricsCard
           title="Memory Usage"
-          value={formatMemory(metrics.memory_used)}
-          progress={memoryUsagePercent}
-          icon={<StorageIcon fontSize="large" color="secondary" />}
+          value={`${formatFileSize(metrics.memory_used || 0)}`}
+          progress={parseFloat(memoryPercent)}
+          icon={<ShowChartIcon color="secondary" />}
           color="secondary"
         />
       </Grid>
       
+      {/* Disk Metrics */}
       <Grid item xs={12} sm={6} md={3}>
         <MetricsCard
-          title="Uptime"
-          value={formatUptime(metrics.uptime)}
-          icon={<AccessTimeIcon fontSize="large" color="info" />}
+          title="Disk Usage"
+          value={metrics.disk_usage ? 
+            `${formatFileSize(metrics.disk_usage.used)}` : 'N/A'}
+          progress={parseFloat(diskPercent)}
+          icon={<StorageIcon color="warning" />}
+          color="warning"
         />
       </Grid>
       
+      {/* Uptime Metrics */}
       <Grid item xs={12} sm={6} md={3}>
         <MetricsCard
-          title="Processes"
-          value={metrics.processes || 'N/A'}
-          icon={<ListAltIcon fontSize="large" color="success" />}
+          title="System Uptime"
+          value={formatUptime(metrics.uptime)}
+          icon={<AccessTimeIcon color="info" />}
         />
       </Grid>
     </Grid>

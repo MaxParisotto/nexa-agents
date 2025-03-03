@@ -16,7 +16,8 @@ import WorkflowDetail from './components/workflows/WorkflowDetail';
 import MetricsPage from './components/metrics/MetricsPage';
 import Settings from './components/settings/Settings';
 import LlmBenchmark from './components/benchmark/LlmBenchmark';
-import GptUplink from './components/integration/GptUplink';
+import GptUplink from './components/integrations/GptUplink';
+import Agora from './components/agora/Agora';
 
 // Import styles
 import './styles/App.css';
@@ -43,7 +44,8 @@ function App() {
             <Route path="/metrics" element={<MetricsPage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/benchmark" element={<LlmBenchmark />} />
-            <Route path="/integration" element={<GptUplink />} />
+            <Route path="/integrations/gpt-uplink" element={<GptUplink />} />
+            <Route path="/agora" element={<Agora />} />
             
             {/* 404 Page */}
             <Route path="*" element={<NotFound />} />

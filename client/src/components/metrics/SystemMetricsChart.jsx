@@ -1,209 +1,208 @@
-import React, { useCallback } from 'react';
-import { Box, Paper, Typography, useTheme } from '@mui/material';
+import React, { useMemo } from 'react';
+import { Box, Typography, useTheme } from '@mui/material';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer, Area, AreaChart 
+  ResponsiveContainer, LineChart, Line, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend 
 } from 'recharts';
 
 /**
- * System Metrics Chart Component - Displays metrics data in a time-series chart
+ * SystemMetricsChart Component - Renders different chart types for system metrics
  * 
  * @param {Object} props - Component props
- * @param {Array} props.data - Array of metrics data points with timestamps
- * @param {string} [props.type='line'] - Chart type ('line' or 'area')
- * @param {Array} [props.metrics=['cpu', 'memory']] - Metrics to display
+ * @param {Array} props.data - Data points for the chart
+ * @param {string} props.type - Chart type ('line' or 'area')
+ * @param {Array<string>} props.metrics - Metrics to display ('cpu', 'memory', etc.)
  */
-export default function SystemMetricsChart({ 
-  data, 
-  type = 'line',
-  metrics = ['cpu', 'memory']
-}) {
+export default function SystemMetricsChart({ data = [], type = 'line', metrics = ['cpu'] }) {
   const theme = useTheme();
-
-  if (!data || data.length === 0) {
-    return (
-      <Box sx={{ p: 4, textAlign: 'center' }}>
-        <Typography color="textSecondary">No metrics data available for charting</Typography>
-      </Box>
-    );
-  }
-
-  // Format timestamp for display
-  const formatTimestamp = useCallback((timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }, []);
-
-  // Format value for tooltip
-  const formatTooltipValue = useCallback((value, name) => {
-    if (name === 'cpu_usage') return [`${value.toFixed(2)}%`, 'CPU'];
-    if (name === 'memory_used') return [`${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`, 'Memory'];
-    return [value];
-  }, []);
-
-  const chartColors = {
+  
+  // Process data for display
+  const processedData = useMemo(() => {
+    return data.map(point => {
+      const formattedPoint = {
+        timestamp: new Date(point.timestamp).toLocaleTimeString(),
+      };
+      
+      if (metrics.includes('cpu')) {
+        formattedPoint.cpu = point.cpu_usage;
+      }
+      
+      if (metrics.includes('memory')) {
+        const memoryPercent = point.memory_total ? 
+          (point.memory_used / point.memory_total) * 100 : 0;
+        formattedPoint.memory = parseFloat(memoryPercent.toFixed(1));
+      }
+      
+      if (metrics.includes('disk')) {
+        const diskPercent = point.disk_usage?.total ? 
+          (point.disk_usage.used / point.disk_usage.total) * 100 : 0;
+        formattedPoint.disk = parseFloat(diskPercent.toFixed(1));
+      }
+      
+      return formattedPoint;
+    });
+  }, [data, metrics]);
+  
+  // Define chart colors
+  const colors = {
     cpu: theme.palette.primary.main,
     memory: theme.palette.secondary.main,
-    processes: theme.palette.success.main,
-    uptime: theme.palette.info.main
+    disk: theme.palette.warning.main,
   };
-
-  // Configure chart based on type
-  if (type === 'area') {
+  
+  // Chart configuration
+  const chartConfig = {
+    cpu: {
+      name: 'CPU Usage',
+      unit: '%',
+      color: colors.cpu,
+    },
+    memory: {
+      name: 'Memory Usage',
+      unit: '%',
+      color: colors.memory,
+    },
+    disk: {
+      name: 'Disk Usage',
+      unit: '%',
+      color: colors.disk,
+    },
+  };
+  
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <Box
+          sx={{
+            backgroundColor: 'background.paper',
+            p: 1.5,
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 1,
+            boxShadow: 1,
+          }}
+        >
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            {label}
+          </Typography>
+          
+          {payload.map((entry, index) => (
+            <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Box
+                sx={{
+                  width: 12,
+                  height: 12,
+                  backgroundColor: entry.color,
+                  mr: 1,
+                  borderRadius: '50%',
+                }}
+              />
+              <Typography variant="body2" color="textSecondary">
+                {`${entry.name}: ${entry.value}${chartConfig[entry.dataKey]?.unit || ''}`}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      );
+    }
+    
+    return null;
+  };
+  
+  // Render either LineChart or AreaChart based on type prop
+  const renderChart = () => {
+    const commonProps = {
+      data: processedData,
+      margin: { top: 10, right: 30, left: 0, bottom: 5 },
+    };
+    
+    // Generate chart lines or areas
+    const renderChartElements = () => {
+      return metrics.map(metric => {
+        const config = chartConfig[metric];
+        const ChartElement = type === 'area' ? Area : Line;
+        
+        if (!config) return null;
+        
+        return (
+          <ChartElement
+            key={metric}
+            type="monotone"
+            dataKey={metric}
+            name={config.name}
+            stroke={config.color}
+            fill={type === 'area' ? config.color : undefined}
+            fillOpacity={type === 'area' ? 0.2 : undefined}
+            dot={false}
+            activeDot={{ r: 6, strokeWidth: 0 }}
+          />
+        );
+      });
+    };
+    
+    if (type === 'area') {
+      return (
+        <AreaChart {...commonProps}>
+          <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
+          <XAxis 
+            dataKey="timestamp" 
+            stroke={theme.palette.text.secondary}
+            tick={{ fontSize: 12 }}
+          />
+          <YAxis 
+            stroke={theme.palette.text.secondary}
+            tick={{ fontSize: 12 }}
+            tickFormatter={(value) => `${value}%`}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend 
+            align="right" 
+            verticalAlign="top" 
+            height={36}
+          />
+          {renderChartElements()}
+        </AreaChart>
+      );
+    }
+    
     return (
-      <Box sx={{ width: '100%', height: 400 }}>
-        <ResponsiveContainer>
-          <AreaChart
-            data={data}
-            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-          >
-            <defs>
-              <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={chartColors.cpu} stopOpacity={0.8} />
-                <stop offset="95%" stopColor={chartColors.cpu} stopOpacity={0.2} />
-              </linearGradient>
-              <linearGradient id="colorMemory" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={chartColors.memory} stopOpacity={0.8} />
-                <stop offset="95%" stopColor={chartColors.memory} stopOpacity={0.2} />
-              </linearGradient>
-            </defs>
-            <XAxis 
-              dataKey="timestamp" 
-              tickFormatter={formatTimestamp}
-              tick={{ fontSize: 12 }}
-            />
-            <YAxis 
-              yAxisId="cpu"
-              domain={[0, 100]}
-              tick={{ fontSize: 12 }}
-              label={{ 
-                value: 'CPU %', 
-                angle: -90, 
-                position: 'insideLeft',
-                style: { fontSize: 12 }  
-              }}
-            />
-            <YAxis 
-              yAxisId="memory"
-              orientation="right"
-              domain={[0, data[0]?.memory_total ? data[0].memory_total / (1024 * 1024 * 1024) * 1.1 : 16]}
-              tick={{ fontSize: 12 }}
-              label={{ 
-                value: 'Memory (GB)', 
-                angle: 90, 
-                position: 'insideRight',
-                style: { fontSize: 12 }
-              }}
-            />
-            <CartesianGrid strokeDasharray="3 3" />
-            <Tooltip 
-              formatter={formatTooltipValue}
-              labelFormatter={formatTimestamp}
-            />
-            <Legend />
-            {metrics.includes('cpu') && (
-              <Area
-                yAxisId="cpu"
-                type="monotone"
-                dataKey="cpu_usage"
-                name="CPU Usage"
-                stroke={chartColors.cpu}
-                fill="url(#colorCpu)"
-                fillOpacity={0.3}
-                isAnimationActive={false}
-              />
-            )}
-            {metrics.includes('memory') && (
-              <Area
-                yAxisId="memory"
-                type="monotone"
-                dataKey="memory_used"
-                name="Memory Used"
-                stroke={chartColors.memory}
-                fill="url(#colorMemory)"
-                fillOpacity={0.3}
-                isAnimationActive={false}
-              />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
+      <LineChart {...commonProps}>
+        <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
+        <XAxis 
+          dataKey="timestamp" 
+          stroke={theme.palette.text.secondary}
+          tick={{ fontSize: 12 }}
+        />
+        <YAxis 
+          stroke={theme.palette.text.secondary}
+          tick={{ fontSize: 12 }}
+          tickFormatter={(value) => `${value}%`}
+        />
+        <Tooltip content={<CustomTooltip />} />
+        <Legend 
+          align="right" 
+          verticalAlign="top" 
+          height={36}
+        />
+        {renderChartElements()}
+      </LineChart>
+    );
+  };
+  
+  if (!data || data.length === 0) {
+    return (
+      <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Typography variant="body2" color="textSecondary">
+          No data available
+        </Typography>
       </Box>
     );
   }
-
-  // Default line chart
+  
   return (
-    <Box sx={{ width: '100%', height: 400 }}>
-      <ResponsiveContainer>
-        <LineChart
-          data={data}
-          margin={{
-            top: 5,
-            right: 30,
-            left: 20,
-            bottom: 5,
-          }}
-        >
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis 
-            dataKey="timestamp" 
-            tickFormatter={formatTimestamp}
-            tick={{ fontSize: 12 }}
-          />
-          <YAxis 
-            yAxisId="cpu"
-            domain={[0, 100]}
-            tick={{ fontSize: 12 }}
-            label={{ 
-              value: 'CPU %', 
-              angle: -90, 
-              position: 'insideLeft',
-              style: { fontSize: 12 }  
-            }}
-          />
-          <YAxis 
-            yAxisId="memory"
-            orientation="right"
-            domain={[0, data[0]?.memory_total ? data[0].memory_total / (1024 * 1024 * 1024) * 1.1 : 16]}
-            tick={{ fontSize: 12 }}
-            label={{ 
-              value: 'Memory (GB)', 
-              angle: 90, 
-              position: 'insideRight',
-              style: { fontSize: 12 }
-            }}
-          />
-          <Tooltip 
-            formatter={formatTooltipValue}
-            labelFormatter={formatTimestamp}
-          />
-          <Legend />
-          {metrics.includes('cpu') && (
-            <Line
-              yAxisId="cpu"
-              type="monotone"
-              dataKey="cpu_usage"
-              name="CPU Usage"
-              stroke={chartColors.cpu}
-              activeDot={{ r: 8 }}
-              isAnimationActive={false}
-              dot={false}
-            />
-          )}
-          {metrics.includes('memory') && (
-            <Line
-              yAxisId="memory"
-              type="monotone"
-              dataKey="memory_used"
-              name="Memory Used"
-              stroke={chartColors.memory}
-              isAnimationActive={false}
-              dot={false}
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
-    </Box>
+    <ResponsiveContainer width="100%" height="100%">
+      {renderChart()}
+    </ResponsiveContainer>
   );
 }

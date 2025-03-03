@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { API_ROUTES, HTTP_STATUS } from '../../../shared/constants/api';
+// Import API constants from the client's constants directory
+import { API_ROUTES, HTTP_STATUS } from '../constants/api';
 
 // Create an axios instance
 const apiClient = axios.create({

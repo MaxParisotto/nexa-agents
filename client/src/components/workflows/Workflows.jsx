@@ -1,91 +1,129 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Box, Typography, Paper, Button, Grid, TextField, 
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  FormControl, InputLabel, Select, MenuItem,
-  CircularProgress, Alert
+  Box, Typography, Button, Grid, 
+  Paper, CircularProgress, Alert,
+  TextField, InputAdornment
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import SortIcon from '@mui/icons-material/Sort';
+import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { useNavigate } from 'react-router-dom';
+
+// Import components
 import WorkflowCard from '../dashboard/WorkflowCard';
-import { useWorkflows } from '../../hooks/useWorkflows';
 
 /**
- * Workflows listing page
+ * Workflows Component - Lists and manages workflows
  */
 export default function Workflows() {
   const navigate = useNavigate();
-  const { workflows, loading, error, createWorkflow } = useWorkflows();
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newWorkflow, setNewWorkflow] = useState({
-    name: '',
-    description: '',
-    status: 'draft'
-  });
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [workflows, setWorkflows] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   
-  // Filter and search workflows
-  const filteredWorkflows = workflows.filter(workflow => {
-    // Apply status filter
-    if (filterStatus !== 'all' && workflow.status !== filterStatus) {
-      return false;
-    }
+  // Fetch workflows on component mount
+  useEffect(() => {
+    const fetchWorkflows = async () => {
+      setLoading(true);
+      try {
+        // In a real app, this would be an API call using apiService.getWorkflows()
+        // For now, let's use the mock data
+        
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // Mock data
+        const mockWorkflows = [
+          {
+            id: '1',
+            name: 'Content Generation Pipeline',
+            description: 'An end-to-end workflow for generating website content',
+            status: 'active',
+            steps: [
+              { id: 'step1', name: 'Research Topics', status: 'completed' },
+              { id: 'step2', name: 'Generate Outline', status: 'completed' },
+              { id: 'step3', name: 'Write Draft', status: 'in_progress' },
+              { id: 'step4', name: 'Edit & Refine', status: 'pending' },
+              { id: 'step5', name: 'Publish', status: 'pending' }
+            ],
+            createdAt: '2023-05-10T10:30:00Z',
+            updatedAt: '2023-05-10T14:22:00Z'
+          },
+          {
+            id: '2',
+            name: 'Customer Support Assistant',
+            description: 'Workflow for handling customer support requests',
+            status: 'completed',
+            steps: [
+              { id: 'step1', name: 'Ticket Analysis', status: 'completed' },
+              { id: 'step2', name: 'Response Generation', status: 'completed' },
+              { id: 'step3', name: 'Human Review', status: 'completed' },
+              { id: 'step4', name: 'Send Response', status: 'completed' }
+            ],
+            createdAt: '2023-05-08T09:15:00Z',
+            updatedAt: '2023-05-09T16:40:00Z'
+          },
+          {
+            id: '3',
+            name: 'Data Analysis Pipeline',
+            description: 'Process and analyze customer data',
+            status: 'draft',
+            steps: [
+              { id: 'step1', name: 'Data Collection', status: 'pending' },
+              { id: 'step2', name: 'Data Cleaning', status: 'pending' },
+              { id: 'step3', name: 'Analysis', status: 'pending' },
+              { id: 'step4', name: 'Report Generation', status: 'pending' }
+            ],
+            createdAt: '2023-05-12T11:20:00Z',
+            updatedAt: '2023-05-12T11:20:00Z'
+          },
+          {
+            id: '4',
+            name: 'Email Marketing Campaign',
+            description: 'Create and send targeted email campaigns',
+            status: 'paused',
+            steps: [
+              { id: 'step1', name: 'Audience Segmentation', status: 'completed' },
+              { id: 'step2', name: 'Content Creation', status: 'completed' },
+              { id: 'step3', name: 'Email Design', status: 'in_progress' },
+              { id: 'step4', name: 'Testing', status: 'pending' },
+              { id: 'step5', name: 'Scheduling', status: 'pending' },
+              { id: 'step6', name: 'Sending', status: 'pending' }
+            ],
+            createdAt: '2023-05-05T15:30:00Z',
+            updatedAt: '2023-05-07T09:45:00Z'
+          }
+        ];
+        
+        setWorkflows(mockWorkflows);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching workflows:', err);
+        setError('Failed to load workflows. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    // Apply search filter (case insensitive)
-    if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase();
-      return (
-        workflow.name.toLowerCase().includes(query) ||
-        (workflow.description && workflow.description.toLowerCase().includes(query))
-      );
-    }
-    
-    return true;
-  });
-  
-  // Handle dialog open/close
-  const handleOpenCreateDialog = () => setCreateDialogOpen(true);
-  const handleCloseCreateDialog = () => setCreateDialogOpen(false);
-  
-  // Handle create workflow
-  const handleCreateWorkflow = async () => {
-    if (!newWorkflow.name.trim()) {
-      return; // Don't create workflow without a name
-    }
-    
-    try {
-      const createdWorkflow = await createWorkflow(newWorkflow);
-      handleCloseCreateDialog();
-      
-      // Reset form
-      setNewWorkflow({
-        name: '',
-        description: '',
-        status: 'draft'
-      });
-      
-      // Navigate to the new workflow
-      navigate(`/workflows/${createdWorkflow.id}`);
-    } catch (err) {
-      // Error handling is done in the hook
-    }
-  };
+    fetchWorkflows();
+  }, []);
   
   // Handle workflow click
   const handleWorkflowClick = (id) => {
     navigate(`/workflows/${id}`);
   };
   
-  if (loading && workflows.length === 0) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
+  // Handle create workflow button click
+  const handleCreateWorkflow = () => {
+    navigate('/workflows/new');
+  };
+  
+  // Filter workflows by search term
+  const filteredWorkflows = workflows.filter(workflow => 
+    workflow.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    workflow.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
   
   return (
     <Box>
@@ -96,7 +134,7 @@ export default function Workflows() {
           variant="contained"
           color="primary"
           startIcon={<AddIcon />}
-          onClick={handleOpenCreateDialog}
+          onClick={handleCreateWorkflow}
         >
           New Workflow
         </Button>
@@ -108,132 +146,77 @@ export default function Workflows() {
         </Alert>
       )}
       
-      {/* Filters */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              fullWidth
-              label="Search workflows"
-              variant="outlined"
-              size="small"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="status-filter-label">Status</InputLabel>
-              <Select
-                labelId="status-filter-label"
-                id="status-filter"
-                value={filterStatus}
-                label="Status"
-                onChange={(e) => setFilterStatus(e.target.value)}
-                startAdornment={<FilterListIcon fontSize="small" sx={{ mr: 1 }} />}
-              >
-                <MenuItem value="all">All</MenuItem>
-                <MenuItem value="draft">Draft</MenuItem>
-                <MenuItem value="active">Active</MenuItem>
-                <MenuItem value="completed">Completed</MenuItem>
-                <MenuItem value="failed">Failed</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} md={5} sx={{ textAlign: 'right' }}>
-            <Typography variant="body2" color="textSecondary">
-              {filteredWorkflows.length} workflow{filteredWorkflows.length !== 1 ? 's' : ''} found
-            </Typography>
-          </Grid>
-        </Grid>
-      </Paper>
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search workflows..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <Button 
+                  startIcon={<FilterListIcon />} 
+                  color="inherit"
+                  size="small"
+                >
+                  Filters
+                </Button>
+              </InputAdornment>
+            )
+          }}
+          sx={{ bgcolor: 'background.paper' }}
+        />
+      </Box>
       
-      {/* Workflows Grid */}
-      <Grid container spacing={3}>
-        {filteredWorkflows.length > 0 ? (
-          filteredWorkflows.map((workflow) => (
-            <Grid item xs={12} md={6} key={workflow.id}>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : filteredWorkflows.length > 0 ? (
+        <Grid container spacing={3}>
+          {filteredWorkflows.map((workflow) => (
+            <Grid item xs={12} sm={6} md={4} key={workflow.id}>
               <WorkflowCard 
-                workflow={workflow} 
-                onClick={() => handleWorkflowClick(workflow.id)} 
+                workflow={workflow}
+                onClick={() => handleWorkflowClick(workflow.id)}
               />
             </Grid>
-          ))
-        ) : (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 4, textAlign: 'center' }}>
-              <Typography variant="h6">No workflows found</Typography>
-              <Typography color="textSecondary" sx={{ mt: 1 }}>
-                {searchQuery || filterStatus !== 'all' 
-                  ? 'Try adjusting your search or filters'
-                  : 'Create a new workflow to get started'}
-              </Typography>
-              
-              <Button 
-                variant="outlined" 
-                color="primary" 
-                sx={{ mt: 2 }}
-                startIcon={<AddIcon />}
-                onClick={handleOpenCreateDialog}
-              >
-                Create Workflow
-              </Button>
-            </Paper>
-          </Grid>
-        )}
-      </Grid>
-      
-      {/* Create Workflow Dialog */}
-      <Dialog 
-        open={createDialogOpen} 
-        onClose={handleCloseCreateDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Create New Workflow</DialogTitle>
-        
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            id="name"
-            label="Workflow Name"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={newWorkflow.name}
-            onChange={(e) => setNewWorkflow({ ...newWorkflow, name: e.target.value })}
-            sx={{ mb: 2, mt: 1 }}
-          />
+          ))}
+        </Grid>
+      ) : (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" gutterBottom>No workflows found</Typography>
+          <Typography variant="body2" color="textSecondary" paragraph>
+            {searchTerm ? 
+              `No workflows match your search for "${searchTerm}".` : 
+              'No workflows have been created yet.'}
+          </Typography>
           
-          <TextField
-            margin="dense"
-            id="description"
-            label="Description (Optional)"
-            type="text"
-            fullWidth
-            multiline
-            rows={3}
-            variant="outlined"
-            value={newWorkflow.description}
-            onChange={(e) => setNewWorkflow({ ...newWorkflow, description: e.target.value })}
-          />
-        </DialogContent>
-        
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleCloseCreateDialog}>Cancel</Button>
-          <Button 
-            onClick={handleCreateWorkflow} 
-            variant="contained" 
-            color="primary"
-            disabled={!newWorkflow.name.trim()}
-          >
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
+          {searchTerm ? (
+            <Button 
+              variant="outlined" 
+              onClick={() => setSearchTerm('')}
+            >
+              Clear Search
+            </Button>
+          ) : (
+            <Button 
+              variant="contained" 
+              color="primary" 
+              startIcon={<AddIcon />} 
+              onClick={handleCreateWorkflow}
+            >
+              Create Your First Workflow
+            </Button>
+          )}
+        </Paper>
+      )}
     </Box>
   );
 }

@@ -1,112 +1,108 @@
 import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
-import { 
-  AppBar, Box, CssBaseline, Drawer, Divider, IconButton, 
-  List, ListItem, ListItemButton, ListItemIcon, ListItemText, 
-  Toolbar, Typography, useMediaQuery, Switch, FormControlLabel
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Drawer,
+  AppBar,
+  Toolbar,
+  List,
+  Typography,
+  Divider,
+  IconButton,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  useMediaQuery,
+  useTheme,
+  Menu,
+  MenuItem,
+  Tooltip,
+  Avatar,
+  Badge
 } from '@mui/material';
-
-// Import MUI Icons
 import MenuIcon from '@mui/icons-material/Menu';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import AssessmentIcon from '@mui/icons-material/Assessment';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SettingsIcon from '@mui/icons-material/Settings';
-import CloseIcon from '@mui/icons-material/Close';
+import WorkIcon from '@mui/icons-material/Work';
+import InsightsIcon from '@mui/icons-material/Insights';
+import HelpIcon from '@mui/icons-material/Help';
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import LogoutIcon from '@mui/icons-material/Logout';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing';
+import SpeedIcon from '@mui/icons-material/Speed';
+import StoreIcon from '@mui/icons-material/Store';
+import Footer from './Footer';
 
-// Import custom components
-import NavigationItem from './NavigationItem';
-
-// Drawer width
-const DRAWER_WIDTH = 240;
-
-// Navigation items configuration
-const NAV_ITEMS = [
-  { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-  { title: 'Workflows', icon: <AccountTreeIcon />, path: '/workflows' },
-  { title: 'Metrics', icon: <AssessmentIcon />, path: '/metrics' },
-  { title: 'Settings', icon: <SettingsIcon />, path: '/settings' },
-];
+const drawerWidth = 240;
 
 /**
- * Main layout component with responsive drawer navigation
+ * Layout Component - Main application layout with navigation
+ * 
+ * @param {Object} props - Component props
+ * @param {boolean} props.darkMode - Current theme mode
+ * @param {Function} props.toggleDarkMode - Function to toggle theme
  */
 export default function Layout({ darkMode, toggleDarkMode }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const isSmallScreen = useMediaQuery((theme) => theme.breakpoints.down('sm'));
-
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [drawerOpen, setDrawerOpen] = useState(!isMobile);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  
   const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
+    setDrawerOpen(!drawerOpen);
+  };
+  
+  const handleProfileMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+  
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+  
+  const handleLogout = () => {
+    handleMenuClose();
+    // Implement logout logic here
+    console.log('Logging out...');
+  };
+  
+  const handleNav = (path) => {
+    navigate(path);
+    if (isMobile) {
+      setDrawerOpen(false);
+    }
   };
 
-  // Drawer content - shared between permanent and temporary drawers
-  const drawerContent = (
-    <>
-      <Toolbar sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        px: [1]
-      }}>
-        <Typography variant="h6" noWrap component="div">
-          Nexa Agents
-        </Typography>
-        {isSmallScreen && (
-          <IconButton onClick={handleDrawerToggle}>
-            <CloseIcon />
-          </IconButton>
-        )}
-      </Toolbar>
-      <Divider />
-      <List>
-        {NAV_ITEMS.map((item) => (
-          <NavigationItem 
-            key={item.title}
-            title={item.title}
-            icon={item.icon}
-            path={item.path}
-            onClick={isSmallScreen ? handleDrawerToggle : undefined}
-          />
-        ))}
-      </List>
-      <Box sx={{ flexGrow: 1 }} />
-      <Divider />
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={darkMode}
-              onChange={toggleDarkMode}
-              name="darkMode"
-              color="primary"
-            />
-          }
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              {darkMode ? <Brightness7Icon sx={{ mr: 1 }} /> : <Brightness4Icon sx={{ mr: 1 }} />}
-              <Typography variant="body2">
-                {darkMode ? 'Light Mode' : 'Dark Mode'}
-              </Typography>
-            </Box>
-          }
-        />
-      </Box>
-    </>
-  );
+  // Navigation items
+  const navItems = [
+    { text: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
+    { text: 'Workflows', path: '/workflows', icon: <WorkIcon /> },
+    { text: 'Agents', path: '/agents', icon: <PrecisionManufacturingIcon /> },
+    { text: 'Metrics', path: '/metrics', icon: <InsightsIcon /> },
+    { text: 'Benchmark', path: '/benchmark', icon: <SpeedIcon /> },
+    { text: 'Agora', path: '/agora', icon: <StoreIcon /> },
+    { text: 'Settings', path: '/settings', icon: <SettingsIcon /> },
+  ];
 
   return (
-    <Box sx={{ display: 'flex' }}>
-      <CssBaseline />
-      
-      {/* App bar - only visible on mobile */}
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {/* App Bar */}
       <AppBar
         position="fixed"
         sx={{
-          display: { sm: 'none' },
-          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
-          ml: { sm: `${DRAWER_WIDTH}px` },
+          width: { sm: `calc(100% - ${drawerOpen ? drawerWidth : 0}px)` },
+          ml: { sm: `${drawerOpen ? drawerWidth : 0}px` },
+          transition: theme.transitions.create(['margin', 'width'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         <Toolbar>
@@ -119,62 +115,148 @@ export default function Layout({ darkMode, toggleDarkMode }) {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Nexa Agents
           </Typography>
+          
+          <Tooltip title="Toggle theme">
+            <IconButton size="large" color="inherit" onClick={toggleDarkMode}>
+              {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+            </IconButton>
+          </Tooltip>
+          
+          <Tooltip title="Notifications">
+            <IconButton size="large" color="inherit">
+              <Badge badgeContent={3} color="error">
+                <NotificationsIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+          
+          <Tooltip title="Help">
+            <IconButton size="large" color="inherit">
+              <HelpIcon />
+            </IconButton>
+          </Tooltip>
+          
+          <IconButton
+            size="large"
+            edge="end"
+            aria-label="account of current user"
+            aria-haspopup="true"
+            onClick={handleProfileMenuOpen}
+            color="inherit"
+          >
+            <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.dark' }}>U</Avatar>
+          </IconButton>
         </Toolbar>
       </AppBar>
       
-      {/* Mobile drawer */}
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          display: { xs: 'block', sm: 'none' },
-          '& .MuiDrawer-paper': { 
-            boxSizing: 'border-box', 
-            width: DRAWER_WIDTH 
-          },
+      {/* User Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
         }}
+        keepMounted
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
       >
-        {drawerContent}
-      </Drawer>
+        <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>
+          <ListItemIcon>
+            <AccountCircleIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Profile</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { handleMenuClose(); navigate('/settings'); }}>
+          <ListItemIcon>
+            <SettingsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Settings</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleLogout}>
+          <ListItemIcon>
+            <LogoutIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Logout</ListItemText>
+        </MenuItem>
+      </Menu>
       
-      {/* Desktop drawer */}
+      {/* Navigation Drawer */}
       <Drawer
-        variant="permanent"
+        variant={isMobile ? 'temporary' : 'persistent'}
+        open={drawerOpen}
+        onClose={isMobile ? handleDrawerToggle : undefined}
         sx={{
-          display: { xs: 'none', sm: 'block' },
-          '& .MuiDrawer-paper': { 
-            boxSizing: 'border-box', 
-            width: DRAWER_WIDTH 
-          },
-          width: DRAWER_WIDTH,
+          width: drawerWidth,
           flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+          },
         }}
-        open
       >
-        {drawerContent}
+        <Box sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+          {/* Add your logo here */}
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>Nexa Agents</Typography>
+          <IconButton onClick={handleDrawerToggle}>
+            <ChevronLeftIcon />
+          </IconButton>
+        </Box>
+        
+        <Divider />
+        
+        <List>
+          {navItems.map((item) => (
+            <ListItem key={item.text} disablePadding>
+              <ListItemButton
+                selected={location.pathname === item.path}
+                onClick={() => handleNav(item.path)}
+              >
+                <ListItemIcon>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.text} />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+        
+        <Divider />
+        
+        <Box sx={{ p: 2, mt: 'auto' }}>
+          <Typography variant="caption" color="text.secondary">
+            Version 1.0.0
+          </Typography>
+        </Box>
       </Drawer>
       
-      {/* Main content */}
+      {/* Main Content */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, md: 3 },
-          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+          p: 3,
+          width: { sm: `calc(100% - ${drawerOpen ? drawerWidth : 0}px)` },
+          ml: { sm: `${drawerOpen ? drawerWidth : 0}px` },
+          transition: theme.transitions.create(['margin', 'width'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+          display: 'flex',
+          flexDirection: 'column',
           minHeight: '100vh',
-          overflowX: 'hidden'
         }}
       >
-        {/* Toolbar spacer for mobile view */}
-        <Toolbar sx={{ display: { sm: 'none' } }} />
-        
-        {/* Render child routes */}
-        <Outlet />
+        <Toolbar /> {/* Spacer to push content below app bar */}
+        <Box sx={{ flexGrow: 1, py: 2 }}>
+          <Outlet />
+        </Box>
+        <Footer />
       </Box>
     </Box>
   );
