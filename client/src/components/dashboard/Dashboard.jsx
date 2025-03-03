@@ -1,174 +1,293 @@
 import React, { useEffect, useState } from 'react';
-import { Grid, Paper, Typography, Box, Card, CardContent, CircularProgress } from '@mui/material';
-import { apiService } from '../../services/api';
-import { useSocket } from '../../services/socket';
+import { 
+  Box, Typography, Grid, Paper, Button, Card, CardContent,
+  Divider, CircularProgress, Alert
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+
+import { useNavigate } from 'react-router-dom';
+import WorkflowCard from './WorkflowCard';
 import MetricsCard from '../metrics/MetricsCard';
+import SystemMetricsChart from '../metrics/SystemMetricsChart';
+import { useMetrics } from '../../hooks/useMetrics';
 
-const Dashboard = () => {
+/**
+ * Dashboard Component - Main dashboard view
+ */
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const { metrics, historicalMetrics, loading: metricsLoading, error: metricsError } = useMetrics();
+  const [recentWorkflows, setRecentWorkflows] = useState([]);
+  const [activeAgents, setActiveAgents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState(null);
-  const [agents, setAgents] = useState([]);
-  const [workflows, setWorkflows] = useState([]);
-  const { connected, events } = useSocket();
-
+  const [error, setError] = useState(null);
+  
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
+    // Simulate API call to fetch dashboard data
+    const fetchDashboardData = async () => {
       try {
-        const [metricsRes, workflowsRes] = await Promise.all([
-          apiService.getSystemMetrics(),
-          apiService.getWorkflows(),
-        ]);
+        setLoading(true);
         
-        setMetrics(metricsRes.data);
-        setWorkflows(workflowsRes.data);
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Try to get agents, but don't fail if endpoint not yet implemented
-        try {
-          const agentsRes = await apiService.getAgents();
-          setAgents(agentsRes.data);
-        } catch (error) {
-          console.warn('Agents API not implemented yet');
-          setAgents([
-            { id: '1', name: 'Research Agent', status: 'idle' },
-            { id: '2', name: 'Assistant Agent', status: 'busy' }
-          ]);
-        }
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
+        // Mock data
+        const mockWorkflows = [
+          {
+            id: '1',
+            name: 'Content Generation Pipeline',
+            description: 'An end-to-end workflow for generating website content',
+            status: 'active',
+            steps: [
+              { id: 'step1', name: 'Research Topics', status: 'completed' },
+              { id: 'step2', name: 'Generate Outline', status: 'completed' },
+              { id: 'step3', name: 'Write Draft', status: 'in_progress' },
+              { id: 'step4', name: 'Edit & Refine', status: 'pending' },
+              { id: 'step5', name: 'Publish', status: 'pending' }
+            ],
+            createdAt: '2023-05-10T10:30:00Z',
+            updatedAt: '2023-05-10T14:22:00Z'
+          },
+          {
+            id: '2',
+            name: 'Customer Support Assistant',
+            description: 'Workflow for handling customer support requests',
+            status: 'completed',
+            steps: [
+              { id: 'step1', name: 'Ticket Analysis', status: 'completed' },
+              { id: 'step2', name: 'Response Generation', status: 'completed' },
+              { id: 'step3', name: 'Human Review', status: 'completed' },
+              { id: 'step4', name: 'Send Response', status: 'completed' }
+            ],
+            createdAt: '2023-05-08T09:15:00Z',
+            updatedAt: '2023-05-09T16:40:00Z'
+          },
+          {
+            id: '3',
+            name: 'Data Analysis Pipeline',
+            description: 'Process and analyze customer data',
+            status: 'draft',
+            steps: [
+              { id: 'step1', name: 'Data Collection', status: 'pending' },
+              { id: 'step2', name: 'Data Cleaning', status: 'pending' },
+              { id: 'step3', name: 'Analysis', status: 'pending' },
+              { id: 'step4', name: 'Report Generation', status: 'pending' }
+            ],
+            createdAt: '2023-05-12T11:20:00Z',
+            updatedAt: '2023-05-12T11:20:00Z'
+          }
+        ];
+        
+        const mockAgents = [
+          {
+            id: 'agent1',
+            name: 'Content Writer',
+            status: 'busy',
+            capabilities: ['writing', 'editing', 'research'],
+            currentTask: 'Writing blog post'
+          },
+          {
+            id: 'agent2',
+            name: 'Customer Support',
+            status: 'idle',
+            capabilities: ['conversation', 'ticketing', 'knowledge'],
+            currentTask: null
+          },
+          {
+            id: 'agent3',
+            name: 'Data Analyst',
+            status: 'idle',
+            capabilities: ['statistics', 'visualization', 'reporting'],
+            currentTask: null
+          }
+        ];
+        
+        setRecentWorkflows(mockWorkflows);
+        setActiveAgents(mockAgents);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+        setError('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
     };
-
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    
+    fetchDashboardData();
   }, []);
-
+  
+  const formatBytes = (bytes) => {
+    const GB = 1024 * 1024 * 1024;
+    return (bytes / GB).toFixed(2) + ' GB';
+  };
+  
+  const handleCreateWorkflow = () => {
+    navigate('/workflows');
+  };
+  
+  const handleViewWorkflow = (id) => {
+    navigate(`/workflows/${id}`);
+  };
+  
+  const handleViewMetrics = () => {
+    navigate('/metrics');
+  };
+  
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 5 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
         <CircularProgress />
       </Box>
     );
   }
-
+  
   return (
-    <Box sx={{ padding: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
-
-      {/* System Metrics */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>System Metrics</Typography>
-        <Grid container spacing={3}>
-          {metrics && (
-            <>
-              <Grid item xs={12} md={3}>
-                <MetricsCard 
-                  title="CPU Usage" 
-                  value={`${metrics.cpu_usage.toFixed(1)}%`} 
-                  color="primary"
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MetricsCard 
-                  title="Memory Usage" 
-                  value={`${Math.round(metrics.memory_used / (1024 * 1024))} MB / ${Math.round(metrics.memory_total / (1024 * 1024))} MB`} 
-                  color="secondary"
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MetricsCard 
-                  title="Uptime" 
-                  value={metrics.uptime ? `${Math.floor(metrics.uptime / 3600)} hours` : 'N/A'} 
-                  color="success"
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <MetricsCard 
-                  title="Processes" 
-                  value={metrics.processes || 'N/A'} 
-                  color="info"
-                />
-              </Grid>
-            </>
-          )}
-        </Grid>
-      </Paper>
-
-      {/* Agent Status */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Agent Status</Typography>
-        <Grid container spacing={2}>
-          {agents.map((agent) => (
-            <Grid item xs={12} sm={6} md={4} key={agent.id}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6">{agent.name}</Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                    <Box
-                      sx={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        backgroundColor: 
-                          agent.status === 'idle' ? 'green' :
-                          agent.status === 'busy' ? 'orange' : 'gray',
-                        mr: 1,
-                      }}
-                    />
-                    <Typography>{agent.status}</Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-
-      {/* Recent Workflows */}
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>Recent Workflows</Typography>
-        <Grid container spacing={2}>
-          {workflows.map((workflow) => (
-            <Grid item xs={12} key={workflow.id}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6">{workflow.name}</Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Status: {workflow.status}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Created: {new Date(workflow.createdAt).toLocaleString()}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-
-      {/* Socket Status */}
-      <Box sx={{ mt: 3, display: 'flex', alignItems: 'center' }}>
-        <Box
-          sx={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: connected ? 'green' : 'red',
-            mr: 1,
-          }}
-        />
-        <Typography>
-          Socket: {connected ? 'Connected' : 'Disconnected'} 
-          {events.length > 0 && ` (${events.length} events received)`}
-        </Typography>
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">Dashboard</Typography>
+        
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={handleCreateWorkflow}
+        >
+          New Workflow
+        </Button>
       </Box>
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+      
+      {/* System Metrics Section */}
+      <Paper sx={{ p: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">System Status</Typography>
+          
+          <Button
+            size="small"
+            endIcon={<BarChartIcon />}
+            onClick={handleViewMetrics}
+          >
+            View Detailed Metrics
+          </Button>
+        </Box>
+        
+        {metricsError ? (
+          <Alert severity="error">{metricsError}</Alert>
+        ) : metricsLoading && !metrics ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={8}>
+              <Box sx={{ height: 200 }}>
+                <SystemMetricsChart data={historicalMetrics.slice(-20)} />
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <MetricsCard
+                    title="CPU Usage"
+                    value={metrics ? `${metrics.cpu_usage.toFixed(1)}%` : 'N/A'}
+                    progress={metrics?.cpu_usage}
+                    color="primary"
+                  />
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <MetricsCard
+                    title="Memory Usage"
+                    value={metrics ? formatBytes(metrics.memory_used) : 'N/A'}
+                    progress={metrics ? (metrics.memory_used / metrics.memory_total) * 100 : 0}
+                    color="secondary"
+                  />
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
+        )}
+      </Paper>
+      
+      {/* Active Workflows Section */}
+      <Typography variant="h6" sx={{ mb: 2 }}>Recent Workflows</Typography>
+      
+      <Grid container spacing={3}>
+        {recentWorkflows.length > 0 ? (
+          recentWorkflows.map((workflow) => (
+            <Grid item xs={12} md={6} lg={4} key={workflow.id}>
+              <WorkflowCard workflow={workflow} onClick={() => handleViewWorkflow(workflow.id)} />
+            </Grid>
+          ))
+        ) : (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body1">No workflows available.</Typography>
+              
+              <Button 
+                variant="contained" 
+                color="primary" 
+                startIcon={<AddIcon />}
+                onClick={handleCreateWorkflow}
+                sx={{ mt: 2 }}
+              >
+                Create Your First Workflow
+              </Button>
+            </Paper>
+          </Grid>
+        )}
+      </Grid>
+      
+      {/* Quick Actions Section */}
+      <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>Quick Actions</Typography>
+      
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Create Workflow</Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                Start building a new agent workflow
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={handleCreateWorkflow}
+              >
+                Create
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Run Workflow</Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                Execute an existing workflow
+              </Typography>
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<PlayArrowIcon />}
+                disabled={!recentWorkflows.some(wf => wf.status === 'draft')}
+              >
+                Run
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
     </Box>
   );
-};
-
-export default Dashboard;
+}

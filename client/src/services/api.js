@@ -1,60 +1,88 @@
 import axios from 'axios';
-import { API_ROUTES } from '../../shared/constants';
+import { API_ROUTES, HTTP_STATUS } from '../../../shared/constants/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
+// Create an axios instance
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
+  timeout: 30000, // 30 seconds
   headers: {
-    'Content-Type': 'application/json',
-  },
+    'Content-Type': 'application/json'
+  }
 });
 
-// Request interceptor for logging or authentication
-api.interceptors.request.use(
-  (config) => {
-    // You can add auth headers here
+// Add a request interceptor to handle authentication
+apiClient.interceptors.request.use(
+  config => {
+    // Get auth token from localStorage or elsewhere
+    const token = localStorage.getItem('authToken');
+    
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     return config;
   },
-  (error) => {
+  error => Promise.reject(error)
+);
+
+// Add a response interceptor for error handling
+apiClient.interceptors.response.use(
+  response => response,
+  error => {
+    // Handle specific error responses
+    if (error.response) {
+      const { status } = error.response;
+      
+      // Handle authentication errors
+      if (status === HTTP_STATUS.UNAUTHORIZED) {
+        // Redirect to login page or clear auth tokens
+        console.warn('Session expired or unauthorized. Redirecting to login...');
+        // Example: window.location.href = '/login';
+      }
+      
+      // Handle server errors
+      if (status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) {
+        console.error('Server error:', error.response.data);
+      }
+    }
+    
     return Promise.reject(error);
   }
 );
 
-// Response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error('API Error:', error.response || error);
-    return Promise.reject(error);
-  }
-);
-
-// API service methods
+// API Service with methods for different endpoints
 export const apiService = {
-  // System
-  getStatus: () => api.get(API_ROUTES.STATUS),
+  // Workflows
+  getWorkflows: () => apiClient.get(API_ROUTES.WORKFLOWS),
+  getWorkflow: (id) => apiClient.get(API_ROUTES.WORKFLOW_BY_ID(id)),
+  createWorkflow: (workflow) => apiClient.post(API_ROUTES.WORKFLOWS, workflow),
+  updateWorkflow: (id, updates) => apiClient.put(API_ROUTES.WORKFLOW_BY_ID(id), updates),
+  deleteWorkflow: (id) => apiClient.delete(API_ROUTES.WORKFLOW_BY_ID(id)),
   
-  // Metrics
-  getSystemMetrics: () => api.get(API_ROUTES.SYSTEM_METRICS),
+  // Workflow Steps
+  getWorkflowSteps: (workflowId) => apiClient.get(API_ROUTES.WORKFLOW_STEPS(workflowId)),
+  createWorkflowStep: (workflowId, step) => apiClient.post(API_ROUTES.WORKFLOW_STEPS(workflowId), step),
+  updateWorkflowStep: (workflowId, stepId, updates) => 
+    apiClient.put(API_ROUTES.WORKFLOW_STEP(workflowId, stepId), updates),
+  deleteWorkflowStep: (workflowId, stepId) => apiClient.delete(API_ROUTES.WORKFLOW_STEP(workflowId, stepId)),
   
   // Agents
-  getAgents: () => api.get(API_ROUTES.AGENTS),
-  getAgent: (id) => api.get(`${API_ROUTES.AGENTS}/${id}`),
-  createAgent: (agent) => api.post(API_ROUTES.AGENTS, agent),
-  updateAgent: (id, agent) => api.put(`${API_ROUTES.AGENTS}/${id}`, agent),
-  deleteAgent: (id) => api.delete(`${API_ROUTES.AGENTS}/${id}`),
+  getAgents: () => apiClient.get(API_ROUTES.AGENTS),
+  getAgent: (id) => apiClient.get(API_ROUTES.AGENT_BY_ID(id)),
+  createAgent: (agent) => apiClient.post(API_ROUTES.AGENTS, agent),
+  updateAgent: (id, updates) => apiClient.put(API_ROUTES.AGENT_BY_ID(id), updates),
+  deleteAgent: (id) => apiClient.delete(API_ROUTES.AGENT_BY_ID(id)),
   
-  // Workflows
-  getWorkflows: () => api.get(API_ROUTES.WORKFLOWS),
-  getWorkflow: (id) => api.get(`${API_ROUTES.WORKFLOWS}/${id}`),
-  createWorkflow: (workflow) => api.post(API_ROUTES.WORKFLOWS, workflow),
-  updateWorkflow: (id, workflow) => api.put(`${API_ROUTES.WORKFLOWS}/${id}`, workflow),
-  deleteWorkflow: (id) => api.delete(`${API_ROUTES.WORKFLOWS}/${id}`),
+  // System
+  getSystemStatus: () => apiClient.get(API_ROUTES.STATUS),
+  getSystemMetrics: () => apiClient.get(API_ROUTES.METRICS_SYSTEM),
+  getHistoricalMetrics: (days = 1) => 
+    apiClient.get(`${API_ROUTES.METRICS_HISTORY}?days=${days}`),
   
   // Settings
-  getSettings: () => api.get(API_ROUTES.SETTINGS),
-  updateSettings: (settings) => api.put(API_ROUTES.SETTINGS, settings),
+  getSettings: () => apiClient.get(API_ROUTES.SETTINGS),
+  updateSettings: (settings) => apiClient.put(API_ROUTES.SETTINGS, settings),
+  resetSettings: () => apiClient.post(API_ROUTES.SETTINGS_RESET),
 };
 
-export default apiService;
+export default apiClient;

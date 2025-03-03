@@ -1,19 +1,20 @@
 {
   "type": "module",
   "name": "nexa-agents",
-  "version": "1.0.0",
-  "description": "AI Agent Orchestration System",
+  "version": "0.1.0",
+  "description": "AI agent orchestration framework",
   "scripts": {
-    "start": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "server": "node src/server/index.js",
-    "dev": "concurrently \"npm run server\" \"vite\"",
-    "analyze": "vite build --mode=analyze",
-    "clean": "rimraf dist",
-    "build:clean": "npm run clean && npm run build",
-    "build:analyze": "npm run clean && npm run analyze",
-    "metrics": "chmod +x ./build-minimal-metrics.sh && ./build-minimal-metrics.sh"
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "start": "node server/dist/index.js",
+    "test": "jest",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "postinstall": "cd client && npm install && cd ../server && npm install"
   },
   "dependencies": {
     "@emotion/react": "^11.11.3",
@@ -66,9 +67,11 @@
     "@eslint/object-schema": "^2.0.3",
     "@jridgewell/sourcemap-codec": "^1.4.8",
     "@rollup/plugin-terser": "^0.4.3",
-    "concurrently": "9.1.2",
-    "eslint": "^8.0.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
     "nodemon": "^3.0.3",
+    "prettier": "^3.2.5",
     "rimraf": "6.0.1",
     "rollup-plugin-visualizer": "^5.14.0",
     "webpack-bundle-analyzer": "^4.10.2"
@@ -84,5 +87,17 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "orchestration",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

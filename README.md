@@ -1,66 +1,96 @@
 # Nexa Agents
 
-AI Agent Orchestration System with a clean separation between frontend and backend.
+A framework for building and orchestrating AI agents that work together.
 
-## Repository Structure
+## Overview
 
-This project is organized into separate client and server applications:
+Nexa Agents is a platform for creating, managing, and orchestrating AI agents. It allows developers to build intelligent agents that can collaborate on complex tasks through configurable workflows.
 
+## Features
+
+- **Agent Management**: Create, configure, and monitor AI agents
+- **Workflow Orchestration**: Design multi-step workflows for agent collaboration
+- **Real-time Monitoring**: Track agent activities and system metrics
+- **Model Integration**: Connect to various LLM providers
+- **Extensible Architecture**: Build custom agent capabilities
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- npm or yarn
+- Access to LLM providers (OpenAI, LM Studio, Ollama, etc.)
+
+### Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/yourusername/nexa-agents.git
+cd nexa-agents
 ```
+
+2; Install dependencies:
+
+```bash
+npm install
+```
+
+3; Start the development server:
+
+```bash
+npm run dev
+```
+
+## Project Structure
+
+``
 nexa-agents/
-├── client/         # Frontend React application
-├── server/         # Backend Express/Node.js API server
-├── shared/         # Shared code between client and server
-└── nexa-workspace.code-workspace  # VS Code workspace configuration
-```
+├── client/             # Frontend React application
+├── server/             # Backend Node.js server
+├── shared/             # Code shared between client and server
+├── config/             # Configuration files
+├── data/               # Data storage
+└── tests/              # Test files
+``
 
-## Development with VS Code
-
-1. Open the VS Code workspace file:
-   ```
-   code nexa-workspace.code-workspace
-   ```
-
-2. Install the recommended extensions when prompted
-
-3. Open a terminal in VS Code and install dependencies:
-   ```
-   cd client && npm install
-   cd ../server && npm install
-   ```
-
-4. Start the development servers:
-   - Use the Vite extension to start the client
-   - Use the integrated terminal to run `cd server && npm run dev` for the backend
-   - Use the integrated terminal to run `cd server && npm run metrics` for the metrics service
-
-## Manual Development
+## Development
 
 ### Client
 
+The client is built using React and Material-UI:
+
 ```bash
 cd client
-npm install
 npm run dev
 ```
-
-The frontend will be available at http://localhost:3000
 
 ### Server
 
+The server is built using Express:
+
 ```bash
 cd server
-npm install
+npm run start:dev
+```
+
+### Running Both
+
+To run both client and server concurrently:
+
+```bash
 npm run dev
 ```
 
-The API server will run on http://localhost:3001
+## Contributing
 
-### Metrics Service
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-```bash
-cd server
-npm run metrics
-```
+## License
 
-The metrics service will run on http://localhost:3005
+This project is licensed under the MIT License - see the LICENSE file for details.
