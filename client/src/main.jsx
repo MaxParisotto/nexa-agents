@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { StyledEngineProvider, GlobalStyles } from '@mui/material';
 
 import App from './App';
-import { ThemeContextProvider } from './contexts/ThemeContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 // Global styles to fix MUI integration issues
 const globalStyles = (
@@ -31,11 +31,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <StyledEngineProvider injectFirst>
       {globalStyles}
-      <ThemeContextProvider>
+      <ThemeProvider>
         <BrowserRouter>
           <App />
         </BrowserRouter>
-      </ThemeContextProvider>
+      </ThemeProvider>
     </StyledEngineProvider>
   </React.StrictMode>
 );

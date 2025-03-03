@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { ThemeProvider as MuiThemeProvider, createTheme, useMediaQuery } from '@mui/material';
+import { deepPurple, amber } from '@mui/material/colors';
 
 // Create context
 const ThemeContext = createContext({
@@ -75,10 +76,10 @@ export function ThemeProvider({ children }) {
         palette: {
           mode: darkMode ? 'dark' : 'light',
           primary: {
-            main: '#4a76a8',
+            main: darkMode ? deepPurple[300] : deepPurple[700],
           },
           secondary: {
-            main: '#f50057',
+            main: darkMode ? amber[300] : amber[700],
           },
           background: {
             default: darkMode ? '#121212' : '#f5f5f5',
@@ -152,3 +153,6 @@ export function ThemeProvider({ children }) {
 export function useThemeContext() {
   return useContext(ThemeContext);
 }
+
+// Default export for backward compatibility
+export default ThemeContext;

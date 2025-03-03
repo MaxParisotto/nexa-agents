@@ -2,15 +2,11 @@ import React, { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
-  Drawer,
   AppBar,
   Toolbar,
-  List,
   Typography,
   Divider,
   IconButton,
-  ListItem,
-  ListItemButton,
   ListItemIcon,
   ListItemText,
   useMediaQuery,
@@ -20,11 +16,11 @@ import {
   Tooltip,
   Avatar,
   Badge,
+  BottomNavigation,
+  BottomNavigationAction,
   Paper
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SettingsIcon from '@mui/icons-material/Settings';
 import WorkIcon from '@mui/icons-material/Work';
@@ -37,18 +33,17 @@ import Brightness7Icon from '@mui/icons-material/Brightness7';
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing';
 import SpeedIcon from '@mui/icons-material/Speed';
 import StoreIcon from '@mui/icons-material/Store';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import Footer from './Footer';
 
-const drawerWidth = 240;
-
 /**
- * Fixed Layout Component - A modified layout to fix MUI component integration issues
+ * Fixed Layout Component with bottom navigation bar
  */
 export default function FixedLayout({ darkMode, toggleDarkMode }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [drawerOpen, setDrawerOpen] = useState(!isMobile);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -62,17 +57,25 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
     { text: 'Agora', path: '/agora', icon: <StoreIcon /> },
     { text: 'Settings', path: '/settings', icon: <SettingsIcon /> },
   ];
-
-  const handleDrawerToggle = () => {
-    setDrawerOpen(!drawerOpen);
+  
+  // Get current navigation value based on path
+  const getCurrentNavValue = () => {
+    const currentPath = location.pathname;
+    const foundItem = navItems.find(item => currentPath.startsWith(item.path));
+    return foundItem ? foundItem.path : false;
   };
   
   const handleProfileMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
   };
   
+  const handleMobileMenuOpen = (event) => {
+    setMobileMenuAnchor(event.currentTarget);
+  };
+  
   const handleMenuClose = () => {
     setAnchorEl(null);
+    setMobileMenuAnchor(null);
   };
   
   const handleLogout = () => {
@@ -82,74 +85,72 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
   
   const handleNav = (path) => {
     navigate(path);
-    if (isMobile) {
-      setDrawerOpen(false);
-    }
+    handleMenuClose();
   };
 
   return (
-    <Box sx={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* App Bar */}
-      <AppBar 
-        position="fixed"
-        sx={{
-          width: { sm: `calc(100% - ${drawerOpen ? drawerWidth : 0}px)` },
-          ml: { sm: `${drawerOpen ? drawerWidth : 0}px` },
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          transition: theme.transitions.create(['width', 'margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-        }}
-      >
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100vh',
+      overflow: 'hidden',
+      position: 'relative'
+    }}>
+      {/* Top App Bar */}
+      <AppBar position="static">
         <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2 }}
-          >
-            <MenuIcon />
-          </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Nexa Agents
           </Typography>
           
-          <Tooltip title="Toggle theme">
-            <IconButton size="large" color="inherit" onClick={toggleDarkMode}>
-              {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+          {/* Desktop navigation icons */}
+          <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+            <Tooltip title="Toggle theme">
+              <IconButton color="inherit" onClick={toggleDarkMode}>
+                {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+              </IconButton>
+            </Tooltip>
+            
+            <Tooltip title="Notifications">
+              <IconButton color="inherit">
+                <Badge badgeContent={3} color="error">
+                  <NotificationsIcon />
+                </Badge>
+              </IconButton>
+            </Tooltip>
+            
+            <Tooltip title="Help">
+              <IconButton color="inherit">
+                <HelpIcon />
+              </IconButton>
+            </Tooltip>
+            
+            <IconButton
+              edge="end"
+              aria-label="account of current user"
+              aria-haspopup="true"
+              onClick={handleProfileMenuOpen}
+              color="inherit"
+            >
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.dark' }}>U</Avatar>
             </IconButton>
-          </Tooltip>
+          </Box>
           
-          <Tooltip title="Notifications">
-            <IconButton size="large" color="inherit">
-              <Badge badgeContent={3} color="error">
-                <NotificationsIcon />
-              </Badge>
+          {/* Mobile menu icon */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' } }}>
+            <IconButton
+              color="inherit"
+              aria-label="more actions"
+              aria-haspopup="true"
+              onClick={handleMobileMenuOpen}
+            >
+              <MenuIcon />
             </IconButton>
-          </Tooltip>
-          
-          <Tooltip title="Help">
-            <IconButton size="large" color="inherit">
-              <HelpIcon />
-            </IconButton>
-          </Tooltip>
-          
-          <IconButton
-            size="large"
-            edge="end"
-            aria-label="account of current user"
-            aria-haspopup="true"
-            onClick={handleProfileMenuOpen}
-            color="inherit"
-          >
-            <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.dark' }}>U</Avatar>
-          </IconButton>
+          </Box>
         </Toolbar>
       </AppBar>
       
-      {/* User Menu */}
+      {/* User Profile Menu */}
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
@@ -163,13 +164,13 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
           horizontal: 'right',
         }}
       >
-        <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>
+        <MenuItem onClick={() => { handleNav('/profile'); }}>
           <ListItemIcon>
             <AccountCircleIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Profile</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => { handleMenuClose(); navigate('/settings'); }}>
+        <MenuItem onClick={() => { handleNav('/settings'); }}>
           <ListItemIcon>
             <SettingsIcon fontSize="small" />
           </ListItemIcon>
@@ -184,57 +185,54 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
         </MenuItem>
       </Menu>
       
-      {/* Navigation Drawer */}
-      <Drawer
-        variant={isMobile ? 'temporary' : 'permanent'}
-        open={drawerOpen}
-        onClose={isMobile ? handleDrawerToggle : undefined}
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: {
-            width: drawerWidth,
-            boxSizing: 'border-box',
-            ...(isMobile ? {} : {
-              position: 'relative',
-              height: '100vh',
-            })
-          },
-          display: { xs: drawerOpen ? 'block' : 'none', sm: 'block' },
+      {/* Mobile Menu */}
+      <Menu
+        anchorEl={mobileMenuAnchor}
+        open={Boolean(mobileMenuAnchor)}
+        onClose={handleMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
         }}
       >
-        <Toolbar sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: [1],
-        }}>
-          <Typography variant="h6">Nexa Agents</Typography>
-          <IconButton onClick={handleDrawerToggle}>
-            <ChevronLeftIcon />
-          </IconButton>
-        </Toolbar>
+        <MenuItem onClick={toggleDarkMode}>
+          <ListItemIcon>
+            {darkMode ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
+          </ListItemIcon>
+          <ListItemText>{darkMode ? 'Light Mode' : 'Dark Mode'}</ListItemText>
+        </MenuItem>
+        <MenuItem>
+          <ListItemIcon>
+            <Badge badgeContent={3} color="error">
+              <NotificationsIcon fontSize="small" />
+            </Badge>
+          </ListItemIcon>
+          <ListItemText>Notifications</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { handleNav('/profile'); }}>
+          <ListItemIcon>
+            <AccountCircleIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Profile</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { handleNav('/settings'); }}>
+          <ListItemIcon>
+            <SettingsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Settings</ListItemText>
+        </MenuItem>
         <Divider />
-        <List component="nav">
-          {navItems.map((item) => (
-            <ListItem key={item.text} disablePadding>
-              <ListItemButton
-                selected={location.pathname === item.path}
-                onClick={() => handleNav(item.path)}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.text} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-          <Divider sx={{ my: 1 }} />
-          <Box sx={{ p: 2, mt: 'auto' }}>
-            <Typography variant="caption" color="text.secondary">
-              Version 1.0.0
-            </Typography>
-          </Box>
-        </List>
-      </Drawer>
+        <MenuItem onClick={handleLogout}>
+          <ListItemIcon>
+            <LogoutIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Logout</ListItemText>
+        </MenuItem>
+      </Menu>
       
       {/* Main Content */}
       <Box 
@@ -242,26 +240,43 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
         sx={{ 
           flexGrow: 1,
           overflow: 'auto',
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
+          p: 3,
+          pb: isMobile ? 7 : 3, // Add extra padding at bottom for mobile to account for bottom nav
         }}
       >
-        <Toolbar /> {/* Spacer */}
-        <Box 
-          sx={{ 
-            p: 3, 
-            display: 'flex',
-            flexDirection: 'column',
-            flexGrow: 1,
+        <Outlet />
+      </Box>
+      
+      {/* Fixed Bottom Navigation */}
+      <Paper 
+        sx={{ 
+          position: 'fixed', 
+          bottom: 0, 
+          left: 0, 
+          right: 0, 
+          zIndex: theme.zIndex.appBar,
+          borderTop: `1px solid ${theme.palette.divider}`,
+        }} 
+        elevation={3}
+      >
+        <BottomNavigation
+          showLabels
+          value={getCurrentNavValue()}
+          onChange={(event, newValue) => {
+            handleNav(newValue);
           }}
         >
-          <Outlet />
-        </Box>
-        <Box component="footer" sx={{ p: 2 }}>
-          <Footer />
-        </Box>
-      </Box>
+          {navItems.map((item) => (
+            <BottomNavigationAction 
+              key={item.path} 
+              label={item.text} 
+              icon={item.icon} 
+              value={item.path}
+              sx={isMobile ? { minWidth: 'auto' } : {}}
+            />
+          ))}
+        </BottomNavigation>
+      </Paper>
     </Box>
   );
 }
