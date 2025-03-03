@@ -5,6 +5,7 @@ import {
   List, ListItem, ListItemButton, ListItemIcon, ListItemText, Tooltip,
   useMediaQuery, useTheme, Menu, MenuItem, Avatar, Badge 
 } from '@mui/material';
+import ChatWidget from '../ChatWidget';
 
 // Import icons
 import MenuIcon from '@mui/icons-material/Menu';
@@ -383,6 +384,9 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
         <Toolbar /> {/* Adds spacing below the app bar */}
         <Outlet /> {/* Render the nested routes */}
       </Box>
+      
+      {/* Chat Widget */}
+      <ChatWidget />
     </Box>
   );
 }
