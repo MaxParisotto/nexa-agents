@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Button, TextField, CircularProgress,
   Alert, Grid, Card, CardHeader, CardContent, Divider,
@@ -11,23 +11,55 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import InfoIcon from '@mui/icons-material/Info';
+
+import { useSettings } from '../../contexts/SettingsContext';
+import { apiService } from '../../services/api';
 
 /**
  * LLM Benchmark Component - Test and evaluate different language models
  */
 export default function LlmBenchmark() {
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [benchmarkConfig, setBenchmarkConfig] = useState({
-    models: ['gpt-4', 'llama2', 'mistral'],
+    models: [],
     benchmarks: ['reasoning', 'factual', 'coding', 'creativity'],
     repetitions: 3,
     temperature: 0.7,
     saveResults: true
   });
+  
+  // Populate available models from settings
+  useEffect(() => {
+    if (settings?.llmProviders) {
+      const availableModels = [];
+      
+      // Get models from all enabled providers
+      settings.llmProviders.forEach(provider => {
+        if (provider.enabled && provider.models && provider.models.length > 0) {
+          provider.models.forEach(model => {
+            availableModels.push({
+              id: `${provider.id}:${model}`,
+              label: `${model} (${provider.name})`,
+              provider: provider.name,
+              model: model
+            });
+          });
+        }
+      });
+      
+      // Set initial model selection (up to 3 models)
+      const initialModels = availableModels.slice(0, 3).map(m => m.id);
+      
+      setBenchmarkConfig(prev => ({
+        ...prev,
+        models: initialModels
+      }));
+    }
+  }, [settings?.llmProviders]);
   
   // Start benchmark test
   const handleStartBenchmark = async () => {
@@ -35,26 +67,49 @@ export default function LlmBenchmark() {
     setError(null);
     
     try {
-      // This would be an actual API call to run benchmarks in a real app
+      // Make API call to run benchmarks if backend is available
+      try {
+        const response = await apiService.runBenchmark(benchmarkConfig);
+        if (response?.data) {
+          setResults(response.data);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.log('Backend unavailable, using mock data for benchmarks');
+      }
+      
+      // If API call fails, use mock data (can be enhanced with actual model names)
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Generate mock results
+      // Generate mock results using actual model information from settings
       const mockResults = {
         timestamp: new Date().toISOString(),
-        models: benchmarkConfig.models.map(model => ({
-          name: model,
-          results: benchmarkConfig.benchmarks.map(benchmark => ({
-            category: benchmark,
-            score: Math.round(Math.random() * 1000) / 10, // Random score between 0-100
-            latency: Math.round(Math.random() * 2000 + 500), // Random latency between 500-2500ms
-            details: {
-              accuracy: Math.round(Math.random() * 1000) / 10,
-              coherence: Math.round(Math.random() * 1000) / 10,
-              relevance: Math.round(Math.random() * 1000) / 10,
-            }
-          })),
-          overallScore: Math.round(Math.random() * 1000) / 10 // Random overall score
-        }))
+        models: benchmarkConfig.models.map(modelId => {
+          // Parse the provider:model format
+          const [providerId, modelName] = modelId.split(':');
+          
+          // Find the provider data
+          const providerData = settings.llmProviders.find(p => p.id === providerId);
+          const providerName = providerData ? providerData.name : 'Unknown Provider';
+          
+          return {
+            id: modelId,
+            name: modelName,
+            provider: providerName,
+            results: benchmarkConfig.benchmarks.map(benchmark => ({
+              category: benchmark,
+              score: Math.round(Math.random() * 1000) / 10, // Random score between 0-100
+              latency: Math.round(Math.random() * 2000 + 500), // Random latency between 500-2500ms
+              details: {
+                accuracy: Math.round(Math.random() * 1000) / 10,
+                coherence: Math.round(Math.random() * 1000) / 10,
+                relevance: Math.round(Math.random() * 1000) / 10,
+              }
+            })),
+            overallScore: Math.round(Math.random() * 1000) / 10 // Random overall score
+          };
+        })
       };
       
       setResults(mockResults);
@@ -114,15 +169,24 @@ export default function LlmBenchmark() {
     linkElement.click();
   };
   
-  // Available models for testing
-  const availableModels = [
-    { value: 'gpt-4', label: 'GPT-4' },
-    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-    { value: 'llama2', label: 'Llama 2' },
-    { value: 'llama3', label: 'Llama 3' },
-    { value: 'mistral', label: 'Mistral AI' },
-    { value: 'claude-3', label: 'Claude 3' }
-  ];
+  // Get available models for testing from settings
+  const getAvailableModels = () => {
+    if (!settings?.llmProviders) return [];
+    
+    const models = [];
+    settings.llmProviders.forEach(provider => {
+      if (provider.enabled && provider.models) {
+        provider.models.forEach(model => {
+          models.push({
+            value: `${provider.id}:${model}`,
+            label: `${model} (${provider.name})`
+          });
+        });
+      }
+    });
+    
+    return models;
+  };
   
   // Available benchmark types
   const availableBenchmarks = [
@@ -142,6 +206,9 @@ export default function LlmBenchmark() {
     return 'error';
   };
 
+  // Get all available models for the dropdown
+  const availableModels = getAvailableModels();
+
   return (
     <Box>
       <Box sx={{ mb: 4 }}>
@@ -155,116 +222,122 @@ export default function LlmBenchmark() {
       <Paper sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" gutterBottom>Benchmark Configuration</Typography>
         
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel id="models-label">Models to Test</InputLabel>
-              <Select
-                labelId="models-label"
-                multiple
-                value={benchmarkConfig.models}
-                onChange={handleModelChange}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
-                      <Chip 
-                        key={value} 
-                        label={availableModels.find(m => m.value === value)?.label || value} 
-                        size="small" 
-                      />
-                    ))}
-                  </Box>
-                )}
-              >
-                {availableModels.map((model) => (
-                  <MenuItem key={model.value} value={model.value}>
-                    {model.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel id="benchmarks-label">Benchmarks</InputLabel>
-              <Select
-                labelId="benchmarks-label"
-                multiple
-                value={benchmarkConfig.benchmarks}
-                onChange={handleBenchmarkChange}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
-                      <Chip 
-                        key={value} 
-                        label={availableBenchmarks.find(b => b.value === value)?.label || value} 
-                        size="small" 
-                      />
-                    ))}
-                  </Box>
-                )}
-              >
-                {availableBenchmarks.map((benchmark) => (
-                  <MenuItem key={benchmark.value} value={benchmark.value}>
-                    {benchmark.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              fullWidth
-              type="number"
-              label="Repetitions"
-              value={benchmarkConfig.repetitions}
-              onChange={(e) => handleConfigChange('repetitions', parseInt(e.target.value, 10) || 1)}
-              inputProps={{ min: 1, max: 10 }}
-              helperText="Number of runs per test (1-10)"
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={4}>
-            <Typography gutterBottom>Temperature: {benchmarkConfig.temperature}</Typography>
-            <Slider
-              value={benchmarkConfig.temperature}
-              onChange={(e, value) => handleConfigChange('temperature', value)}
-              min={0}
-              max={1}
-              step={0.1}
-              marks={[
-                { value: 0, label: '0' },
-                { value: 0.5, label: '0.5' },
-                { value: 1, label: '1' }
-              ]}
-              valueLabelDisplay="auto"
-            />
-          </Grid>
-          
-          <Grid item xs={12} md={5} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-            <Button 
-              variant="contained" 
-              color="primary"
-              startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
-              onClick={handleStartBenchmark}
-              disabled={loading || benchmarkConfig.models.length === 0 || benchmarkConfig.benchmarks.length === 0}
-              sx={{ mr: 1 }}
-            >
-              {loading ? 'Running...' : 'Run Benchmark'}
-            </Button>
+        {availableModels.length === 0 ? (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            No LLM models available. Please add and configure LLM providers in Settings first.
+          </Alert>
+        ) : (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel id="models-label">Models to Test</InputLabel>
+                <Select
+                  labelId="models-label"
+                  multiple
+                  value={benchmarkConfig.models}
+                  onChange={handleModelChange}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((value) => (
+                        <Chip 
+                          key={value} 
+                          label={availableModels.find(m => m.value === value)?.label || value} 
+                          size="small" 
+                        />
+                      ))}
+                    </Box>
+                  )}
+                >
+                  {availableModels.map((model) => (
+                    <MenuItem key={model.value} value={model.value}>
+                      {model.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             
-            <Button
-              variant="outlined"
-              startIcon={<RestartAltIcon />}
-              onClick={() => setResults(null)}
-              disabled={loading || !results}
-            >
-              Reset
-            </Button>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel id="benchmarks-label">Benchmarks</InputLabel>
+                <Select
+                  labelId="benchmarks-label"
+                  multiple
+                  value={benchmarkConfig.benchmarks}
+                  onChange={handleBenchmarkChange}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((value) => (
+                        <Chip 
+                          key={value} 
+                          label={availableBenchmarks.find(b => b.value === value)?.label || value} 
+                          size="small" 
+                        />
+                      ))}
+                    </Box>
+                  )}
+                >
+                  {availableBenchmarks.map((benchmark) => (
+                    <MenuItem key={benchmark.value} value={benchmark.value}>
+                      {benchmark.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Repetitions"
+                value={benchmarkConfig.repetitions}
+                onChange={(e) => handleConfigChange('repetitions', parseInt(e.target.value, 10) || 1)}
+                inputProps={{ min: 1, max: 10 }}
+                helperText="Number of runs per test (1-10)"
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={4}>
+              <Typography gutterBottom>Temperature: {benchmarkConfig.temperature}</Typography>
+              <Slider
+                value={benchmarkConfig.temperature}
+                onChange={(e, value) => handleConfigChange('temperature', value)}
+                min={0}
+                max={1}
+                step={0.1}
+                marks={[
+                  { value: 0, label: '0' },
+                  { value: 0.5, label: '0.5' },
+                  { value: 1, label: '1' }
+                ]}
+                valueLabelDisplay="auto"
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={5} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <Button 
+                variant="contained" 
+                color="primary"
+                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
+                onClick={handleStartBenchmark}
+                disabled={loading || benchmarkConfig.models.length === 0 || benchmarkConfig.benchmarks.length === 0}
+                sx={{ mr: 1 }}
+              >
+                {loading ? 'Running...' : 'Run Benchmark'}
+              </Button>
+              
+              <Button
+                variant="outlined"
+                startIcon={<RestartAltIcon />}
+                onClick={() => setResults(null)}
+                disabled={loading || !results}
+              >
+                Reset
+              </Button>
+            </Grid>
           </Grid>
-        </Grid>
+        )}
       </Paper>
       
       {error && (
@@ -290,11 +363,11 @@ export default function LlmBenchmark() {
           {/* Summary Cards */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
             {results.models.map((model) => (
-              <Grid item xs={12} sm={6} md={4} key={model.name}>
+              <Grid item xs={12} sm={6} md={4} key={model.id || model.name}>
                 <Card>
                   <CardHeader
-                    title={availableModels.find(m => m.value === model.name)?.label || model.name}
-                    subheader={`Overall Score: ${model.overallScore.toFixed(1)}/100`}
+                    title={model.name}
+                    subheader={`Provider: ${model.provider}`}
                     action={
                       <Typography 
                         variant="h5" 
@@ -342,8 +415,11 @@ export default function LlmBenchmark() {
                   <TableRow>
                     <TableCell>Benchmark</TableCell>
                     {results.models.map((model) => (
-                      <TableCell key={model.name} align="center">
-                        {availableModels.find(m => m.value === model.name)?.label || model.name}
+                      <TableCell key={model.id || model.name} align="center">
+                        {model.name}
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {model.provider}
+                        </Typography>
                       </TableCell>
                     ))}
                   </TableRow>
@@ -358,11 +434,11 @@ export default function LlmBenchmark() {
                       {results.models.map((model) => {
                         const result = model.results.find(r => r.category === benchmarkType);
                         const bestModel = getBestModelFor(benchmarkType);
-                        const isBest = bestModel?.name === model.name;
+                        const isBest = bestModel && (bestModel.id === model.id || bestModel.name === model.name);
                         
                         return (
                           <TableCell 
-                            key={`${model.name}-${benchmarkType}`} 
+                            key={`${model.id || model.name}-${benchmarkType}`} 
                             align="center"
                             sx={{ 
                               fontWeight: isBest ? 'bold' : 'normal',
@@ -404,11 +480,14 @@ export default function LlmBenchmark() {
                     if (!result) return null;
                     
                     return (
-                      <Grid item xs={12} md={4} key={`detail-${model.name}-${benchmarkType}`}>
+                      <Grid item xs={12} md={4} key={`detail-${model.id || model.name}-${benchmarkType}`}>
                         <Card variant="outlined">
                           <CardContent>
                             <Typography variant="h6" gutterBottom>
-                              {availableModels.find(m => m.value === model.name)?.label || model.name}
+                              {model.name}
+                            </Typography>
+                            <Typography variant="caption" gutterBottom display="block" color="text.secondary">
+                              {model.provider}
                             </Typography>
                             
                             <Box sx={{ mb: 2 }}>
@@ -448,6 +527,41 @@ export default function LlmBenchmark() {
           ))}
         </Box>
       )}
+      
+      {/* Information about benchmark process */}
+      <Paper sx={{ p: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <InfoIcon color="info" sx={{ mr: 1 }} />
+          <Typography variant="h6">About Benchmarking</Typography>
+        </Box>
+        
+        <Typography variant="body1" paragraph>
+          Model benchmarking is performed by sending standardized prompts to each selected model and evaluating the responses.
+          Each benchmark category tests different aspects of the model's capabilities:
+        </Typography>
+        
+        <Grid container spacing={2}>
+          {availableBenchmarks.map((benchmark) => (
+            <Grid item xs={12} md={6} key={benchmark.value}>
+              <Typography variant="subtitle1" gutterBottom>{benchmark.label}</Typography>
+              <Typography variant="body2" color="textSecondary">
+                {benchmark.value === 'reasoning' && 'Tests logical reasoning, deduction, and problem-solving skills.'}
+                {benchmark.value === 'factual' && 'Evaluates factual knowledge and ability to correctly recall information.'}
+                {benchmark.value === 'coding' && 'Measures quality and correctness of generated code snippets.'}
+                {benchmark.value === 'creativity' && 'Assesses creative writing, storytelling, and content generation.'}
+                {benchmark.value === 'math' && 'Tests mathematical problem solving and computational accuracy.'}
+              </Typography>
+            </Grid>
+          ))}
+        </Grid>
+        
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Benchmark scores range from 0-100, with higher scores indicating better performance.
+            Running multiple repetitions helps ensure more reliable results by averaging across multiple attempts.
+          </Typography>
+        </Box>
+      </Paper>
     </Box>
   );
 }

@@ -1,59 +1,39 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import CssBaseline from '@mui/material/CssBaseline';
-
-// Import theme context
+import { CssBaseline } from '@mui/material';
 import { useThemeContext } from './contexts/ThemeContext';
 
-// Import layout components
-import FixedLayout from './components/common/FixedLayout'; // Use the fixed layout component
-import NotFound from './components/common/NotFound';
+// Layout
+import FixedLayout from './components/common/FixedLayout';
 
-// Import page components 
+// Pages
 import Dashboard from './components/dashboard/Dashboard';
-import Workflows from './components/workflows/Workflows';
-import WorkflowDetail from './components/workflows/WorkflowDetail';
-import MetricsPage from './components/metrics/MetricsPage';
 import Settings from './components/settings/Settings';
-import LlmBenchmark from './components/benchmark/LlmBenchmark';
+import Benchmark from './components/benchmark/LlmBenchmark';
 import GptUplink from './components/integrations/GptUplink';
 import Agora from './components/agora/Agora';
-
-// Import styles
-import './styles/App.css';
+import NotFound from './components/common/NotFound';
 
 /**
- * Main App component - Sets up routing and layout
+ * Main application component
  */
-function App() {
-  const { darkMode, toggleDarkMode } = useThemeContext();
+export default function App() {
+  const { darkMode, toggleDarkMode, theme } = useThemeContext();
 
   return (
     <>
       <CssBaseline />
-      <div className="app-root">
-        <Routes>
-          <Route path="/" element={<FixedLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
-            {/* Redirect root to dashboard */}
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            
-            {/* Main routes */}
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/workflows" element={<Workflows />} />
-            <Route path="/workflows/:id" element={<WorkflowDetail />} />
-            <Route path="/metrics" element={<MetricsPage />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/benchmark" element={<LlmBenchmark />} />
-            <Route path="/integrations/gpt-uplink" element={<GptUplink />} />
-            <Route path="/agora" element={<Agora />} />
-            
-            {/* 404 Page */}
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-      </div>
+      <Routes>
+        <Route path="/" element={<FixedLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="benchmark" element={<Benchmark />} />
+          <Route path="integrations/gpt-uplink" element={<GptUplink />} />
+          <Route path="agora" element={<Agora />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
     </>
   );
 }
-
-export default App;

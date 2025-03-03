@@ -504,6 +504,163 @@ export const apiService = {
     } catch (err) {
       return { data: [] };
     }
+  },
+  
+  // Run benchmark tests on models
+  runBenchmark: async (benchmarkConfig) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      return { data: null }; // Let the component generate mock data
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        return { data: null }; // Let the component generate mock data
+      }
+      
+      // Only try API if server is available
+      const response = await apiClient.post('/api/benchmark/run', benchmarkConfig);
+      return response;
+    } catch (err) {
+      console.info(`Benchmark API request failed: ${err.message}`);
+      return { data: null }; // Let the component generate mock data
+    }
+  },
+  
+  // Get benchmark history
+  getBenchmarkHistory: async () => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      return { data: [] }; 
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      if (!serverAvailable) return { data: [] };
+      
+      return await apiClient.get('/api/benchmark/history');
+    } catch (err) {
+      return { data: [] };
+    }
+  },
+  
+  // Get a specific benchmark result
+  getBenchmarkResult: async (benchmarkId) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      return { data: null };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      if (!serverAvailable) return { data: null };
+      
+      return await apiClient.get(`/api/benchmark/result/${benchmarkId}`);
+    } catch (err) {
+      return { data: null };
+    }
+  },
+  
+  // Request test for uplink connection
+  requestUplinkTest: async (config) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      return { 
+        data: { 
+          success: true, 
+          message: "Mock uplink connection test successful",
+          connectionId: "mock-connection-" + Date.now()
+        }
+      };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      if (!serverAvailable) {
+        return { 
+          data: { 
+            success: true, 
+            message: "Mock uplink connection test successful",
+            connectionId: "mock-connection-" + Date.now()
+          }
+        };
+      }
+      
+      return await apiClient.post('/api/uplink/test', config);
+    } catch (err) {
+      return { 
+        data: { 
+          success: false, 
+          message: `Connection test failed: ${err.message}`
+        }
+      };
+    }
+  },
+  
+  // Start uplink server
+  startUplink: async (config) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      return { 
+        data: { 
+          success: true, 
+          message: "Uplink started in simulation mode",
+          serverId: "mock-server-" + Date.now()
+        }
+      };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      if (!serverAvailable) {
+        return { 
+          data: { 
+            success: true, 
+            message: "Uplink started in simulation mode",
+            serverId: "mock-server-" + Date.now()
+          }
+        };
+      }
+      
+      return await apiClient.post('/api/uplink/start', config);
+    } catch (err) {
+      return { 
+        data: { 
+          success: false, 
+          message: `Failed to start uplink: ${err.message}`
+        }
+      };
+    }
+  },
+  
+  // Stop uplink server
+  stopUplink: async (serverId) => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      return { 
+        data: { 
+          success: true, 
+          message: "Uplink stopped successfully"
+        }
+      };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      if (!serverAvailable) {
+        return { 
+          data: { 
+            success: true, 
+            message: "Uplink stopped successfully"
+          }
+        };
+      }
+      
+      return await apiClient.post('/api/uplink/stop', { serverId });
+    } catch (err) {
+      return { 
+        data: { 
+          success: false, 
+          message: `Failed to stop uplink: ${err.message}`
+        }
+      };
+    }
   }
 };
 

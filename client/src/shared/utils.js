@@ -1,74 +1,104 @@
 /**
- * Utility functions for the Nexa Agents application
+ * Utility functions for the client application
  */
 
 /**
- * Format a date string or timestamp to a readable format
- * @param {string|number|Date} dateInput - The date to format
- * @param {Object} options - Formatting options
+ * Format a date using Intl.DateTimeFormat
+ * @param {Date|string|number} date - The date to format
+ * @param {Object} options - Options for Intl.DateTimeFormat
  * @returns {string} Formatted date string
  */
-export const formatDate = (dateInput, options = {}) => {
-  if (!dateInput) return 'N/A';
+export const formatDate = (date, options = {}) => {
+  const defaultOptions = {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  };
+  
+  const mergedOptions = { ...defaultOptions, ...options };
   
   try {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-    
-    // For recent dates (less than 24h ago), use relative time
-    const now = new Date();
-    const diffMs = now - date;
-    const diffHrs = diffMs / (1000 * 60 * 60);
-    
-    if (diffHrs < 24 && options.useRelative !== false) {
-      if (diffHrs < 1) {
-        const diffMins = Math.round(diffMs / (1000 * 60));
-        return diffMins < 1 ? 'Just now' : `${diffMins}m ago`;
-      } else {
-        return `${Math.round(diffHrs)}h ago`;
-      }
-    }
-    
-    // Otherwise use a standard date format
-    const formatOptions = {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      ...options
-    };
-    
-    return new Intl.DateTimeFormat('en-US', formatOptions).format(date);
+    const dateObj = date instanceof Date ? date : new Date(date);
+    return new Intl.DateTimeFormat('en-US', mergedOptions).format(dateObj);
   } catch (error) {
     console.error('Error formatting date:', error);
-    return String(dateInput);
+    return String(date);
   }
 };
 
 /**
- * Format a number with commas as thousands separators
+ * Format a number with commas as thousands separators and specified precision
  * @param {number} number - The number to format
+ * @param {number} precision - Number of decimal places
  * @returns {string} Formatted number string
  */
-export const formatNumber = (number) => {
-  if (number === undefined || number === null) return 'N/A';
-  return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+export const formatNumber = (number, precision = 0) => {
+  try {
+    return Number(number).toLocaleString('en-US', {
+      minimumFractionDigits: precision,
+      maximumFractionDigits: precision
+    });
+  } catch (error) {
+    console.error('Error formatting number:', error);
+    return String(number);
+  }
 };
 
 /**
- * Format bytes to a human-readable string (KB, MB, GB, etc.)
- * @param {number} bytes - The number of bytes
- * @param {number} decimals - The number of decimal places
- * @returns {string} Formatted size string
+ * Truncate a string to a specified length and add ellipsis
+ * @param {string} str - The string to truncate
+ * @param {number} maxLength - Maximum length before truncation
+ * @returns {string} Truncated string
  */
-export const formatFileSize = (bytes, decimals = 2) => {
+export const truncateString = (str, maxLength = 100) => {
+  if (!str) return '';
+  return str.length > maxLength ? `${str.slice(0, maxLength)}...` : str;
+};
+
+/**
+ * Convert bytes to a human-readable format
+ * @param {number} bytes - The size in bytes
+ * @param {number} decimals - Number of decimal places
+ * @returns {string} Formatted size with unit
+ */
+export const formatBytes = (bytes, decimals = 2) => {
   if (bytes === 0) return '0 Bytes';
   
   const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
+};
+
+/**
+ * Debounce a function call
+ * @param {Function} func - The function to debounce
+ * @param {number} delay - Delay in milliseconds
+ * @returns {Function} Debounced function
+ */
+export const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+    }, delay);
+  };
+};
+
+/**
+ * Generate a random string ID
+ * @param {number} length - Length of the ID
+ * @returns {string} Random ID
+ */
+export const generateId = (length = 10) => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
 };

@@ -1,29 +1,77 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  Box, Typography, Grid, Paper, Button, Card, CardContent,
-  Divider, CircularProgress, Alert
+import React, { useState, useEffect } from 'react';
+import {
+  Box, Typography, Paper, Grid, Card, CardContent, CardHeader,
+  Button, LinearProgress, Chip, List, ListItem, ListItemText,
+  Avatar, Divider, IconButton, Alert, CircularProgress
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import BarChartIcon from '@mui/icons-material/BarChart';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 
+import AddIcon from '@mui/icons-material/Add';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import MemoryIcon from '@mui/icons-material/Memory';
+import StorageIcon from '@mui/icons-material/Storage';
+import SettingsIcon from '@mui/icons-material/Settings';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import { useNavigate } from 'react-router-dom';
-import WorkflowCard from './WorkflowCard';
-import MetricsCard from '../metrics/MetricsCard';
-import SystemMetricsChart from '../metrics/SystemMetricsChart';
-import { useMetrics } from '../../hooks/useMetrics';
+
+import { useSettings } from '../../contexts/SettingsContext';
+import { apiService } from '../../services/api';
+import SystemMetricsChart from '../common/SystemMetricsChart';
+
+// Simple MetricsCard component
+const MetricsCard = ({ title, value, progress, color }) => (
+  <Card sx={{ p: 2 }}>
+    <Typography variant="subtitle2" gutterBottom>{title}</Typography>
+    <Typography variant="h5" sx={{ mb: 1 }}>{value}</Typography>
+    <LinearProgress 
+      variant="determinate" 
+      value={progress} 
+      color={color} 
+      sx={{ height: 8, borderRadius: 4 }} 
+    />
+  </Card>
+);
+
+// Simple WorkflowCard component
+const WorkflowCard = ({ workflow, onClick }) => (
+  <Card sx={{ cursor: 'pointer' }} onClick={onClick}>
+    <CardContent>
+      <Typography variant="h6">{workflow.name}</Typography>
+      <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+        {workflow.description}
+      </Typography>
+      <Chip 
+        label={workflow.status.charAt(0).toUpperCase() + workflow.status.slice(1)} 
+        color={
+          workflow.status === 'active' ? 'success' : 
+          workflow.status === 'completed' ? 'primary' : 'default'
+        }
+        size="small"
+      />
+    </CardContent>
+  </Card>
+);
 
 /**
- * Dashboard Component - Main dashboard view
+ * Dashboard Component - Main application dashboard
  */
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { metrics, historicalMetrics, loading: metricsLoading, error: metricsError } = useMetrics();
+  const { settings } = useSettings();
+  const [loading, setLoading] = useState(false);
   const [recentWorkflows, setRecentWorkflows] = useState([]);
   const [activeAgents, setActiveAgents] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
+  // Metrics state
+  const [metrics, setMetrics] = useState(null);
+  const [historicalMetrics, setHistoricalMetrics] = useState([]);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState(null);
+  
+  // Fetch dashboard data
   useEffect(() => {
     // Simulate API call to fetch dashboard data
     const fetchDashboardData = async () => {
@@ -116,6 +164,54 @@ export default function Dashboard() {
     };
     
     fetchDashboardData();
+  }, []);
+  
+  // Fetch metrics data
+  useEffect(() => {
+    const fetchMetricsData = async () => {
+      try {
+        setMetricsLoading(true);
+        
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 700));
+        
+        // Mock current metrics
+        const mockMetrics = {
+          cpu_usage: 45.2,
+          memory_used: 4.2 * 1024 * 1024 * 1024, // 4.2 GB
+          memory_total: 16 * 1024 * 1024 * 1024, // 16 GB
+          disk_usage: 230 * 1024 * 1024 * 1024, // 230 GB
+          disk_total: 512 * 1024 * 1024 * 1024, // 512 GB
+          network_in: 25 * 1024 * 1024, // 25 MB
+          network_out: 10 * 1024 * 1024, // 10 MB
+          timestamp: new Date().toISOString()
+        };
+        
+        // Mock historical metrics (last 24 hours, hourly data)
+        const mockHistoricalMetrics = Array.from({ length: 24 }, (_, i) => {
+          const date = new Date();
+          date.setHours(date.getHours() - (23 - i));
+          
+          return {
+            timestamp: date.toISOString(),
+            cpu: Math.floor(30 + Math.random() * 50), // Random between 30-80%
+            memory: Math.floor(30 + Math.random() * 40), // Random between 30-70%
+            disk: Math.floor(40 + Math.random() * 20) // Random between 40-60%
+          };
+        });
+        
+        setMetrics(mockMetrics);
+        setHistoricalMetrics(mockHistoricalMetrics);
+        setMetricsError(null);
+      } catch (err) {
+        console.error('Error fetching metrics data:', err);
+        setMetricsError('Failed to load metrics data');
+      } finally {
+        setMetricsLoading(false);
+      }
+    };
+    
+    fetchMetricsData();
   }, []);
   
   const formatBytes = (bytes) => {

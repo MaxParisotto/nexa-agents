@@ -1,488 +1,390 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Box, Typography, Paper, Grid, Button, TextField, CircularProgress,
-  Card, CardContent, Divider, Avatar, Chip, IconButton,
-  List, ListItem, ListItemText, ListItemAvatar, Toolbar,
-  Alert, Menu, MenuItem, InputAdornment, Container
+  Box, Typography, Paper, Button, Divider, Grid, Card, CardContent,
+  CardActions, Chip, Alert, TextField, CircularProgress, FormControl,
+  InputLabel, Select, MenuItem, Dialog, DialogTitle, DialogContent,
+  DialogActions
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import ChatIcon from '@mui/icons-material/Chat';
-import SearchIcon from '@mui/icons-material/Search';
-import PersonIcon from '@mui/icons-material/Person';
-import ForumIcon from '@mui/icons-material/Forum';
-import ReplyIcon from '@mui/icons-material/Reply';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
-import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
-import AddIcon from '@mui/icons-material/Add';
 
-import { formatDate } from '../../shared/utils';
+import AddIcon from '@mui/icons-material/Add';
+import DownloadIcon from '@mui/icons-material/Download';
+import ShareIcon from '@mui/icons-material/Share';
+import InstallDesktopIcon from '@mui/icons-material/InstallDesktop';
+import FeedbackIcon from '@mui/icons-material/Feedback';
+
+import { useSettings } from '../../contexts/SettingsContext';
+import { apiService } from '../../services/api';
 
 /**
- * Agora Component - Discord-like discussion forum for human agents
+ * Agora Component - Model marketplace and community hub
  */
 export default function Agora() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [activeChannel, setActiveChannel] = useState('general');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [message, setMessage] = useState('');
-  const [channels, setChannels] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [menuAnchor, setMenuAnchor] = useState(null);
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  const messagesEndRef = useRef(null);
+  const { settings } = useSettings();
+  const [loading, setLoading] = useState(false);
+  const [models, setModels] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [targetProviderId, setTargetProviderId] = useState('');
+  const [installingModel, setInstallingModel] = useState(false);
 
-  // Fetch data on component mount
+  // Mock categories
+  const categories = [
+    { id: 'all', name: 'All Models' },
+    { id: 'featured', name: 'Featured' },
+    { id: 'small', name: 'Small (<4GB)' },
+    { id: 'medium', name: 'Medium (4-10GB)' },
+    { id: 'large', name: 'Large (10+GB)' },
+    { id: 'vision', name: 'Vision' },
+    { id: 'embedding', name: 'Embeddings' }
+  ];
+
+  // Get available LLM providers that use Ollama
+  const getOllamaProviders = () => {
+    if (!settings?.llmProviders) return [];
+    return settings.llmProviders.filter(p => p.type === 'ollama' && p.enabled);
+  };
+
+  // Load models from Agora
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchModels = async () => {
       setLoading(true);
       try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        // Mock channels
-        const mockChannels = [
-          { id: 'general', name: 'General', unread: 0, participants: 32 },
-          { id: 'workflows', name: 'Workflow Collaboration', unread: 5, participants: 18 },
-          { id: 'research', name: 'Research Discussion', unread: 2, participants: 12 },
-          { id: 'support', name: 'Agent Support', unread: 0, participants: 24 },
-          { id: 'showcase', name: 'Project Showcase', unread: 9, participants: 30 }
+        // In a real app, you would fetch this from an API
+        // For now, using mock data
+        const mockModels = [
+          {
+            id: 'llama3-8b',
+            name: 'Llama 3 8B',
+            description: 'Meta\'s Llama 3 8B model, optimized for general purpose use',
+            publisher: 'Meta',
+            category: ['featured', 'medium'],
+            tags: ['general', 'popular'],
+            size: '4.8GB',
+            downloads: 125684,
+            rating: 4.8,
+            lastUpdated: '2023-04-15',
+            compatibleProviders: ['ollama', 'lmstudio'],
+            installCommand: 'ollama pull llama3:8b',
+            imageUrl: 'https://ollama.com/public/images/llama.png'
+          },
+          {
+            id: 'llama3-70b',
+            name: 'Llama 3 70B',
+            description: 'Meta\'s largest Llama 3 model with state-of-the-art performance',
+            publisher: 'Meta',
+            category: ['large'],
+            tags: ['powerful', 'featured'],
+            size: '39.2GB',
+            downloads: 87331,
+            rating: 4.9,
+            lastUpdated: '2023-04-15',
+            compatibleProviders: ['ollama'],
+            installCommand: 'ollama pull llama3:70b',
+            imageUrl: 'https://ollama.com/public/images/llama.png'
+          },
+          {
+            id: 'mixtral-8x7b',
+            name: 'Mixtral 8x7B',
+            description: 'Mixtral\'s powerful mixture of experts model',
+            publisher: 'Mistral AI',
+            category: ['featured', 'large'],
+            tags: ['moe', 'powerful'],
+            size: '26GB',
+            downloads: 95421,
+            rating: 4.7,
+            lastUpdated: '2023-03-20',
+            compatibleProviders: ['ollama', 'lmstudio'],
+            installCommand: 'ollama pull mixtral:8x7b',
+            imageUrl: 'https://ollama.com/public/images/mixtral.png'
+          },
+          {
+            id: 'phi3-mini',
+            name: 'Phi-3 Mini',
+            description: 'Microsoft\'s compact but powerful Phi-3 model',
+            publisher: 'Microsoft',
+            category: ['small'],
+            tags: ['efficient', 'fast'],
+            size: '3.8GB',
+            downloads: 68432,
+            rating: 4.5,
+            lastUpdated: '2023-04-10',
+            compatibleProviders: ['ollama', 'lmstudio'],
+            installCommand: 'ollama pull phi3:mini',
+            imageUrl: 'https://ollama.com/public/images/phi.png'
+          },
+          {
+            id: 'clip-vision',
+            name: 'CLIP Vision',
+            description: 'OpenAI\'s CLIP vision model for image understanding',
+            publisher: 'OpenAI',
+            category: ['vision', 'small'],
+            tags: ['vision', 'multimodal'],
+            size: '2.5GB',
+            downloads: 54231,
+            rating: 4.6,
+            lastUpdated: '2023-02-28',
+            compatibleProviders: ['ollama'],
+            installCommand: 'ollama pull clip:vision',
+            imageUrl: 'https://ollama.com/public/images/clip.png'
+          },
+          {
+            id: 'all-minilm',
+            name: 'All-MiniLM Embeddings',
+            description: 'Efficient embedding model for text retrieval',
+            publisher: 'Microsoft',
+            category: ['embedding', 'small'],
+            tags: ['embeddings', 'retrieval'],
+            size: '120MB',
+            downloads: 42156,
+            rating: 4.4,
+            lastUpdated: '2023-01-15',
+            compatibleProviders: ['ollama', 'lmstudio'],
+            installCommand: 'ollama pull all-minilm',
+            imageUrl: 'https://ollama.com/public/images/minilm.png'
+          }
         ];
         
-        setChannels(mockChannels);
-        
-        // Mock messages for the active channel
-        fetchChannelMessages(activeChannel);
-        
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching Agora data:', err);
-        setError('Failed to load discussion forum. Please try again.');
+        setModels(mockModels);
+      } catch (error) {
+        console.error('Failed to fetch models:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchModels();
   }, []);
-  
-  // Fetch messages when channel changes
-  useEffect(() => {
-    if (!loading) {
-      fetchChannelMessages(activeChannel);
-    }
-  }, [activeChannel]);
-  
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-  
-  const fetchChannelMessages = async (channelId) => {
-    setLoading(true);
+
+  // Filter models based on selected category and search query
+  const filteredModels = models.filter(model => {
+    // Filter by category
+    const categoryMatch = selectedCategory === 'all' || 
+      model.category.includes(selectedCategory);
+    
+    // Filter by search query
+    const searchMatch = searchQuery === '' ||
+      model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      model.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      model.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    return categoryMatch && searchMatch;
+  });
+
+  // Open install dialog
+  const handleInstall = (model) => {
+    setSelectedModel(model);
+    setInstallDialogOpen(true);
+  };
+
+  // Handle model installation
+  const handleConfirmInstall = async () => {
+    if (!selectedModel || !targetProviderId) return;
+    
+    setInstallingModel(true);
+    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 600));
+      // In a real app, you would call an API to install the model
+      // For now, simulate installation
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Generate between 10-25 mock messages
-      const count = Math.floor(Math.random() * 15) + 10;
-      const mockMessages = [];
-      const now = new Date();
-      const users = [
-        { id: 'user1', name: 'John Doe', avatar: 'J', color: '#4a76a8' },
-        { id: 'user2', name: 'Alice Smith', avatar: 'A', color: '#e57373' },
-        { id: 'user3', name: 'Bob Miller', avatar: 'B', color: '#43a047' },
-        { id: 'user4', name: 'Emma Wilson', avatar: 'E', color: '#ff9800' },
-        { id: 'user5', name: 'Michael Brown', avatar: 'M', color: '#9c27b0' }
-      ];
+      // Success message
+      console.log(`Installed ${selectedModel.name} for provider ${targetProviderId}`);
       
-      for (let i = 0; i < count; i++) {
-        const user = users[Math.floor(Math.random() * users.length)];
-        const timeOffset = (count - i) * (Math.random() * 10 + 5) * 60000; // Random minutes ago
-        mockMessages.push({
-          id: `msg-${channelId}-${i}`,
-          channelId,
-          user,
-          content: `This is a sample message in the ${channelId} channel. It contains some discussion text that might be relevant to the channel topic.`,
-          timestamp: new Date(now - timeOffset),
-          reactions: Math.random() > 0.7 ? [
-            { emoji: '👍', count: Math.floor(Math.random() * 5) + 1 },
-            { emoji: '❤️', count: Math.floor(Math.random() * 3) }
-          ] : [],
-          attachments: Math.random() > 0.9 ? [
-            { name: 'document.pdf', size: '2.4 MB', type: 'application/pdf' }
-          ] : []
-        });
-      }
-      
-      // Sort by timestamp
-      mockMessages.sort((a, b) => a.timestamp - b.timestamp);
-      
-      setMessages(mockMessages);
-    } catch (err) {
-      console.error(`Error fetching messages for channel ${channelId}:`, err);
-      setError(`Failed to load messages for ${channelId}. Please try again.`);
+      // Close dialog and reset state
+      setInstallDialogOpen(false);
+      setSelectedModel(null);
+      setTargetProviderId('');
+    } catch (error) {
+      console.error('Failed to install model:', error);
     } finally {
-      setLoading(false);
+      setInstallingModel(false);
     }
   };
-
-  // Handle channel selection
-  const handleChannelChange = (channelId) => {
-    setActiveChannel(channelId);
-  };
-
-  // Handle search input
-  const handleSearch = (e) => {
-    setSearchTerm(e.target.value);
-  };
-  
-  // Handle message input
-  const handleMessageChange = (e) => {
-    setMessage(e.target.value);
-  };
-  
-  // Handle message send
-  const handleSendMessage = () => {
-    if (!message.trim()) return;
-    
-    const newMessage = {
-      id: `msg-new-${Date.now()}`,
-      channelId: activeChannel,
-      user: { id: 'currentUser', name: 'Current User', avatar: 'U', color: '#2196f3' },
-      content: message,
-      timestamp: new Date(),
-      reactions: [],
-      attachments: []
-    };
-    
-    setMessages(prev => [...prev, newMessage]);
-    setMessage('');
-  };
-  
-  // Handle key press in message input
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  // Handle message menu open
-  const handleMenuOpen = (event, message) => {
-    setMenuAnchor(event.currentTarget);
-    setSelectedMessage(message);
-  };
-
-  // Handle menu close
-  const handleMenuClose = () => {
-    setMenuAnchor(null);
-    setSelectedMessage(null);
-  };
-
-  // Handle message menu actions
-  const handleMenuAction = (action) => {
-    if (!selectedMessage) return;
-
-    console.log(`Action: ${action} for message ID: ${selectedMessage.id}`);
-    handleMenuClose();
-  };
-  
-  // Scroll to bottom of message list
-  const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  // Filter channels based on search term
-  const filteredChannels = channels.filter(channel => 
-    channel.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
-    <Box sx={{ width: '100%' }}>
-      {/* Header section that properly takes up full width */}
-      <Toolbar disableGutters sx={{ width: '100%', display: 'block', p: 0, mb: 3 }}>
-        <Typography variant="h4">Agora</Typography>
-        <Typography variant="body1" color="textSecondary" sx={{ mt: 1 }}>
-          Collaborate and discuss with other human agents
-        </Typography>
-        
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
-      </Toolbar>
+    <Box>
+      <Typography variant="h4" gutterBottom>Agora Model Hub</Typography>
       
-      {/* Content area with chat UI */}
-      <Box sx={{ display: 'flex', width: '100%' }}>
-        <Grid container spacing={2}>
-          {/* Left sidebar - channels */}
-          <Grid item xs={12} md={3}>
-            <Paper sx={{ height: '75vh', display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Search channels..."
-                  value={searchTerm}
-                  onChange={handleSearch}
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
-                  }}
-                />
-              </Box>
-              
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle1" fontWeight="bold">Channels</Typography>
-                <IconButton size="small">
-                  <AddIcon fontSize="small" />
-                </IconButton>
-              </Box>
-              
-              <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-                <List>
-                  {loading && !channels.length ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : filteredChannels.length > 0 ? (
-                    filteredChannels.map(channel => (
-                      <ListItem 
-                        key={channel.id} 
-                        component="div" 
-                        selected={activeChannel === channel.id}
-                        onClick={() => handleChannelChange(channel.id)}
-                        sx={{ 
-                          borderRadius: 1, 
-                          mx: 0.5,
-                          cursor: 'pointer',
-                          fontWeight: channel.unread > 0 ? 'bold' : 'normal' 
-                        }}
-                      >
-                        <ListItemAvatar sx={{ minWidth: 40 }}>
-                          <ForumIcon color={activeChannel === channel.id ? 'primary' : 'inherit'} />
-                        </ListItemAvatar>
-                        <ListItemText 
-                          primary={channel.name} 
-                          secondary={`${channel.participants} participants`}
-                        />
-                        {channel.unread > 0 && (
-                          <Chip 
-                            label={channel.unread} 
-                            color="primary" 
-                            size="small" 
-                            sx={{ height: 20, minWidth: 20 }}
-                          />
-                        )}
-                      </ListItem>
-                    ))
-                  ) : (
-                    <ListItem>
-                      <ListItemText primary="No channels found" />
-                    </ListItem>
-                  )}
-                </List>
-              </Box>
-            </Paper>
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Welcome to Agora, the community model hub for Nexa Agents. Browse, download, and install 
+        models directly to your local LLM providers.
+      </Alert>
+      
+      {/* Search and Filter */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              placeholder="Search models..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              variant="outlined"
+              size="small"
+            />
           </Grid>
-          
-          {/* Main Content - Messages */}
-          <Grid item xs={12} md={9}>
-            <Paper sx={{ height: '75vh', display: 'flex', flexDirection: 'column' }}>
-              {/* Channel Header */}
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                <Typography variant="h6" component="div">
-                  #{channels.find(c => c.id === activeChannel)?.name || activeChannel}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  {channels.find(c => c.id === activeChannel)?.participants || 0} participants
-                </Typography>
-              </Box>
-              
-              {/* Messages Container */}
-              <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
-                {loading ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                    <CircularProgress />
-                  </Box>
-                ) : messages.length > 0 ? (
-                  <List>
-                    {messages.map((msg, index) => {
-                      const isNewUser = index === 0 || messages[index-1].user.id !== msg.user.id;
-                      const showTimestamp = isNewUser || 
-                        new Date(msg.timestamp) - new Date(messages[index-1].timestamp) > 10 * 60 * 1000; // 10 minutes
-                        
-                      return (
-                        <React.Fragment key={msg.id}>
-                          {showTimestamp && (
-                            <Box sx={{ textAlign: 'center', my: 2 }}>
-                              <Typography variant="caption" color="textSecondary">
-                                {formatDate(msg.timestamp)}
-                              </Typography>
-                            </Box>
-                          )}
-                          
-                          <ListItem 
-                            alignItems="flex-start" 
-                            sx={{ 
-                              py: isNewUser ? 1 : 0.5, 
-                              px: 1,
-                              "&:hover": { 
-                                bgcolor: 'action.hover',
-                                "& .message-actions": {
-                                  visibility: 'visible'
-                                }
-                              }
-                            }}
-                          >
-                            {isNewUser && (
-                              <ListItemAvatar>
-                                <Avatar sx={{ bgcolor: msg.user.color }}>
-                                  {msg.user.avatar}
-                                </Avatar>
-                              </ListItemAvatar>
-                            )}
-                            
-                            <Box sx={{ ml: isNewUser ? 0 : 7 }}>
-                              {isNewUser && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                                  <Typography variant="subtitle2" fontWeight="bold">
-                                    {msg.user.name}
-                                  </Typography>
-                                  <Typography variant="caption" color="textSecondary" sx={{ ml: 1 }}>
-                                    {formatDate(msg.timestamp, { hour: '2-digit', minute: '2-digit' })}
-                                  </Typography>
-                                </Box>
-                              )}
-                              
-                              <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                                <Typography variant="body1" sx={{ wordBreak: 'break-word' }}>
-                                  {msg.content}
-                                </Typography>
-                                
-                                <Box 
-                                  className="message-actions"
-                                  sx={{ 
-                                    ml: 1, 
-                                    visibility: 'hidden',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <IconButton 
-                                    size="small"
-                                    onClick={(e) => handleMenuOpen(e, msg)}
-                                  >
-                                    <MoreVertIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton size="small">
-                                    <ReplyIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton size="small">
-                                    <EmojiEmotionsIcon fontSize="small" />
-                                  </IconButton>
-                                </Box>
-                              </Box>
-                              
-                              {msg.attachments.length > 0 && (
-                                <Box sx={{ mt: 1 }}>
-                                  {msg.attachments.map((attachment, i) => (
-                                    <Chip
-                                      key={i}
-                                      icon={<AttachFileIcon />}
-                                      label={`${attachment.name} (${attachment.size})`}
-                                      variant="outlined"
-                                      size="small"
-                                      sx={{ mr: 1 }}
-                                    />
-                                  ))}
-                                </Box>
-                              )}
-                              
-                              {msg.reactions.length > 0 && (
-                                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                                  {msg.reactions.map((reaction, i) => (
-                                    <Chip
-                                      key={i}
-                                      label={`${reaction.emoji} ${reaction.count}`}
-                                      size="small"
-                                      variant="outlined"
-                                      sx={{ px: 0.5, height: 24 }}
-                                    />
-                                  ))}
-                                </Box>
-                              )}
-                            </Box>
-                          </ListItem>
-                        </React.Fragment>
-                      );
-                    })}
-                    <div ref={messagesEndRef} />
-                  </List>
-                ) : (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                    <Typography color="textSecondary">
-                      No messages in this channel. Be the first to send a message!
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-              
-              {/* Message Input */}
-              <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    maxRows={4}
-                    placeholder={`Message #${channels.find(c => c.id === activeChannel)?.name || activeChannel}`}
-                    value={message}
-                    onChange={handleMessageChange}
-                    onKeyPress={handleKeyPress}
-                    sx={{ mr: 1 }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton size="small">
-                            <AttachFileIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton size="small">
-                            <EmojiEmotionsIcon fontSize="small" />
-                          </IconButton>
-                        </InputAdornment>
-                      )
-                    }}
-                  />
-                  <Button 
-                    variant="contained" 
-                    color="primary"
-                    endIcon={<SendIcon />}
-                    onClick={handleSendMessage}
-                    disabled={!message.trim()}
-                  >
-                    Send
-                  </Button>
-                </Box>
-              </Box>
-            </Paper>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Category</InputLabel>
+              <Select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                label="Category"
+              >
+                {categories.map((category) => (
+                  <MenuItem key={category.id} value={category.id}>
+                    {category.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
         </Grid>
-      </Box>
+      </Paper>
       
-      {/* Message action menu */}
-      <Menu
-        anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
-        onClose={handleMenuClose}
+      {/* Models Grid */}
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : filteredModels.length === 0 ? (
+        <Alert severity="warning">
+          No models found matching your criteria. Try adjusting your filters.
+        </Alert>
+      ) : (
+        <Grid container spacing={3}>
+          {filteredModels.map((model) => (
+            <Grid item key={model.id} xs={12} sm={6} md={4}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ 
+                  height: 140, 
+                  backgroundImage: `url(${model.imageUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  bgcolor: 'action.hover'
+                }} />
+                
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                    <Typography variant="h6" component="div" gutterBottom>
+                      {model.name}
+                    </Typography>
+                    <Chip 
+                      label={model.size} 
+                      size="small" 
+                      color={
+                        parseFloat(model.size) < 5 ? 'success' : 
+                        parseFloat(model.size) < 15 ? 'primary' : 
+                        'warning'
+                      } 
+                      variant="outlined" 
+                    />
+                  </Box>
+                  
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    {model.description}
+                  </Typography>
+                  
+                  <Typography variant="caption" display="block">
+                    Publisher: <strong>{model.publisher}</strong>
+                  </Typography>
+                  
+                  <Typography variant="caption" display="block" gutterBottom>
+                    Downloads: {model.downloads.toLocaleString()}
+                  </Typography>
+                  
+                  <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {model.tags.map((tag) => (
+                      <Chip key={tag} label={tag} size="small" />
+                    ))}
+                  </Box>
+                </CardContent>
+                
+                <Divider />
+                
+                <CardActions sx={{ justifyContent: 'space-between' }}>
+                  <Button 
+                    startIcon={<InstallDesktopIcon />}
+                    variant="contained" 
+                    size="small"
+                    onClick={() => handleInstall(model)}
+                  >
+                    Install
+                  </Button>
+                  <Button 
+                    startIcon={<ShareIcon />}
+                    size="small"
+                  >
+                    Share
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+      
+      {/* Installation Dialog */}
+      <Dialog 
+        open={installDialogOpen} 
+        onClose={() => setInstallDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
       >
-        <MenuItem onClick={() => handleMenuAction('reply')}>Reply</MenuItem>
-        <MenuItem onClick={() => handleMenuAction('copy')}>Copy Text</MenuItem>
-        <MenuItem onClick={() => handleMenuAction('report')}>Report Message</MenuItem>
-      </Menu>
+        <DialogTitle>Install {selectedModel?.name}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ py: 1 }}>
+            <Typography variant="body2" paragraph>
+              Select a provider to install this model to:
+            </Typography>
+            
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Target Provider</InputLabel>
+              <Select
+                value={targetProviderId}
+                onChange={(e) => setTargetProviderId(e.target.value)}
+                label="Target Provider"
+              >
+                {getOllamaProviders().map((provider) => (
+                  <MenuItem key={provider.id} value={provider.id}>
+                    {provider.name} ({provider.baseUrl})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            {selectedModel && (
+              <Box sx={{ mt: 2, bgcolor: 'action.hover', p: 2, borderRadius: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Installation Command:
+                </Typography>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                  {selectedModel.installCommand}
+                </Typography>
+              </Box>
+            )}
+            
+            {getOllamaProviders().length === 0 && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                No compatible providers found. Add and configure an Ollama provider in Settings first.
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInstallDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleConfirmInstall}
+            variant="contained"
+            disabled={!targetProviderId || installingModel || getOllamaProviders().length === 0}
+            startIcon={installingModel && <CircularProgress size={16} />}
+          >
+            {installingModel ? 'Installing...' : 'Install'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

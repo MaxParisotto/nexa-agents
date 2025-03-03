@@ -1,135 +1,112 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import settingsService from '../services/settingsService';
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import { apiService } from '../services/api';
 import { DEFAULT_SETTINGS } from '../shared/defaultSettings';
 
 // Create context
 const SettingsContext = createContext();
 
 /**
- * Settings Provider Component
+ * Settings provider component for managing global application settings
  */
 export const SettingsProvider = ({ children }) => {
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Load settings on component mount
+  // Initialize settings from API or localStorage
   useEffect(() => {
-    const loadSettings = async () => {
-      setLoading(true);
+    const fetchSettings = async () => {
       try {
-        const loadedSettings = await settingsService.initialize();
-        setSettings(loadedSettings);
-        setError(null);
+        setLoading(true);
+        const response = await apiService.getSettings();
+        
+        if (response && response.data) {
+          setSettings(response.data);
+        } else {
+          throw new Error('Invalid settings data');
+        }
       } catch (err) {
-        console.error('Failed to load settings:', err);
-        setError('Failed to load settings. Using defaults.');
+        console.error("Error fetching settings:", err);
+        setError("Failed to load settings");
+        
+        // If settings are in localStorage, try to use those
+        try {
+          const localSettings = localStorage.getItem('nexa_settings');
+          if (localSettings) {
+            setSettings(JSON.parse(localSettings));
+          } else {
+            // If all else fails, use default settings
+            setSettings(DEFAULT_SETTINGS);
+          }
+        } catch (localErr) {
+          console.error("Error reading local settings:", localErr);
+          setSettings(DEFAULT_SETTINGS);
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    loadSettings();
-    
-    // Set up listener for settings changes from other components
-    const unsubscribe = settingsService.addListener((newSettings) => {
-      setSettings(newSettings);
-    });
-    
-    return () => unsubscribe();
+    fetchSettings();
   }, []);
 
-  // Update settings
-  const updateSettings = async (newSettings) => {
+  // Save settings
+  const saveSettings = async (newSettings) => {
     try {
-      const updated = await settingsService.updateSettings(newSettings);
-      setSettings(updated);
+      setLoading(true);
+      await apiService.updateSettings(newSettings);
+      
+      // Update local state
+      setSettings(newSettings);
+      
+      // Also save to localStorage as backup
+      localStorage.setItem('nexa_settings', JSON.stringify(newSettings));
+      
       return true;
     } catch (err) {
-      console.error('Failed to update settings:', err);
+      console.error("Error saving settings:", err);
+      setError("Failed to save settings");
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Update just a section of settings
-  const updateSection = async (section, values) => {
-    try {
-      const updated = await settingsService.updateSection(section, values);
-      setSettings(updated);
-      return true;
-    } catch (err) {
-      console.error(`Failed to update ${section} settings:`, err);
-      return false;
-    }
+  // Update part of settings
+  const updateSection = async (section, value) => {
+    if (!settings) return false;
+    
+    const newSettings = {
+      ...settings,
+      [section]: value
+    };
+    
+    return saveSettings(newSettings);
   };
 
   // Reset settings to defaults
   const resetSettings = async () => {
-    try {
-      const defaults = await settingsService.resetSettings();
-      setSettings(defaults);
-      return true;
-    } catch (err) {
-      console.error('Failed to reset settings:', err);
-      return false;
-    }
+    return saveSettings(DEFAULT_SETTINGS);
   };
 
-  // Reset a specific section to defaults
-  const resetSection = async (section) => {
-    try {
-      const updated = await settingsService.resetSection(section);
-      setSettings(updated);
-      return true;
-    } catch (err) {
-      console.error(`Failed to reset ${section} settings:`, err);
-      return false;
-    }
-  };
-  
-  // Export settings to a file
-  const exportSettings = async () => {
-    try {
-      await settingsService.exportSettings();
-      return true;
-    } catch (err) {
-      console.error('Failed to export settings:', err);
-      return false;
-    }
-  };
-  
-  // Import settings from a file
-  const importSettings = async (file) => {
-    try {
-      const imported = await settingsService.importSettings(file);
-      setSettings(imported);
-      return true;
-    } catch (err) {
-      console.error('Failed to import settings:', err);
-      return false;
-    }
-  };
-
-  const value = {
+  // Value passed to provider
+  const context = {
     settings,
     loading,
     error,
-    updateSettings,
+    saveSettings,
     updateSection,
-    resetSettings,
-    resetSection,
-    exportSettings,
-    importSettings
+    resetSettings
   };
 
   return (
-    <SettingsContext.Provider value={value}>
+    <SettingsContext.Provider value={context}>
       {children}
     </SettingsContext.Provider>
   );
 };
 
-// Custom hook to use the settings context
+// Custom hook to use settings context
 export const useSettings = () => {
   const context = useContext(SettingsContext);
   if (context === undefined) {

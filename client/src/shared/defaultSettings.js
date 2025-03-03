@@ -36,8 +36,8 @@ export const DEFAULT_SETTINGS = {
       type: 'ollama',
       apiKey: '',
       baseUrl: 'http://localhost:11434',
-      models: [],
-      defaultModel: '', // Added default model property
+      models: ['llama3:8b', 'mixtral:8x7b', 'phi3:mini'],
+      defaultModel: 'llama3:8b',
       enabled: true,
       contextWindow: 4096,
       temperature: 0.7,
@@ -51,14 +51,39 @@ export const DEFAULT_SETTINGS = {
       type: 'lmstudio',
       apiKey: '',
       baseUrl: 'http://localhost:1234/v1',
-      models: [],
-      defaultModel: '', // Added default model property
+      models: ['llama3-8b-11', 'phi-3-mini-4k-instruct'],
+      defaultModel: 'llama3-8b-11',
       enabled: true,
       contextWindow: 4096,
       temperature: 0.7,
       maxTokens: 2048
     }
   ],
+  uplink: {
+    enabled: false,
+    port: 3003,
+    host: '0.0.0.0',
+    requireApiKey: true,
+    apiKey: '',
+    allowedOrigins: ['*'],
+    corsEnabled: true,
+    rateLimit: 100,
+    logLevel: 'info',
+    schema: {
+      name: 'Nexa LLM API',
+      description: 'Access to local LLM models via WebSocket API',
+      version: '1.0.0',
+      exposeLlmModels: true,
+      exposeMetadata: true,
+    },
+    availableProviders: []
+  },
+  benchmark: {
+    saveResults: true,
+    repetitions: 3,
+    categories: ['reasoning', 'factual', 'coding', 'creativity', 'math'],
+    defaultModels: []
+  },
   system: {
     loggingLevel: 'info',
     metrics: true,
