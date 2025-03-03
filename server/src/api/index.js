@@ -82,7 +82,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Socket.IO event handlers
+  // Socket.IO event handlers
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   
@@ -114,6 +114,158 @@ io.on('connection', (socket) => {
     console.log('Workflow update:', data);
     io.emit('workflow_update', data);
   });
+  
+  // Chat message handler
+  socket.on('send_message', async (data) => {
+    console.log('Chat message received:', data);
+    
+    try {
+      // Get settings to find the Project Manager configuration
+      const settingsService = require('../services/settingsService');
+      const settings = settingsService.getSettings();
+      
+      // Check if Project Manager is enabled in features
+      if (!settings.features?.projectManagerAgent) {
+        throw new Error('Project Manager feature is not enabled');
+      }
+      
+      // Get Project Manager configuration
+      const projectManager = settings.projectManager;
+      
+      if (!projectManager) {
+        throw new Error('Project Manager is not configured');
+      }
+      
+      // Send a "thinking" message to the client
+      socket.emit('new_message', {
+        author: 'Project Manager',
+        content: '...',
+        avatar: '/static/images/avatar/system.png',
+        timestamp: new Date().toISOString(),
+        isThinking: true
+      });
+      
+      // Generate a response using the configured LLM
+      const response = await generateLlmResponse(projectManager, data.content);
+      
+      // Create a response message with the LLM-generated content
+      const responseMessage = {
+        author: 'Project Manager',
+        content: response,
+        avatar: '/static/images/avatar/system.png',
+        timestamp: new Date().toISOString()
+      };
+      
+      // Emit the response back to the client
+      socket.emit('new_message', responseMessage);
+      
+      console.log('Response sent:', responseMessage);
+    } catch (error) {
+      console.error('Error handling chat message:', error);
+      
+      // Send error message back to the client
+      socket.emit('new_message', {
+        author: 'System',
+        content: `Error: ${error.message}. Please check your Project Manager configuration in settings.`,
+        avatar: '/static/images/avatar/system.png',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+  
+  /**
+   * Generate a response using the configured LLM
+   * @param {Object} projectManager - Project Manager configuration
+   * @param {string} userMessage - User message
+   * @returns {Promise<string>} - Generated response
+   */
+  async function generateLlmResponse(projectManager, userMessage) {
+    const axios = require('axios');
+    
+    try {
+      // Get LLM configuration from Project Manager settings
+      const { apiUrl, model, serverType, parameters } = projectManager;
+      
+      if (serverType === 'lmStudio') {
+        // LM Studio uses the OpenAI-compatible API
+        const endpoint = `${apiUrl}/v1/chat/completions`;
+        
+        // Create a system prompt for the Project Manager
+        const systemPrompt = `You are the Project Manager, an advanced AI agent that helps users create and manage other agents, configure tools, and optimize their environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.
+        
+Your personality is professional, efficient, and proactive. You should be helpful and provide clear, concise responses.
+
+Current date: ${new Date().toISOString().split('T')[0]}
+Current time: ${new Date().toLocaleTimeString()}`;
+        
+        // Create the request body
+        const requestBody = {
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: parameters?.temperature ?? 0.7,
+          top_p: parameters?.topP ?? 0.9,
+          max_tokens: parameters?.maxTokens ?? 1024
+        };
+        
+        console.log('Sending request to LM Studio:', endpoint);
+        
+        // Send the request to the LLM API
+        const response = await axios.post(endpoint, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000
+        });
+        
+        // Extract the response content
+        if (response.data.choices && response.data.choices.length > 0) {
+          return response.data.choices[0].message.content;
+        }
+        
+        throw new Error('No completion in response');
+      } else if (serverType === 'ollama') {
+        // Ollama API
+        const endpoint = `${apiUrl}/api/generate`;
+        
+        // Create a system prompt for the Project Manager
+        const systemPrompt = `You are the Project Manager, an advanced AI agent that helps users create and manage other agents, configure tools, and optimize their environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.
+        
+Your personality is professional, efficient, and proactive. You should be helpful and provide clear, concise responses.
+
+Current date: ${new Date().toISOString().split('T')[0]}
+Current time: ${new Date().toLocaleTimeString()}
+
+User message: ${userMessage}
+
+Your response:`;
+        
+        // Create the request body
+        const requestBody = {
+          model: model,
+          prompt: systemPrompt,
+          temperature: parameters?.temperature ?? 0.7,
+          top_p: parameters?.topP ?? 0.9,
+          num_predict: parameters?.maxTokens ?? 1024
+        };
+        
+        console.log('Sending request to Ollama:', endpoint);
+        
+        // Send the request to the LLM API
+        const response = await axios.post(endpoint, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000
+        });
+        
+        return response.data.response;
+      }
+      
+      throw new Error(`Unsupported LLM server type: ${serverType}`);
+    } catch (error) {
+      console.error('Error generating LLM response:', error);
+      return `I'm sorry, I encountered an error while processing your request: ${error.message}. Please try again later.`;
+    }
+  }
 });
 
 // Start server

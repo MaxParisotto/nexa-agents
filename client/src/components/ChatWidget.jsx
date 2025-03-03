@@ -24,17 +24,14 @@ const ChatWidget = () => {
 
   // Initialize with system message
   useEffect(() => {
-    if (settings && settings.system) {
-      // Find the Project Manager agent and use real data
-      const projectManagerAgent = settings.agents?.items?.find(agent => agent.isProjectManager === true);
-      
-      // Check if we have a valid Project Manager agent and if we're connected
-      if (!projectManagerAgent) {
-        // System message for when Project Manager is not configured
+    if (settings) {
+      // Check if Project Manager is enabled in features
+      if (!settings.features?.projectManagerAgent) {
+        // System message for when Project Manager feature is not enabled
         const welcomeMessage = {
           id: 'system-welcome',
           author: 'System',
-          content: 'Project Manager agent is not configured. Please go to Settings > Project Manager to set up the agent.',
+          content: 'Project Manager feature is not enabled. Please enable it in Settings > Features.',
           timestamp: new Date().toLocaleTimeString(),
           avatar: '/static/images/avatar/system.png'
         };
@@ -42,11 +39,25 @@ const ChatWidget = () => {
         return;
       }
       
-      // Create welcome message using real data from the Project Manager agent
+      // Check if Project Manager is configured
+      if (!settings.projectManager) {
+        // System message for when Project Manager is not configured
+        const welcomeMessage = {
+          id: 'system-welcome',
+          author: 'System',
+          content: 'Project Manager is not configured. Please go to Settings > Project Manager to set up the configuration.',
+          timestamp: new Date().toLocaleTimeString(),
+          avatar: '/static/images/avatar/system.png'
+        };
+        setMessages([welcomeMessage]);
+        return;
+      }
+      
+      // Create welcome message using Project Manager configuration
       const welcomeMessage = {
         id: 'system-welcome',
-        author: projectManagerAgent.name,
-        content: `Hello! I am ${projectManagerAgent.name}. I can help you create and manage agents, configure tools, and optimize your environment. How can I assist you today?`,
+        author: 'Project Manager',
+        content: 'Hello! I am the Project Manager. I can help you create and manage agents, configure tools, and optimize your environment. How can I assist you today?',
         timestamp: new Date().toLocaleTimeString(),
         avatar: '/static/images/avatar/system.png'
       };
@@ -61,13 +72,50 @@ const ChatWidget = () => {
 
     // Listen for new messages
     const handleNewMessage = (data) => {
-      setMessages(prev => [...prev, {
-        id: `msg-${Date.now()}`,
-        author: data.author || 'Unknown',
-        content: data.content,
-        timestamp: new Date().toLocaleTimeString(),
-        avatar: data.avatar || '/static/images/avatar/default.png'
-      }]);
+      // Check if this is a thinking message
+      if (data.isThinking) {
+        // Add a new thinking message
+        setMessages(prev => [...prev, {
+          id: `msg-thinking-${Date.now()}`,
+          author: data.author || 'Unknown',
+          content: data.content,
+          timestamp: new Date().toLocaleTimeString(),
+          avatar: data.avatar || '/static/images/avatar/default.png',
+          isThinking: true
+        }]);
+      } else {
+        // Use functional update to ensure we're working with the latest state
+        setMessages(prev => {
+          // Check if there's a thinking message to replace
+          const thinkingIndex = prev.findIndex(msg => msg.isThinking && msg.author === data.author);
+          
+          if (thinkingIndex !== -1) {
+            // Replace the thinking message with the actual response
+            return [
+              ...prev.slice(0, thinkingIndex),
+              {
+                id: prev[thinkingIndex].id,
+                author: data.author || 'Unknown',
+                content: data.content,
+                timestamp: new Date().toLocaleTimeString(),
+                avatar: data.avatar || '/static/images/avatar/default.png',
+                isThinking: false
+              },
+              ...prev.slice(thinkingIndex + 1)
+            ];
+          } else {
+            // Add a new message
+            return [...prev, {
+              id: `msg-${Date.now()}`,
+              author: data.author || 'Unknown',
+              content: data.content,
+              timestamp: new Date().toLocaleTimeString(),
+              avatar: data.avatar || '/static/images/avatar/default.png',
+              isThinking: false
+            }];
+          }
+        });
+      }
 
       // Increment unread count if widget is collapsed
       if (!expanded) {
@@ -147,7 +195,12 @@ const ChatWidget = () => {
       return 'Developer Chat';
     }
     
-    // Use the Project Manager name if available
+    // Check if we're using the new settings structure
+    if (settings?.projectManager) {
+      return 'Project Manager';
+    }
+    
+    // Fallback to the old settings structure
     const projectManager = settings?.agents?.items?.find(agent => agent.isProjectManager === true);
     return projectManager?.name || 'Project Manager';
   };
@@ -280,9 +333,18 @@ const ChatWidget = () => {
                         {message.timestamp}
                       </Typography>
                     </Box>
-                    <Typography variant="body2">
-                      {message.content}
-                    </Typography>
+                    {message.isThinking ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Thinking
+                        </Typography>
+                        <CircularProgress size={16} />
+                      </Box>
+                    ) : (
+                      <Typography variant="body2">
+                        {message.content}
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
               ))
