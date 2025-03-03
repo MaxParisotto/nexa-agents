@@ -28,7 +28,7 @@ import { apiService } from '../../services/api';
  * Agent Settings Component
  * Allows users to create, edit, and manage AI agents
  */
-export default function AgentSettings({ settings, onUpdateSettings }) {
+export default function AgentSettings({ settings = {}, onUpdateSettings }) {
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -101,7 +101,7 @@ export default function AgentSettings({ settings, onUpdateSettings }) {
   // Update available models when provider changes
   useEffect(() => {
     if (newAgent.providerId) {
-      const provider = settings.llmProviders.find(p => p.id === newAgent.providerId);
+      const provider = settings?.llmProviders?.find(p => p.id === newAgent.providerId);
       if (provider) {
         setAvailableModels(provider.models || []);
         
@@ -114,7 +114,7 @@ export default function AgentSettings({ settings, onUpdateSettings }) {
         }
       }
     }
-  }, [newAgent.providerId, settings.llmProviders]);
+  }, [newAgent.providerId, settings?.llmProviders]);
 
   // Add a new agent
   const handleAddAgent = () => {
@@ -122,7 +122,7 @@ export default function AgentSettings({ settings, onUpdateSettings }) {
       id: `agent-${Date.now()}`,
       name: '',
       description: '',
-      providerId: settings.llmProviders.find(p => p.enabled)?.id || '',
+      providerId: settings?.llmProviders?.find(p => p.enabled)?.id || '',
       model: '',
       enabled: true,
       personality: '',
@@ -327,13 +327,13 @@ export default function AgentSettings({ settings, onUpdateSettings }) {
                     
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="body2">
-                        <strong>Provider:</strong> {settings.llmProviders.find(p => p.id === agent.providerId)?.name || 'Unknown'}
+                        <strong>Provider:</strong> {settings?.llmProviders?.find(p => p.id === agent.providerId)?.name || 'Unknown'}
                       </Typography>
                       <Typography variant="body2">
                         <strong>Model:</strong> {agent.model}
                       </Typography>
                       <Typography variant="body2">
-                        <strong>Hierarchy Level:</strong> {settings.agents?.hierarchyLevels?.find(h => h.id === agent.hierarchyLevel)?.name || agent.hierarchyLevel}
+                        <strong>Hierarchy Level:</strong> {settings?.agents?.hierarchyLevels?.find(h => h.id === agent.hierarchyLevel)?.name || agent.hierarchyLevel}
                       </Typography>
                       
                       {agent.personality && (
@@ -443,7 +443,7 @@ export default function AgentSettings({ settings, onUpdateSettings }) {
                   onChange={handleAgentChange}
                   label="Hierarchy Level"
                 >
-                  {settings.agents?.hierarchyLevels?.map(level => (
+                  {settings?.agents?.hierarchyLevels?.map(level => (
                     <MenuItem key={level.id} value={level.id}>
                       {level.name}
                     </MenuItem>

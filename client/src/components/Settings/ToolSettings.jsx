@@ -25,7 +25,7 @@ import { apiService } from '../../services/api';
  * Tool Settings Component
  * Allows users to create, edit, and manage tools that can be assigned to agents
  */
-export default function ToolSettings({ settings, onUpdateSettings }) {
+export default function ToolSettings({ settings = {}, onUpdateSettings }) {
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

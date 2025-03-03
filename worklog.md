@@ -158,3 +158,79 @@ const handleEditAgent = (agent) => {
 ### Testing
 
 The change should fix the TypeError when editing an agent in the settings page.
+
+### Additional Fixes
+
+After testing, I found that there were still some places in the AgentSettings component where we were trying to access properties of potentially undefined objects. I added more optional chaining operators to fix these issues:
+
+1. Added optional chaining for `settings?.llmProviders?.find()` in multiple places
+2. Added optional chaining for `settings?.agents?.hierarchyLevels?.find()` 
+3. Set a default empty object for the settings prop: `{ settings = {}, onUpdateSettings }`
+
+These changes ensure that the component doesn't try to access properties of undefined objects, which would cause "Cannot read properties of undefined" errors.
+
+### Further Fixes for ProjectManagerSettings
+
+I also found similar issues in the ProjectManagerSettings component. I applied the same fixes:
+
+1. Added a default empty object for the settings prop: `{ settings = {}, onUpdateSettings }`
+2. Added optional chaining for `settings?.llmProviders?.find()` in multiple places
+3. Added optional chaining for `settings?.agents?.items?.map()` in the handleSave function
+4. Added optional chaining for `settings?.agents?.hierarchyLevels?.map()` in the hierarchy level select component
+
+These changes ensure that the ProjectManagerSettings component also doesn't try to access properties of undefined objects, which would cause "Cannot read properties of undefined" errors.
+
+### Additional Fixes for ToolSettings
+
+I found similar issues in the ToolSettings component as well. I applied the same fix:
+
+1. Added a default empty object for the settings prop: `{ settings = {}, onUpdateSettings }`
+
+The ToolSettings component already had proper optional chaining for most of its property accesses, but adding the default empty object ensures that it doesn't try to access properties of undefined objects.
+
+### Fixed LinearProgress Error in Tasks Component
+
+I also fixed the LinearProgress error in the Tasks component:
+
+1. Added `variant="indeterminate"` to the LinearProgress component in the Tasks.jsx file
+
+This ensures that the LinearProgress component doesn't try to use the "determinate" or "buffer" variant without a corresponding value prop, which was causing the error:
+```
+MUI: You need to provide a value prop when using the determinate or buffer variant of LinearProgress.
+```
+
+## 2025-03-03 (continued)
+
+### Issue Investigation: Project Manager Tab Stuck on Loading
+
+- Investigating an issue where the Project Manager tab in the settings is stuck on loading
+- Checked the code in `client/src/components/settings/ProjectManagerSettings.jsx` and found that it was trying to fetch tools from the API
+- The API endpoint `/api/tools` was returning a 404 error, causing the component to get stuck in a loading state
+- The component was not handling the case when the API call fails
+
+### Root Cause
+
+The issue is that the ProjectManagerSettings component was trying to fetch tools from the API endpoint `/api/tools`, but this endpoint was returning a 404 error. The component didn't have proper error handling or fallback mechanisms, so it would get stuck in a loading state when the API call failed.
+
+### Solution
+
+Modified the ProjectManagerSettings component to:
+
+1. **Improve error handling for the tools API call**:
+   - Added a fallback to use tools from settings if the API call fails
+   - Added a fallback to an empty array if no tools are available in settings
+
+2. **Added a timeout to prevent infinite loading**:
+   - Added a useEffect hook with a timeout that initializes the projectManager state with default values if loading takes too long
+   - This ensures that the component doesn't get stuck in a loading state even if the API calls fail
+
+3. **Improved the loading state UI**:
+   - Added a loading message to the loading state to provide better feedback to the user
+
+### Testing
+
+The changes should fix the issue with the Project Manager tab being stuck on loading:
+
+- The component now properly handles the case when the API call fails
+- The component will automatically initialize with default values if loading takes too long
+- The loading state now includes a message to provide better feedback to the user

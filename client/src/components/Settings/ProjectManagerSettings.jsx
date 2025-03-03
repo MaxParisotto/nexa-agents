@@ -23,7 +23,7 @@ import { apiService } from '../../services/api';
  * Project Manager Settings Component
  * Dedicated settings for the Project Manager agent
  */
-export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
+export default function ProjectManagerSettings({ settings = {}, onUpdateSettings }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -52,7 +52,7 @@ export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
           });
         } else {
           // As a last resort, create a minimal Project Manager with real provider data
-          const defaultProvider = settings.llmProviders.find(p => p.enabled);
+          const defaultProvider = settings?.llmProviders?.find(p => p.enabled);
           const defaultModel = defaultProvider?.defaultModel || defaultProvider?.models?.[0] || '';
           
           setProjectManager({
@@ -88,24 +88,31 @@ export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
     const fetchTools = async () => {
       try {
         const response = await apiService.getTools();
-        setAvailableTools(response.data);
+        setAvailableTools(response.data || []);
       } catch (err) {
         console.error('Error fetching tools:', err);
+        // Use tools from settings if API call fails
+        if (settings?.tools?.items) {
+          setAvailableTools(settings.tools.items);
+        } else {
+          // Fallback to empty array if no tools in settings
+          setAvailableTools([]);
+        }
       }
     };
 
     fetchTools();
-  }, []);
+  }, [settings]);
 
   // Update available models when provider changes
   useEffect(() => {
     if (projectManager?.providerId) {
-      const provider = settings.llmProviders.find(p => p.id === projectManager.providerId);
+      const provider = settings?.llmProviders?.find(p => p.id === projectManager.providerId);
       if (provider) {
         setAvailableModels(provider.models || []);
       }
     }
-  }, [projectManager?.providerId, settings.llmProviders]);
+  }, [projectManager?.providerId, settings?.llmProviders]);
 
   // Handle input change
   const handleInputChange = (e) => {
@@ -152,9 +159,9 @@ export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
       }
 
       // Update the Project Manager in the agents list
-      const updatedAgents = settings.agents.items.map(agent => 
+      const updatedAgents = settings?.agents?.items?.map(agent => 
         agent.isProjectManager ? projectManager : agent
-      );
+      ) || [];
 
       // If Project Manager doesn't exist in the list, add it
       if (!updatedAgents.some(agent => agent.isProjectManager)) {
@@ -163,7 +170,7 @@ export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
 
       // Update settings
       onUpdateSettings('agents', {
-        ...settings.agents,
+        ...settings?.agents,
         items: updatedAgents
       });
 
@@ -176,10 +183,44 @@ export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
     }
   };
 
+  // Show loading state only briefly, then initialize with defaults if needed
+  useEffect(() => {
+    // If loading takes too long, initialize with defaults
+    const timer = setTimeout(() => {
+      if (!projectManager) {
+        // Create a default Project Manager if none exists
+        const defaultProvider = settings?.llmProviders?.find(p => p.enabled);
+        const defaultModel = defaultProvider?.defaultModel || defaultProvider?.models?.[0] || '';
+        
+        setProjectManager({
+          id: 'agent-project-manager',
+          name: 'Project Manager',
+          description: 'Advanced agent that can help create and manage other agents, tools, and the environment',
+          providerId: defaultProvider?.id || '',
+          model: defaultModel,
+          enabled: true,
+          personality: 'Professional, efficient, and proactive',
+          directives: [],
+          hierarchyLevel: 4,
+          tools: [],
+          systemPrompt: '',
+          temperature: 0.7,
+          maxTokens: 2048,
+          isProjectManager: true
+        });
+      }
+    }, 2000); // 2 seconds timeout
+    
+    return () => clearTimeout(timer);
+  }, [projectManager, settings]);
+
   if (!projectManager) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-        <CircularProgress />
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', p: 3 }}>
+        <CircularProgress sx={{ mb: 2 }} />
+        <Typography variant="body2" color="text.secondary">
+          Loading Project Manager settings...
+        </Typography>
       </Box>
     );
   }
@@ -433,7 +474,7 @@ export default function ProjectManagerSettings({ settings, onUpdateSettings }) {
                         onChange={handleInputChange}
                         label="Hierarchy Level"
                       >
-                        {settings.agents?.hierarchyLevels?.map(level => (
+                        {settings?.agents?.hierarchyLevels?.map(level => (
                           <MenuItem key={level.id} value={level.id}>
                             {level.name}
                           </MenuItem>
