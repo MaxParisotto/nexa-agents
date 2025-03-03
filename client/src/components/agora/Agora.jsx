@@ -253,12 +253,13 @@ export default function Agora() {
                     filteredChannels.map(channel => (
                       <ListItem 
                         key={channel.id} 
-                        button 
+                        component="div" 
                         selected={activeChannel === channel.id}
                         onClick={() => handleChannelChange(channel.id)}
                         sx={{ 
                           borderRadius: 1, 
-                          mx: 0.5, 
+                          mx: 0.5,
+                          cursor: 'pointer',
                           fontWeight: channel.unread > 0 ? 'bold' : 'normal' 
                         }}
                       >

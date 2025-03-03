@@ -5,6 +5,7 @@ import { StyledEngineProvider, GlobalStyles } from '@mui/material';
 
 import App from './App';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 
 // Global styles to fix MUI integration issues
 const globalStyles = (
@@ -31,11 +32,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <StyledEngineProvider injectFirst>
       {globalStyles}
-      <ThemeProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </ThemeProvider>
+      <BrowserRouter>
+        <SettingsProvider>
+          <ThemeProvider>
+            <App />
+          </ThemeProvider>
+        </SettingsProvider>
+      </BrowserRouter>
     </StyledEngineProvider>
   </React.StrictMode>
 );
