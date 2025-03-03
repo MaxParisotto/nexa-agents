@@ -8,6 +8,28 @@ export const DEFAULT_SETTINGS = {
   agents: {
     items: [
       {
+        id: 'agent-project-manager',
+        name: 'Project Manager',
+        description: 'Advanced agent that can help create and manage other agents, tools, and the environment',
+        providerId: 'provider-ollama',
+        model: 'llama3:8b',
+        enabled: true,
+        personality: 'Professional, efficient, and proactive',
+        directives: [
+          'Help users create and manage AI agents',
+          'Assist with tool configuration and management',
+          'Provide guidance on environment setup and optimization',
+          'Respond to natural language requests for system management',
+          'Maintain a comprehensive understanding of the system architecture'
+        ],
+        hierarchyLevel: 4,
+        tools: ['web-search', 'calculator', 'weather'],
+        systemPrompt: 'You are the Project Manager, an advanced AI agent with the ability to help users create and manage other agents, configure tools, and optimize the environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.',
+        temperature: 0.5,
+        maxTokens: 4096,
+        isProjectManager: true
+      },
+      {
         id: 'agent-default',
         name: 'Assistant',
         description: 'General purpose assistant that can help with various tasks',

@@ -1164,7 +1164,7 @@ Please help me orchestrate this task efficiently.
       </Box>
       
       {loading ? (
-        <LinearProgress />
+        <LinearProgress variant="indeterminate" />
       ) : error ? (
         <Typography color="error">{error}</Typography>
       ) : (

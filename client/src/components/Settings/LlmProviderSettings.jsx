@@ -28,6 +28,7 @@ import { apiService } from '../../services/api';
  * LLM Provider Settings Component
  */
 export default function LlmProviderSettings({ settings, onUpdateSettings }) {
+  // Define all state variables at the top level
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -46,6 +47,22 @@ export default function LlmProviderSettings({ settings, onUpdateSettings }) {
     temperature: 0.7,
     maxTokens: 2048
   });
+
+  // Use useEffect to initialize llmProviders if missing
+  React.useEffect(() => {
+    if (settings && !settings.llmProviders) {
+      onUpdateSettings('llmProviders', []);
+    }
+  }, [settings, onUpdateSettings]);
+
+  // Return loading state until settings are properly initialized
+  if (!settings || !settings.llmProviders) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   // Get supported provider types
   const providerTypes = [
@@ -271,7 +288,7 @@ export default function LlmProviderSettings({ settings, onUpdateSettings }) {
                     <Typography variant="body2">
                       <strong>URL:</strong> {provider.baseUrl}
                     </Typography>
-                    {provider.models && provider.models.length > 0 && (
+                    {provider.models && Array.isArray(provider.models) && provider.models.length > 0 && (
                       <>
                         <Typography variant="body2" mt={1}>
                           <strong>Default Model:</strong> {provider.defaultModel || 'None selected'}
@@ -292,7 +309,7 @@ export default function LlmProviderSettings({ settings, onUpdateSettings }) {
                         </Box>
                       </>
                     )}
-                    {(!provider.models || provider.models.length === 0) && (
+                    {(!provider.models || !Array.isArray(provider.models) || provider.models.length === 0) && (
                       <Alert severity="warning" sx={{ mt: 1 }}>
                         No models available. Try testing the connection.
                       </Alert>
@@ -521,7 +538,7 @@ export default function LlmProviderSettings({ settings, onUpdateSettings }) {
                   {testResult.message}
                 </Alert>
                 
-                {testResult.success && testResult.models && testResult.models.length > 0 && (
+                {testResult.success && testResult.models && Array.isArray(testResult.models) && testResult.models.length > 0 && (
                   <Box sx={{ mt: 2 }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Available Models:

@@ -203,5 +203,6 @@ function getHistoricalMetrics(days = 1) {
 // Create a singleton instance
 const metricsService = new MetricsService();
 
+// Export both the singleton instance and a named export
 module.exports = metricsService;
-module.exports = { metricsService as globalMetricsService  };
+module.exports.globalMetricsService = metricsService;

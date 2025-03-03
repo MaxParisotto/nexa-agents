@@ -13,6 +13,7 @@ const agentsRoutes = require('./routes/agents');
 const workflowsRoutes = require('./routes/workflows');
 const metricsRoutes = require('./routes/metrics');
 const settingsRoutes = require('./routes/settings');
+const toolsRoutes = require('./routes/tools');
 
 // Data directories
 const DATA_DIR = path.join(__dirname, '../../../data');
@@ -69,6 +70,7 @@ app.use('/api/agents', agentsRoutes);
 app.use('/api/workflows', workflowsRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/tools', toolsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

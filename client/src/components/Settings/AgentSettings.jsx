@@ -139,7 +139,12 @@ export default function AgentSettings({ settings, onUpdateSettings }) {
 
   // Edit an existing agent
   const handleEditAgent = (agent) => {
-    setNewAgent({ ...agent });
+    // Ensure tools is always an array
+    setNewAgent({ 
+      ...agent,
+      tools: agent.tools || [],
+      directives: agent.directives || []
+    });
     setEditingAgent(agent);
     setAddDialogOpen(true);
   };

@@ -6,17 +6,17 @@
 const winston = require("winston");
 const path = require("path");
 const fs = require("fs");
-const { fileURLToPath } = require("url");
 
-// Get the directory name for ES module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// __dirname and __filename are already available in CommonJS modules
 
 // Ensure logs directory exists
 const logsDir = path.join(__dirname, '../../../logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
+
+// Set to handle circular references
+let seen = new Set();
 
 // Define custom format
 const customFormat = winston.format.combine(
@@ -41,10 +41,7 @@ const customFormat = winston.format.combine(
   })
 );
 
-// Set to handle circular references
-let seen = new Set();
-
-// Create logger
+// Create default logger
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: customFormat,
@@ -97,4 +94,11 @@ logger.stream = {
   }
 };
 
+// Function to create a logger with a specific label
+const createLogger = (label) => {
+  return logger.child({ label });
+};
+
+// Export both the default logger and the createLogger function
 module.exports = logger;
+module.exports.createLogger = createLogger;

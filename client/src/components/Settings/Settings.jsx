@@ -14,6 +14,7 @@ import UISettings from './UISettings';
 import AdvancedSettings from './AdvancedSettings';
 import AgentSettings from './AgentSettings';
 import ToolSettings from './ToolSettings';
+import ProjectManagerSettings from './ProjectManagerSettings';
 
 /**
  * Settings component for managing application settings
@@ -146,6 +147,7 @@ export default function Settings() {
         >
           <Tab label="General" />
           <Tab label="LLM Providers" />
+          <Tab label="Project Manager" />
           <Tab label="AI Agents" />
           <Tab label="Tools" />
           <Tab label="UI & Appearance" />
@@ -169,27 +171,34 @@ export default function Settings() {
       )}
       
       {activeTab === 2 && (
-        <AgentSettings 
+        <ProjectManagerSettings 
           settings={localSettings} 
           onUpdateSettings={handleUpdateSettings}
         />
       )}
       
       {activeTab === 3 && (
-        <ToolSettings 
+        <AgentSettings 
           settings={localSettings} 
           onUpdateSettings={handleUpdateSettings}
         />
       )}
       
       {activeTab === 4 && (
-        <UISettings 
+        <ToolSettings 
           settings={localSettings} 
           onUpdateSettings={handleUpdateSettings}
         />
       )}
       
       {activeTab === 5 && (
+        <UISettings 
+          settings={localSettings} 
+          onUpdateSettings={handleUpdateSettings}
+        />
+      )}
+      
+      {activeTab === 6 && (
         <AdvancedSettings 
           settings={localSettings} 
           onUpdateSettings={handleUpdateSettings}

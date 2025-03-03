@@ -25,13 +25,33 @@ const ChatWidget = () => {
   // Initialize with system message
   useEffect(() => {
     if (settings && settings.system) {
-      setMessages([{
+      // Find the Project Manager agent and use real data
+      const projectManagerAgent = settings.agents?.items?.find(agent => agent.isProjectManager === true);
+      
+      // Check if we have a valid Project Manager agent and if we're connected
+      if (!projectManagerAgent) {
+        // System message for when Project Manager is not configured
+        const welcomeMessage = {
+          id: 'system-welcome',
+          author: 'System',
+          content: 'Project Manager agent is not configured. Please go to Settings > Project Manager to set up the agent.',
+          timestamp: new Date().toLocaleTimeString(),
+          avatar: '/static/images/avatar/system.png'
+        };
+        setMessages([welcomeMessage]);
+        return;
+      }
+      
+      // Create welcome message using real data from the Project Manager agent
+      const welcomeMessage = {
         id: 'system-welcome',
-        author: 'System',
-        content: 'Welcome to Nexa Chat!',
+        author: projectManagerAgent.name,
+        content: `Hello! I am ${projectManagerAgent.name}. I can help you create and manage agents, configure tools, and optimize your environment. How can I assist you today?`,
         timestamp: new Date().toLocaleTimeString(),
         avatar: '/static/images/avatar/system.png'
-      }]);
+      };
+      
+      setMessages([welcomeMessage]);
     }
   }, [settings]);
 
@@ -81,7 +101,7 @@ const ChatWidget = () => {
   const handleSendMessage = useCallback(() => {
     if (!newMessage.trim()) return;
 
-    // Add message to local state
+    // Create user message
     const message = {
       id: `msg-${Date.now()}`,
       author: 'You',
@@ -90,9 +110,10 @@ const ChatWidget = () => {
       avatar: '/static/images/avatar/user.png'
     };
 
+    // Add user message to local state
     setMessages(prev => [...prev, message]);
     setNewMessage('');
-
+    
     // Send message via socket if connected
     if (socket && connected) {
       socket.emit('send_message', {
@@ -100,7 +121,17 @@ const ChatWidget = () => {
         channel: 'widget'
       });
     } else {
-      setError('Message saved locally. Will be sent when connection is restored.');
+      // Add system message indicating offline state
+      const offlineMessage = {
+        id: `system-${Date.now()}`,
+        author: 'System',
+        content: 'You are currently offline. Your message has been saved locally but the Project Manager cannot respond until connection is restored.',
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: '/static/images/avatar/system.png'
+      };
+      
+      setMessages(prev => [...prev, offlineMessage]);
+      setError('Connection to server lost. Reconnecting...');
       setTimeout(() => setError(null), 3000);
     }
   }, [newMessage, socket, connected]);
@@ -108,6 +139,17 @@ const ChatWidget = () => {
   // Toggle widget expansion
   const toggleExpanded = () => {
     setExpanded(prev => !prev);
+  };
+
+  // Get the title for the chat widget
+  const getChatTitle = () => {
+    if (settings?.system?.developerMode) {
+      return 'Developer Chat';
+    }
+    
+    // Use the Project Manager name if available
+    const projectManager = settings?.agents?.items?.find(agent => agent.isProjectManager === true);
+    return projectManager?.name || 'Project Manager';
   };
 
   return (
@@ -145,7 +187,7 @@ const ChatWidget = () => {
         onClick={toggleExpanded}
       >
         <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-          {settings?.system?.developerMode ? 'Developer Chat' : 'Nexa Chat'}
+          {getChatTitle()}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           {!connected && (

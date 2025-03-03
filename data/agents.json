@@ -1,0 +1,22 @@
+[
+  {
+    "id": "88aa6c5d-8cf9-449c-8895-957f409b2aad",
+    "name": "Research Agent",
+    "status": "idle",
+    "capabilities": [
+      "research",
+      "data analysis"
+    ],
+    "lastActive": "2025-03-03T21:12:33.185Z"
+  },
+  {
+    "id": "b979ae97-48b4-4305-99b4-fd32cb280c0b",
+    "name": "Assistant Agent",
+    "status": "idle",
+    "capabilities": [
+      "answering",
+      "scheduling"
+    ],
+    "lastActive": "2025-03-03T21:12:33.185Z"
+  }
+]

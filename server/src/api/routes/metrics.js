@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const metricsService = require('../../services/metricsService');
+const { getSystemMetrics, getTokenMetrics, getAgentMetrics } = require('../../services/metricsService');
 
 // Get system metrics
 router.get('/system', async (req, res) => {
   try {
-    const metrics = await metricsService.getSystemMetrics();
+    const metrics = await getSystemMetrics();
     res.json(metrics);
   } catch (error) {
     console.error('Error fetching system metrics:', error);
@@ -16,7 +17,7 @@ router.get('/system', async (req, res) => {
 // Get token usage metrics
 router.get('/tokens', async (req, res) => {
   try {
-    const tokenMetrics = metricsService.getTokenMetrics();
+    const tokenMetrics = getTokenMetrics();
     res.json(tokenMetrics);
   } catch (error) {
     console.error('Error fetching token metrics:', error);
@@ -27,7 +28,7 @@ router.get('/tokens', async (req, res) => {
 // Get agent performance metrics
 router.get('/agents/:id', async (req, res) => {
   try {
-    const agentMetrics = await metricsService.getAgentMetrics(req.params.id);
+    const agentMetrics = await getAgentMetrics(req.params.id);
     res.json(agentMetrics);
   } catch (error) {
     console.error(`Error fetching metrics for agent ${req.params.id}:`, error);
