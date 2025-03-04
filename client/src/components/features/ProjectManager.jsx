@@ -589,6 +589,111 @@ const ProjectManager = () => {
    * Initialize the Project Manager
    * Load workflows and set up any necessary background tasks
    */
+  /**
+   * Debugging function to dump system state
+   */
+  const dumpDebugInfo = () => {
+    const debugInfo = {
+      llmConfigured,
+      llmProvider,
+      workflows: workflows.map(w => w.name),
+      activeTasks: chatHistory.filter(m => m.role === 'user').length,
+      systemSettings: projectManagerSettings
+    };
+    
+    log('info', 'Dumping debug info', debugInfo);
+    dispatch(addNotification({
+      type: 'info',
+      message: 'System Debug Info',
+      description: JSON.stringify(debugInfo, null, 2),
+      duration: 10000
+    }));
+  };
+
+  /**
+   * Workflow management functions
+   */
+  const createWorkflow = async (name, description = '') => {
+    try {
+      const newWorkflow = {
+        name,
+        description,
+        nodes: [],
+        edges: [],
+        createdAt: new Date().toISOString()
+      };
+      
+      await dispatch(saveWorkflowThunk(newWorkflow));
+      return newWorkflow;
+    } catch (error) {
+      log('error', 'Failed to create workflow', error);
+      throw error;
+    }
+  };
+
+  const createWorkflowFromDescription = async (description, name = `Workflow-${Date.now()}`) => {
+    try {
+      // Generate workflow structure from description
+      const newWorkflow = {
+        name,
+        description,
+        nodes: [{ type: 'start', id: 'start-node' }],
+        edges: [],
+        createdAt: new Date().toISOString()
+      };
+      
+      await dispatch(saveWorkflowThunk(newWorkflow));
+      return newWorkflow;
+    } catch (error) {
+      log('error', 'Failed to create workflow from description', error);
+      throw error;
+    }
+  };
+
+  const addNodeToWorkflow = async (workflowName, nodeType, nodeName, configuration = {}) => {
+    try {
+      const workflow = workflows.find(w => w.name === workflowName);
+      if (!workflow) throw new Error('Workflow not found');
+      
+      const newNode = {
+        id: `node-${Date.now()}`,
+        type: nodeType,
+        name: nodeName,
+        configuration,
+        position: { x: 0, y: 0 }
+      };
+      
+      const updatedWorkflow = {
+        ...workflow,
+        nodes: [...workflow.nodes, newNode]
+      };
+      
+      await dispatch(saveWorkflowThunk(updatedWorkflow));
+      return newNode;
+    } catch (error) {
+      log('error', 'Failed to add node to workflow', error);
+      throw error;
+    }
+  };
+
+  const listWorkflows = () => {
+    dispatch(listWorkflowsThunk());
+    return workflows;
+  };
+
+  const runWorkflow = async (workflowName) => {
+    try {
+      const workflow = workflows.find(w => w.name === workflowName);
+      if (!workflow) throw new Error('Workflow not found');
+      
+      await dispatch(runWorkflowThunk(workflow.id));
+      return { success: true, workflow: workflow.name };
+    } catch (error) {
+      log('error', 'Failed to run workflow', error);
+      throw error;
+    }
+  };
+
   const initializeProjectManager = () => {
     // Fetch existing workflows
     dispatch(listWorkflowsThunk());
@@ -779,6 +884,80 @@ const ProjectManager = () => {
     }
   };
   
+  // Tool Registry Service
+  const toolRegistry = useRef({
+    tools: {},
+    registerTool: function(name, schema, handler) {
+      if (!name || !schema || !handler) {
+        throw new Error('Tool registration requires name, schema and handler');
+      }
+      this.tools[name] = { schema, handler };
+      log('info', `Registered new tool: ${name}`);
+    },
+    validateToolCall: function(name, args) {
+      const tool = this.tools[name];
+      if (!tool) throw new Error(`Tool ${name} not registered`);
+      
+      // Basic schema validation
+      const requiredParams = tool.schema.required || [];
+      const missingParams = requiredParams.filter(param => !(param in args));
+      if (missingParams.length > 0) {
+        throw new Error(`Missing required parameters: ${missingParams.join(', ')}`);
+      }
+      
+      return true;
+    },
+    executeTool: async function(name, args) {
+      this.validateToolCall(name, args);
+      return await this.tools[name].handler(args);
+    },
+    listTools: function() {
+      return Object.keys(this.tools).map(name => ({
+        name,
+        description: this.tools[name].schema.description
+      }));
+    }
+  });
+
+  /**
+   * Register core system tools
+   */
+  useEffect(() => {
+    // Task Management Tools
+    toolRegistry.current.registerTool(
+      'createTask',
+      {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          priority: { 
+            type: 'string', 
+            enum: ['low', 'medium', 'high'] 
+          }
+        },
+        required: ['title'],
+        description: 'Create a new task'
+      },
+      createTask
+    );
+
+    // Workflow Management Tools
+    toolRegistry.current.registerTool(
+      'createWorkflow',
+      {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' }
+        },
+        required: ['name'],
+        description: 'Create a new workflow'
+      },
+      (args) => createWorkflow(args.name, args.description)
+    );
+  }, []);
+
   /**
    * Task management functions that can be called by the LLM
    */

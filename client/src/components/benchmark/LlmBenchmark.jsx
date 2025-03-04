@@ -13,9 +13,9 @@ import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
 import InfoIcon from '@mui/icons-material/Info';
 
-import { useSettings } from '../../contexts/SettingsContext';
-import { apiService } from '../../services/api';
-import realBenchmarkService from '../../../../src/utils/RealBenchmarkService';
+import { useSettings } from "../../contexts/SettingsContext";
+import { apiService } from "../../services/api";
+import realBenchmarkService from "../../utils/RealBenchmarkService";
 
 /**
  * LLM Benchmark Component - Test and evaluate different language models

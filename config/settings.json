@@ -122,7 +122,63 @@
       "contextWindow": 4096,
       "temperature": 0.7,
       "maxTokens": 2048
+    },
+    {
+      "id": "provider-1741044847137",
+      "name": "LM Studio 292-1",
+      "type": "lmstudio",
+      "apiKey": "",
+      "baseUrl": "http://192.168.2.51:1234/v1",
+      "models": [
+        "qwen2.5-7b-instruct-1m",
+        "fallen-llama-3.3-r1-70b-v1-i1",
+        "qwen_2.5_coder_32b_qwq_r1",
+        "qwen2.5-coder-32b-instruct",
+        "text-embedding-nomic-embed-text-v1.5",
+        "fuseo1-deepseekr1-qwq-skyt1-32b-preview",
+        "qwen2.5-0.5b-instruct@q8_0",
+        "qwen2.5-0.5b-instruct@q4_k_m",
+        "qihoo360.tinyr1-32b-preview@q6_k",
+        "qihoo360.tinyr1-32b-preview@q4_k_s",
+        "deepseek-r1-distill-qwen-25.5b-brainstorm@q4_k_s",
+        "deepseek-r1-distill-qwen-25.5b-brainstorm@q6_k",
+        "wenigpt-agents-zephyr-1.0.1-kto-merged",
+        "agentica-org.deepscaler-1.5b-preview@q8_0",
+        "agentica-org.deepscaler-1.5b-preview@f16",
+        "agentica-org.deepscaler-1.5b-preview@q6_k",
+        "viper-coder-hybridmini-v1.3-i1",
+        "tiny-agent-a-0.5b",
+        "s1-agents",
+        "fuseo1-deepseekr1-qwen2.5-coder-32b-preview",
+        "deepseek-r1-distill-llama-8b",
+        "deepseek-r1-distill-qwen-7b"
+      ],
+      "defaultModel": "qwen2.5-7b-instruct-1m",
+      "enabled": true,
+      "contextWindow": 4096,
+      "temperature": 0.7,
+      "maxTokens": 2048
     }
   ],
-  "lastUpdated": "2025-03-03T22:00:57.312Z"
+  "lastUpdated": "2025-03-03T23:35:13.015Z",
+  "agents": {
+    "items": [
+      {
+        "id": "agent-project-manager",
+        "name": "Project Manager",
+        "description": "Advanced agent that can help create and manage other agents, tools, and the environment",
+        "providerId": "provider-1741044847137",
+        "model": "qwen2.5-7b-instruct-1m",
+        "enabled": true,
+        "personality": "Professional, efficient, and proactive",
+        "directives": [],
+        "hierarchyLevel": 4,
+        "tools": [],
+        "systemPrompt": "",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "isProjectManager": true
+      }
+    ]
+  }
 }
