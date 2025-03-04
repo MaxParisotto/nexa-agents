@@ -38,6 +38,87 @@ const DEFAULT_SETTINGS = {
       temperature: 0.7
     }
   ],
+  tools: {
+    items: [
+      {
+        id: 'tool-codebase-search',
+        name: 'codebase_search',
+        description: 'Find relevant code snippets using semantic search',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-read-file',
+        name: 'read_file',
+        description: 'Read contents of files with line-specific precision',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-run-terminal',
+        name: 'run_terminal_cmd',
+        description: 'Execute terminal commands (requires user approval)',
+        category: 'system',
+        enabled: true
+      },
+      {
+        id: 'tool-list-dir',
+        name: 'list_dir',
+        description: 'List directory contents for workspace exploration',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-grep-search',
+        name: 'grep_search',
+        description: 'Perform text-based regex searches in files',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-edit-file',
+        name: 'edit_file',
+        description: 'Make changes to existing files',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-file-search',
+        name: 'file_search',
+        description: 'Fuzzy search for files by name',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-delete-file',
+        name: 'delete_file',
+        description: 'Remove files from the workspace',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-reapply',
+        name: 'reapply',
+        description: 'Retry failed edits with a smarter model',
+        category: 'development',
+        enabled: true
+      },
+      {
+        id: 'tool-web-search',
+        name: 'web_search',
+        description: 'Search the web for real-time information',
+        category: 'utility',
+        enabled: true
+      },
+      {
+        id: 'tool-diff-history',
+        name: 'diff_history',
+        description: 'View recent file changes',
+        category: 'development',
+        enabled: true
+      }
+    ]
+  },
   agents: {
     items: [
       {
@@ -56,7 +137,7 @@ const DEFAULT_SETTINGS = {
           'Maintain a comprehensive understanding of the system architecture'
         ],
         hierarchyLevel: 4,
-        tools: ['web-search', 'calculator', 'weather', 'tool-code-analyzer'],
+        tools: ['codebase_search', 'read_file', 'run_terminal_cmd', 'list_dir', 'grep_search', 'edit_file', 'file_search', 'delete_file', 'reapply', 'web_search', 'diff_history'],
         systemPrompt: 'You are the Project Manager, an advanced AI agent with the ability to help users create and manage other agents, configure tools, and optimize the environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.',
         temperature: 0.7,
         maxTokens: 4096,

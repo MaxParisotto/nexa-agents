@@ -144,6 +144,40 @@
             "description": "Whether to include forecast data"
           }
         ]
+      },
+      {
+        "id": "tool-personal-voice",
+        "name": "Personal Voice",
+        "description": "Learn how a person writes and format text with that style",
+        "category": "writing-assistance",
+        "enabled": true,
+        "parameters": [
+          {
+            "name": "sample_texts",
+            "type": "array",
+            "required": true,
+            "description": "A list of sample texts from the writer to learn the writing style"
+          },
+          {
+            "name": "target_text",
+            "type": "string",
+            "required": true,
+            "description": "The text you want to format according to the learned style"
+          },
+          {
+            "name": "style_options",
+            "type": "object",
+            "required": false,
+            "description": "Additional style options like formality level, tone, etc.",
+            "default": {
+              "formality": "auto",
+              "tone": "auto",
+              "preserve_meaning": true
+            }
+          }
+        ],
+        "created": "2025-03-04T20:39:50.505Z",
+        "updated": "2025-03-04T20:39:50.505Z"
       }
     ]
   },
@@ -254,7 +288,9 @@
       "type": "lmstudio",
       "apiKey": "",
       "baseUrl": "http://localhost:1234/v1",
-      "models": ["qwen2.5-7b-instruct-1m"],
+      "models": [
+        "qwen2.5-7b-instruct-1m"
+      ],
       "defaultModel": "qwen2.5-7b-instruct-1m",
       "enabled": true,
       "contextWindow": 4096,
@@ -266,7 +302,9 @@
       "type": "ollama",
       "apiKey": "",
       "baseUrl": "http://localhost:11434",
-      "models": ["deepseek-r1:1.5b"],
+      "models": [
+        "deepseek-r1:1.5b"
+      ],
       "defaultModel": "deepseek-r1:1.5b",
       "enabled": false,
       "contextWindow": 4096,

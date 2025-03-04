@@ -266,8 +266,13 @@ io.on('connection', (socket) => {
       if (typeof data === 'string') {
         message = data;
       } else if (typeof data === 'object') {
-        // If data is already an object, extract message
-        message = data.message || JSON.stringify(data);
+        // If data is an array-like object, join it
+        if (Array.from(Object.keys(data)).every(key => !isNaN(parseInt(key)))) {
+          message = Object.values(data).join('');
+        } else {
+          // If data is a regular object, extract message or stringify
+          message = data.message || JSON.stringify(data);
+        }
       } else {
         throw new Error('Invalid message format');
       }

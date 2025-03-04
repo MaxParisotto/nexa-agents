@@ -1,105 +1,67 @@
+/**
+ * Tool management routes
+ */
 const express = require('express');
 const router = express.Router();
-const settingsService = require('../../services/settingsService');
+const toolService = require('../../services/toolService');
+const logger = require('../../utils/logger');
 
 // Get all tools
-router.get('/', async (req, res) => {
+router.get('/', (req, res) => {
   try {
-    const settings = settingsService.getSettings();
-    // Return tools from settings if available, otherwise return empty array
-    res.json(settings.tools?.items || []);
+    const tools = toolService.getTools();
+    res.json(tools);
   } catch (error) {
-    console.error('Error retrieving tools:', error);
-    res.status(500).json({ error: 'Failed to retrieve tools' });
+    logger.error('Error getting tools:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
 // Create a new tool
 router.post('/', async (req, res) => {
   try {
-    const settings = settingsService.getSettings();
-    const newTool = {
-      id: `tool-${Date.now()}`,
-      ...req.body
-    };
-    
-    // Add tool to settings
-    const updatedSettings = {
-      ...settings,
-      tools: {
-        ...settings.tools,
-        items: [...(settings.tools?.items || []), newTool]
-      }
-    };
-    
-    settingsService.updateSettings(updatedSettings);
-    res.status(201).json(newTool);
+    const tool = await toolService.createTool(req.body);
+    res.status(201).json(tool);
   } catch (error) {
-    console.error('Error creating tool:', error);
-    res.status(500).json({ error: 'Failed to create tool' });
+    logger.error('Error creating tool:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 
 // Update a tool
 router.put('/:id', async (req, res) => {
   try {
-    const toolId = req.params.id;
-    const settings = settingsService.getSettings();
-    
-    // Find the tool
-    const toolIndex = (settings.tools?.items || []).findIndex(tool => tool.id === toolId);
-    if (toolIndex === -1) {
-      return res.status(404).json({ error: 'Tool not found' });
-    }
-    
-    // Update the tool
-    const updatedTool = {
-      ...settings.tools.items[toolIndex],
-      ...req.body,
-      id: toolId // Ensure ID doesn't change
-    };
-    
-    const updatedItems = [...settings.tools.items];
-    updatedItems[toolIndex] = updatedTool;
-    
-    const updatedSettings = {
-      ...settings,
-      tools: {
-        ...settings.tools,
-        items: updatedItems
-      }
-    };
-    
-    settingsService.updateSettings(updatedSettings);
-    res.json(updatedTool);
+    const tool = await toolService.updateTool(req.params.id, req.body);
+    res.json(tool);
   } catch (error) {
-    console.error('Error updating tool:', error);
-    res.status(500).json({ error: 'Failed to update tool' });
+    logger.error('Error updating tool:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 
 // Delete a tool
 router.delete('/:id', async (req, res) => {
   try {
-    const toolId = req.params.id;
-    const settings = settingsService.getSettings();
-    
-    // Filter out the tool to delete
-    const updatedItems = (settings.tools?.items || []).filter(tool => tool.id !== toolId);
-    
-    const updatedSettings = {
-      ...settings,
-      tools: {
-        ...settings.tools,
-        items: updatedItems
-      }
-    };
-    
-    settingsService.updateSettings(updatedSettings);
-    res.json({ success: true });
+    await toolService.deleteTool(req.params.id);
+    res.status(204).send();
   } catch (error) {
-    console.error('Error deleting tool:', error);
-    res.status(500).json({ error: 'Failed to delete tool' });
+    logger.error('Error deleting tool:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Get tool by ID
+router.get('/:id', (req, res) => {
+  try {
+    const tool = toolService.getTool(req.params.id);
+    if (!tool) {
+      res.status(404).json({ error: 'Tool not found' });
+      return;
+    }
+    res.json(tool);
+  } catch (error) {
+    logger.error('Error getting tool:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
