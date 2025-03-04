@@ -15,7 +15,7 @@ import InfoIcon from '@mui/icons-material/Info';
 
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
-import realBenchmarkService from '../../../../src/utils/RealBenchmarkService';
+import realBenchmarkService from '../../utils/RealBenchmarkService';
 
 /**
  * LLM Benchmark Component - Test and evaluate different language models
@@ -298,6 +298,15 @@ export default function LlmBenchmark() {
     return 'error';
   };
 
+  // Add this helper function near other utility functions
+  const normalizeProgressValue = (value) => {
+    // Convert to number and handle invalid/missing values
+    const num = Number(value);
+    if (isNaN(num)) return 0;
+    // Clamp between 0-100
+    return Math.min(Math.max(num, 0), 100);
+  };
+
   // Get all available models for the dropdown
   const availableModels = getAvailableModels();
 
@@ -486,8 +495,8 @@ export default function LlmBenchmark() {
                         </Box>
                         <LinearProgress 
                           variant="determinate" 
-                          value={result.score} 
-                          color={getScoreColor(result.score)}
+                          value={normalizeProgressValue(result?.score)} 
+                          color={getScoreColor(result?.score)}
                           sx={{ height: 6, borderRadius: 3 }}
                         />
                       </Box>
