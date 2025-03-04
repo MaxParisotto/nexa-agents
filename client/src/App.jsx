@@ -5,6 +5,7 @@ import { useThemeContext } from './contexts/ThemeContext';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import store, { persistor } from './store';
+import { SnackbarProvider } from 'notistack';
 
 // Layout
 import FixedLayout from './components/common/FixedLayout';
@@ -32,24 +33,33 @@ export default function App() {
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
-        <CssBaseline />
-        <Routes>
-          <Route path="/" element={<FixedLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="benchmark" element={<Benchmark />} />
-            <Route path="metrics" element={<MetricsPage />} />
-            <Route path="integrations/gpt-uplink" element={<GptUplink />} />
-            <Route path="agora" element={<Agora />} />
-            <Route path="workflows" element={<Workflows />} />
-            <Route path="workflows/:id" element={<WorkflowDetail />} />
-            <Route path="logs" element={<LogsPage />} />
-            <Route path="agents" element={<AgentsPage />} />
-            <Route path="tools" element={<ToolsPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
+        <SnackbarProvider 
+          maxSnack={5}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          autoHideDuration={3000}
+        >
+          <CssBaseline />
+          <Routes>
+            <Route path="/" element={<FixedLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="benchmark" element={<Benchmark />} />
+              <Route path="metrics" element={<MetricsPage />} />
+              <Route path="integrations/gpt-uplink" element={<GptUplink />} />
+              <Route path="agora" element={<Agora />} />
+              <Route path="workflows" element={<Workflows />} />
+              <Route path="workflows/:id" element={<WorkflowDetail />} />
+              <Route path="logs" element={<LogsPage />} />
+              <Route path="agents" element={<AgentsPage />} />
+              <Route path="tools" element={<ToolsPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Routes>
+        </SnackbarProvider>
       </PersistGate>
     </Provider>
   );

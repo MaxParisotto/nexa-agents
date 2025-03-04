@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, Paper, TextField, IconButton, Avatar, 
-  Divider, CircularProgress, Alert, Chip
+  Divider, CircularProgress, Alert, Chip, Popover, Button
 } from '@mui/material';
 
-import { Send, Tag, Add } from '@mui/icons-material';
+import { Send, Tag, Add, Notifications as NotificationsIcon } from '@mui/icons-material';
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
 import { useSocket } from '../../services/socket.jsx';
@@ -25,21 +25,46 @@ export default function Agora() {
   ]);
   const [loading, setLoading] = useState(false);
   const [agents, setAgents] = useState([]);
+  const [mentionSuggestions, setMentionSuggestions] = useState([]);
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const [mentionAnchorEl, setMentionAnchorEl] = useState(null);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const [users, setUsers] = useState([]);
+  const textFieldRef = useRef(null);
+  const [notifications, setNotifications] = useState([]);
 
-  // Fetch agents
+  // Fetch users and agents on component mount
   useEffect(() => {
-    const fetchAgents = async () => {
+    const fetchUsers = async () => {
       try {
-        const response = await apiService.getAgents();
-        if (response && response.data) {
-          setAgents(response.data);
-        }
+        const [agentsResponse, usersResponse] = await Promise.all([
+          apiService.getAgents(),
+          apiService.getUsers()
+        ]);
+        
+        const allUsers = [
+          ...(agentsResponse?.data || []).map(agent => ({
+            ...agent,
+            type: 'agent',
+            displayName: agent.name,
+            avatar: agent.avatar || '/static/images/avatar/agent.png'
+          })),
+          ...(usersResponse?.data || []).map(user => ({
+            ...user,
+            type: 'user',
+            displayName: user.name,
+            avatar: user.avatar || '/static/images/avatar/user.png'
+          }))
+        ];
+        
+        setUsers(allUsers);
+        setAgents(agentsResponse?.data || []);
       } catch (error) {
-        console.error('Failed to fetch agents:', error);
+        console.error('Failed to fetch users:', error);
       }
     };
 
-    fetchAgents();
+    fetchUsers();
   }, []);
 
   // Initialize with system message
@@ -86,25 +111,123 @@ export default function Agora() {
     };
   }, [socket, selectedChannel]);
 
-  // Handle sending a message
+  // Handle mention notifications
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleMentionNotification = (data) => {
+      const { message, channel, from, timestamp } = data;
+      
+      // Add to notifications
+      setNotifications(prev => [...prev, {
+        id: Date.now(),
+        message,
+        channel,
+        from,
+        timestamp,
+        read: false
+      }]);
+      
+      // Update channel unread count
+      setChannels(prev => prev.map(ch => 
+        ch.id === channel 
+          ? { ...ch, unread: ch.unread + 1 }
+          : ch
+      ));
+    };
+    
+    socket.on('mention_notification', handleMentionNotification);
+    
+    return () => {
+      socket.off('mention_notification', handleMentionNotification);
+    };
+  }, [socket]);
+  
+  // Identify user on connection
+  useEffect(() => {
+    if (socket && connected && settings?.user) {
+      socket.emit('identify', {
+        userId: settings.user.id,
+        userName: settings.user.name,
+        userType: 'user',
+        avatar: settings.user.avatar
+      });
+    }
+  }, [socket, connected, settings?.user]);
+
+  // Handle mention suggestions
+  const handleMentionInput = (event) => {
+    const text = event.target.value;
+    const cursorPos = event.target.selectionStart;
+    setCursorPosition(cursorPos);
+    
+    // Find the word being typed
+    const beforeCursor = text.slice(0, cursorPos);
+    const match = beforeCursor.match(/@(\w*)$/);
+    
+    if (match) {
+      const searchTerm = match[1].toLowerCase();
+      const suggestions = users.filter(user => 
+        user.displayName.toLowerCase().includes(searchTerm)
+      ).slice(0, 5); // Limit to 5 suggestions
+      
+      setMentionSuggestions(suggestions);
+      setShowMentionSuggestions(true);
+      setMentionAnchorEl(event.target);
+    } else {
+      setShowMentionSuggestions(false);
+    }
+    
+    setNewMessage(text);
+  };
+
+  // Handle mention selection
+  const handleMentionSelect = (user) => {
+    const text = newMessage;
+    const beforeCursor = text.slice(0, cursorPosition);
+    const afterCursor = text.slice(cursorPosition);
+    const mentionStart = beforeCursor.lastIndexOf('@');
+    
+    const newText = 
+      beforeCursor.slice(0, mentionStart) + 
+      `@${user.displayName} ` + 
+      afterCursor;
+    
+    setNewMessage(newText);
+    setShowMentionSuggestions(false);
+    
+    // Focus back on input
+    if (textFieldRef.current) {
+      textFieldRef.current.focus();
+    }
+  };
+
+  // Enhanced message sending with mention handling
   const handleSendMessage = useCallback(() => {
     if (!newMessage.trim()) return;
 
     const mentions = [];
-    const content = newMessage.replace(/@(\w+)/g, (match, username) => {
-      const agent = agents.find(a => a.name === username);
-      if (agent) {
-        mentions.push(agent.id);
-        return `@${username}`;
+    const mentionRegex = /@(\w+)/g;
+    let match;
+    
+    // Extract all mentions
+    while ((match = mentionRegex.exec(newMessage)) !== null) {
+      const mentionedName = match[1];
+      const mentionedUser = users.find(u => u.displayName === mentionedName);
+      if (mentionedUser) {
+        mentions.push({
+          id: mentionedUser.id,
+          type: mentionedUser.type,
+          name: mentionedUser.displayName
+        });
       }
-      return match;
-    });
+    }
 
     // Add message to local state
     const message = {
       id: messages.length + 1,
       author: 'You',
-      content,
+      content: newMessage,
       mentions,
       channel: selectedChannel,
       timestamp: new Date().toLocaleTimeString(),
@@ -117,12 +240,22 @@ export default function Agora() {
     // Send message via socket if connected
     if (socket && connected) {
       socket.emit('send_message', {
-        content,
+        content: newMessage,
         mentions,
         channel: selectedChannel
       });
+      
+      // Send notifications for mentions
+      mentions.forEach(mention => {
+        socket.emit('mention_notification', {
+          mentionedId: mention.id,
+          mentionedType: mention.type,
+          message: newMessage,
+          channel: selectedChannel
+        });
+      });
     }
-  }, [newMessage, agents, messages.length, selectedChannel, socket, connected]);
+  }, [newMessage, users, messages.length, selectedChannel, socket, connected]);
 
   // Handle channel selection
   const handleChannelSelect = (channelId) => {
@@ -132,6 +265,13 @@ export default function Agora() {
     setChannels(prev => prev.map(channel => 
       channel.id === channelId ? { ...channel, unread: 0 } : channel
     ));
+  };
+
+  // Add notification badge to channel list
+  const getChannelNotifications = (channelId) => {
+    return notifications.filter(n => 
+      n.channel === channelId && !n.read
+    ).length;
   };
 
   // CSS styles
@@ -239,9 +379,24 @@ export default function Agora() {
     <Box>
       <Typography variant="h4" gutterBottom>Agora</Typography>
       
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Welcome to Agora, the collaboration space for Nexa Agents. Chat with agents and team members in real-time.
-      </Alert>
+      {/* Add notifications indicator in the header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        <Alert severity="info" sx={{ flex: 1 }}>
+          Welcome to Agora, the collaboration space for Nexa Agents. Chat with agents and team members in real-time.
+        </Alert>
+        {notifications.filter(n => !n.read).length > 0 && (
+          <Chip
+            icon={<NotificationsIcon />}
+            label={`${notifications.filter(n => !n.read).length} new mentions`}
+            color="primary"
+            variant="outlined"
+            onClick={() => {
+              // Mark all notifications as read
+              setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+            }}
+          />
+        )}
+      </Box>
       
       {/* Connection status */}
       {!connected && (
@@ -262,27 +417,44 @@ export default function Agora() {
           </Box>
           
           <Box sx={styles.channelList}>
-            {channels.map(channel => (
-              <Box 
-                key={channel.id}
-                sx={{
-                  ...styles.channelItem,
-                  ...(selectedChannel === channel.id ? { 
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText'
-                  } : {})
-                }}
-                onClick={() => handleChannelSelect(channel.id)}
-              >
-                <Tag fontSize="small" sx={{ mr: 1 }} />
-                <Typography variant="body2">{channel.name}</Typography>
-                {channel.unread > 0 && (
-                  <Box component="span" sx={styles.unreadBadge}>
-                    {channel.unread}
-                  </Box>
-                )}
-              </Box>
-            ))}
+            {channels.map(channel => {
+              const notificationCount = getChannelNotifications(channel.id);
+              const totalCount = channel.unread + notificationCount;
+              
+              return (
+                <Box 
+                  key={channel.id}
+                  sx={{
+                    ...styles.channelItem,
+                    ...(selectedChannel === channel.id ? { 
+                      backgroundColor: 'primary.main',
+                      color: 'primary.contrastText'
+                    } : {})
+                  }}
+                  onClick={() => handleChannelSelect(channel.id)}
+                >
+                  <Tag fontSize="small" sx={{ mr: 1 }} />
+                  <Typography variant="body2">{channel.name}</Typography>
+                  {totalCount > 0 && (
+                    <Box component="span" sx={styles.unreadBadge}>
+                      {totalCount}
+                    </Box>
+                  )}
+                  {notificationCount > 0 && (
+                    <Box
+                      component="span"
+                      sx={{
+                        ...styles.unreadBadge,
+                        ml: 0.5,
+                        bgcolor: 'warning.main'
+                      }}
+                    >
+                      @{notificationCount}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
         </Box>
 
@@ -343,13 +515,14 @@ export default function Agora() {
 
           <Box sx={styles.messageInput}>
             <TextField
+              ref={textFieldRef}
               fullWidth
               variant="outlined"
               size="small"
               placeholder={`Message #${selectedChannel}`}
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              onChange={handleMentionInput}
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
               InputProps={{
                 endAdornment: (
                   <IconButton 
@@ -362,6 +535,55 @@ export default function Agora() {
                 )
               }}
             />
+            
+            {/* Mention suggestions popover */}
+            <Popover
+              open={showMentionSuggestions && mentionSuggestions.length > 0}
+              anchorEl={mentionAnchorEl}
+              onClose={() => setShowMentionSuggestions(false)}
+              anchorOrigin={{
+                vertical: 'top',
+                horizontal: 'left',
+              }}
+              transformOrigin={{
+                vertical: 'bottom',
+                horizontal: 'left',
+              }}
+            >
+              <Paper sx={{ p: 1, maxWidth: 300 }}>
+                {mentionSuggestions.map((user) => (
+                  <Box
+                    key={user.id}
+                    sx={{
+                      p: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
+                    }}
+                    onClick={() => handleMentionSelect(user)}
+                  >
+                    <Avatar
+                      src={user.avatar}
+                      sx={{ width: 24, height: 24 }}
+                    />
+                    <Typography variant="body2">
+                      {user.displayName}
+                      <Typography
+                        component="span"
+                        variant="caption"
+                        sx={{ ml: 1, color: 'text.secondary' }}
+                      >
+                        {user.type}
+                      </Typography>
+                    </Typography>
+                  </Box>
+                ))}
+              </Paper>
+            </Popover>
           </Box>
         </Box>
       </Paper>

@@ -734,6 +734,31 @@ export const apiService = {
     }
   },
   
+  // User management methods
+  getUsers: async () => {
+    if (NETWORK_CONFIG.OFFLINE_MODE) {
+      // Return users from local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return { data: localSettings.users?.items || [] };
+    }
+    
+    try {
+      const serverAvailable = await checkBackendAvailability();
+      
+      if (!serverAvailable) {
+        // Return users from local settings
+        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+        return { data: localSettings.users?.items || [] };
+      }
+      
+      return await apiClient.get('/api/users');
+    } catch (err) {
+      // Fallback to local settings
+      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      return { data: localSettings.users?.items || [] };
+    }
+  },
+  
   createTool: async (toolData) => {
     if (NETWORK_CONFIG.OFFLINE_MODE) {
       // Add tool to local settings

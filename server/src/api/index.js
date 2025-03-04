@@ -131,6 +131,9 @@ io.use((socket, next) => {
   next();
 });
 
+// Map to store connected users
+const connectedUsers = new Map();
+
 /**
  * Process a message from the Project Manager chat
  * @param {string} message - The message to process
@@ -441,66 +444,156 @@ io.on('connection', (socket) => {
   const socketId = socket.id;
   socketLogger.info(`Client connected [id=${socketId}] from ${socket.handshake.address}`);
 
-  // Handle project manager requests
-  socket.on('project-manager-request', async (data) => {
+  // Store user information
+  let userInfo = null;
+
+  // Handle user identification
+  socket.on('identify', (data) => {
+    userInfo = {
+      id: data.userId,
+      name: data.userName,
+      type: data.userType,
+      socketId
+    };
+    // Add user to connected users map
+    connectedUsers.set(socketId, userInfo);
+    socketLogger.info(`User identified [id=${socketId}]:`, userInfo);
+  });
+
+  // Handle sending messages
+  socket.on('send_message', async (data) => {
     try {
-      // Parse the message from the data
-      let message;
-      if (typeof data === 'string') {
-        message = data;
-      } else if (typeof data === 'object') {
-        // If data is an array-like object, join it
-        if (Array.from(Object.keys(data)).every(key => !isNaN(parseInt(key)))) {
-          message = Object.values(data).join('');
-        } else {
-          // If data is a regular object, extract message or stringify
-          message = data.message || JSON.stringify(data);
+      const { content, mentions, channel } = data;
+      
+      // Process mentions and send notifications
+      if (mentions && mentions.length > 0) {
+        for (const mention of mentions) {
+          // Find mentioned user's socket
+          const mentionedSocket = Array.from(connectedUsers.values())
+            .find(u => u.id === mention.id && u.type === mention.type)?.socketId;
+          
+          if (mentionedSocket) {
+            // Send notification to mentioned user
+            io.to(mentionedSocket).emit('mention_notification', {
+              message: content,
+              channel,
+              from: userInfo,
+              timestamp: new Date().toISOString()
+            });
+          }
+          
+          // If mentioned user is an agent, process agent mention
+          if (mention.type === 'agent') {
+            try {
+              const response = await processAgentMention(mention.id, {
+                content,
+                channel,
+                from: userInfo
+              });
+              
+              // Broadcast agent's response
+              if (response) {
+                io.to(channel).emit('new_message', {
+                  author: mention.name,
+                  content: response,
+                  timestamp: new Date().toISOString(),
+                  avatar: `/static/images/avatar/${mention.id}.png`
+                });
+              }
+            } catch (error) {
+              socketLogger.error(`Error processing agent mention [${mention.id}]:`, error);
+            }
+          }
         }
-      } else {
-        throw new Error('Invalid message format');
       }
-
-      // Ensure message is a string
-      if (typeof message !== 'string') {
-        throw new Error('Message must be a string');
-      }
-
-      socketLogger.info(`Project manager request received [id=${socketId}]: ${message}`);
-
-      // Process the message and send response
-      const response = await processProjectManagerMessage(message);
       
-      socket.emit('project-manager-message', {
-        message: response,
-        timestamp: new Date().toISOString()
-      });
-      
-      socketLogger.info(`Response sent [id=${socketId}]`);
-    } catch (error) {
-      socketLogger.error(`Error handling project manager request [id=${socketId}]:`, 
-        error.message || 'Unknown error'
-      );
-      
-      socket.emit('project-manager-message', {
-        message: `Error: ${error.message}`,
+      // Broadcast message to channel
+      socket.to(channel).emit('new_message', {
+        author: userInfo?.name || 'Anonymous',
+        content,
+        mentions,
+        channel,
         timestamp: new Date().toISOString(),
-        error: true
+        avatar: userInfo?.avatar || '/static/images/avatar/default.png'
       });
+      
+    } catch (error) {
+      socketLogger.error(`Error handling message [id=${socketId}]:`, error);
+      socket.emit('error', { message: 'Failed to send message' });
+    }
+  });
+
+  // Handle mention notifications
+  socket.on('mention_notification', async (data) => {
+    try {
+      const { mentionedId, mentionedType, message, channel } = data;
+      
+      // Find mentioned user's socket
+      const mentionedSocket = Array.from(connectedUsers.values())
+        .find(u => u.id === mentionedId && u.type === mentionedType)?.socketId;
+      
+      if (mentionedSocket) {
+        io.to(mentionedSocket).emit('mention_notification', {
+          message,
+          channel,
+          from: userInfo,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+    } catch (error) {
+      socketLogger.error(`Error handling mention notification [id=${socketId}]:`, error);
     }
   });
 
   // Handle disconnection
   socket.on('disconnect', (reason) => {
     socketLogger.info(`Client disconnected [id=${socketId}] reason: ${reason}`);
+    // Remove user from connected users map
+    connectedUsers.delete(socketId);
   });
 
   // Handle errors
   socket.on('error', (error) => {
-    socketLogger.error(`Socket error [id=${socketId}]:`, 
-      error.message || 'Unknown error'
-    );
+    socketLogger.error(`Socket error [id=${socketId}]:`, error);
   });
 });
+
+/**
+ * Process a mention of an agent
+ * @param {string} agentId - The ID of the mentioned agent
+ * @param {Object} data - Message data
+ * @returns {Promise<string>} - Agent's response
+ */
+async function processAgentMention(agentId, data) {
+  try {
+    // Get agent configuration
+    const settings = settingsService.getSettings();
+    const agent = settings.agents.items.find(a => a.id === agentId);
+    
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+    
+    // Process message with agent's LLM
+    const response = await llmService.processMessage(
+      data.content,
+      agent.systemPrompt,
+      {
+        temperature: agent.temperature || 0.7,
+        maxTokens: agent.maxTokens || 4096,
+        model: agent.model,
+        providerId: agent.providerId
+      }
+    );
+    
+    return response;
+    
+  } catch (error) {
+    socketLogger.error(`Error processing agent mention:`, error);
+    return `Sorry, I encountered an error: ${error.message}`;
+  }
+}
 
 // Helper function to handle circular references in JSON.stringify
 function getCircularReplacer() {

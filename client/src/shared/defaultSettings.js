@@ -56,6 +56,26 @@ export const DEFAULT_SETTINGS = {
       { id: 4, name: 'Manager' }
     ]
   },
+  users: {
+    items: [
+      {
+        id: 'user-admin',
+        name: 'Admin',
+        type: 'admin',
+        avatar: '/static/images/avatar/admin.png',
+        enabled: true,
+        permissions: ['manage_agents', 'manage_tools', 'manage_settings']
+      },
+      {
+        id: 'user-default',
+        name: 'Default User',
+        type: 'user',
+        avatar: '/static/images/avatar/user.png',
+        enabled: true,
+        permissions: ['use_agents', 'use_tools']
+      }
+    ]
+  },
   tools: {
     items: [
       {
