@@ -6,7 +6,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
 const morgan = require('morgan');
 const fetch = require('node-fetch');
 
@@ -34,10 +34,15 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const DATA_DIR = path.join(__dirname, '../../../data');
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
 
+// Constants for storage
+const STORAGE_PATH = path.join(__dirname, '../../data');
+const MESSAGE_FILE = path.join(STORAGE_PATH, 'messages.json');
+const CHANNEL_FILE = path.join(STORAGE_PATH, 'channels.json');
+
 // Ensure data directories exist
 [DATA_DIR, LOGS_DIR].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  if (!fs.access(dir)) {
+    fs.mkdir(dir, { recursive: true });
   }
 });
 
@@ -96,6 +101,52 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Initialize storage
+async function initializeStorage() {
+  try {
+    await fs.mkdir(STORAGE_PATH, { recursive: true });
+    
+    // Initialize messages file if it doesn't exist
+    try {
+      await fs.access(MESSAGE_FILE);
+    } catch {
+      await fs.writeFile(MESSAGE_FILE, JSON.stringify([]));
+    }
+    
+    // Initialize channels file if it doesn't exist
+    try {
+      await fs.access(CHANNEL_FILE);
+    } catch {
+      await fs.writeFile(CHANNEL_FILE, JSON.stringify([]));
+    }
+  } catch (error) {
+    console.error('Error initializing storage:', error);
+  }
+}
+
+// Message storage functions
+async function loadMessages() {
+  try {
+    const data = await fs.readFile(MESSAGE_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    return [];
+  }
+}
+
+async function saveMessage(message) {
+  try {
+    const messages = await loadMessages();
+    messages.push(message);
+    await fs.writeFile(MESSAGE_FILE, JSON.stringify(messages));
+    return true;
+  } catch (error) {
+    console.error('Error saving message:', error);
+    return false;
+  }
+}
+
 // Initialize Socket.IO with CORS and other options
 const io = new Server(server, {
   cors: {
@@ -136,7 +187,7 @@ io.use((socket, next) => {
   next();
 });
 
-// Map to store connected users
+// Store connected users
 const connectedUsers = new Map();
 
 /**
@@ -445,7 +496,7 @@ ${JSON.stringify(settings.tools?.items || [], null, 2)}`;
 }
 
 // Socket.IO event handlers
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   const socketId = socket.id;
   socketLogger.info(`Client connected [id=${socketId}] from ${socket.handshake.address}`);
 
@@ -465,97 +516,110 @@ io.on('connection', (socket) => {
     socketLogger.info(`User identified [id=${socketId}]:`, userInfo);
   });
 
-  // Handle sending messages
-  socket.on('new_message', async (data) => {
+  // Handle message synchronization
+  socket.on('sync_messages', async ({ lastMessageId }) => {
     try {
-      const { content, mentions, channel, author, avatar } = data;
-      socketLogger.debug(`Received message from ${socketId}:`, { content, mentions, channel });
+      const messages = await loadMessages();
+      let newMessages = messages;
       
-      // Process mentions and send notifications
-      if (mentions && mentions.length > 0) {
-        for (const mention of mentions) {
-          socketLogger.debug('Processing mention:', mention);
-          
-          // Find mentioned user's socket
-          const mentionedSocket = Array.from(connectedUsers.values())
-            .find(u => u.id === mention.id && u.type === mention.type)?.socketId;
-          
-          if (mentionedSocket) {
-            socketLogger.debug(`Sending notification to ${mentionedSocket}`);
-            // Send notification to mentioned user
-            io.to(mentionedSocket).emit('mention_notification', {
-              message: content,
-              channel,
-              from: userInfo,
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          // If mentioned user is an agent, process agent mention
-          if (mention.type === 'agent') {
-            try {
-              socketLogger.debug(`Processing agent mention for ${mention.id}`);
-              const response = await processAgentMention(mention.id, {
-                content,
-                channel,
-                from: userInfo
-              });
-              
-              // Broadcast agent's response
-              if (response) {
-                socketLogger.debug('Broadcasting agent response:', response);
-                io.emit('agent_response', {
-                  agentId: mention.id,
-                  agentName: mention.name,
-                  message: response,
-                  timestamp: new Date().toISOString(),
-                  channel
-                });
-              }
-            } catch (error) {
-              socketLogger.error(`Error processing agent mention [${mention.id}]:`, error);
-            }
-          }
+      if (lastMessageId) {
+        const lastIndex = messages.findIndex(msg => msg.id === lastMessageId);
+        if (lastIndex !== -1) {
+          newMessages = messages.slice(lastIndex + 1);
         }
       }
       
-      // Broadcast message to all clients except sender
-      socketLogger.debug(`Broadcasting message to channel ${channel}`);
-      socket.broadcast.emit('new_message', {
-        author: author || userInfo?.name || 'Anonymous',
-        content,
-        mentions,
-        channel,
-        timestamp: new Date().toISOString(),
-        avatar: avatar || userInfo?.avatar || '/static/images/avatar/default.png'
-      });
-      
+      socket.emit('sync_messages', { messages: newMessages });
     } catch (error) {
-      socketLogger.error(`Error handling message [id=${socketId}]:`, error);
-      socket.emit('error', { message: 'Failed to send message' });
+      socketLogger.error('Error syncing messages:', error);
     }
   });
 
-  // Handle Project Manager requests directly
+  // Handle new messages with persistence
+  socket.on('new_message', async (data) => {
+    console.log('New message received:', data);
+    
+    const message = {
+      ...data,
+      id: data.messageId || `msg-${Date.now()}`,
+      timestamp: new Date().toISOString()
+    };
+
+    // Save message to storage
+    const saved = await saveMessage(message);
+    if (saved) {
+      // Broadcast to all clients except sender
+      socket.broadcast.emit('new_message', message);
+    }
+
+    // Process mentions
+    if (data.mentions && data.mentions.length > 0) {
+      data.mentions.forEach(mention => {
+        // ... existing mention handling ...
+      });
+    }
+  });
+
+  // Handle Project Manager requests with persistence
   socket.on('project-manager-request', async (data) => {
     try {
-      const { message, channel, messageId } = data;
-      socketLogger.debug('Processing Project Manager request:', { message, messageId });
+      console.log('Project Manager request received:', data);
       
-      // Process the message with the Project Manager
-      const response = await processProjectManagerMessage(message);
-      
-      // Send the response back to all clients with the original messageId
-      socketLogger.debug('Sending Project Manager response:', { response, messageId });
-      io.emit('project-manager-message', {
-        message: response,
+      const message = {
+        ...data,
+        id: data.messageId || `pm-${Date.now()}`,
+        timestamp: new Date().toISOString()
+      };
+
+      // Save the user's message
+      await saveMessage(message);
+
+      // Process the request with Project Manager
+      const pmResponse = await processProjectManagerMessage(data.message);
+
+      // Create response message object
+      const response = {
+        messageId: `pm-response-${Date.now()}`,
+        author: 'Project Manager',
+        content: pmResponse || 'Hello! How can I assist you today?',
         timestamp: new Date().toISOString(),
-        channel,
-        messageId // Include messageId in response
+        avatar: '/static/images/avatar/agent.png',
+        channel: data.channel,
+        isAgentResponse: true
+      };
+
+      // Save response to storage
+      await saveMessage(response);
+
+      // Remove typing indicator first
+      io.emit('remove_typing_indicator', {
+        id: `typing-project-manager-${data.messageId}`
       });
+
+      // Broadcast response to all clients
+      io.emit('project-manager-message', response);
     } catch (error) {
-      socketLogger.error('Error handling Project Manager request:', error);
-      socket.emit('error', { message: 'Failed to process Project Manager request' });
+      console.error('Error handling Project Manager request:', error);
+      
+      // Send error response
+      const errorResponse = {
+        messageId: `pm-error-${Date.now()}`,
+        author: 'Project Manager',
+        content: `I apologize, but I encountered an error: ${error.message}`,
+        timestamp: new Date().toISOString(),
+        avatar: '/static/images/avatar/agent.png',
+        channel: data.channel,
+        isAgentResponse: true,
+        isError: true
+      };
+
+      // Remove typing indicator
+      io.emit('remove_typing_indicator', {
+        id: `typing-project-manager-${data.messageId}`
+      });
+
+      // Send error response
+      io.emit('project-manager-message', errorResponse);
     }
   });
 

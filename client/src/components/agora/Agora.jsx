@@ -16,6 +16,13 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 
+// Constants for storage keys
+const STORAGE_KEYS = {
+  MESSAGES: 'agora_messages',
+  CHANNELS: 'agora_channels',
+  NOTIFICATIONS: 'agora_notifications'
+};
+
 /**
  * Agora Component - Discord-like chat interface for agent collaboration
  */
@@ -89,31 +96,93 @@ export default function Agora() {
     fetchUsers();
   }, []);
 
-  // Initialize with system message
+  // Load persisted data on component mount
   useEffect(() => {
-    setMessages([{
-      id: 'system-welcome',
-      author: 'Nexa System',
-      content: 'Welcome to Agora collaboration space! You can mention @Project Manager for assistance.',
-      timestamp: new Date().toLocaleTimeString(),
-      avatar: '/static/images/avatar/system.png'
-    }]);
+    const loadPersistedData = () => {
+      try {
+        // Load messages
+        const savedMessages = localStorage.getItem(STORAGE_KEYS.MESSAGES);
+        if (savedMessages) {
+          setMessages(JSON.parse(savedMessages));
+        } else {
+          // Set initial welcome message if no saved messages
+          setMessages([{
+            id: 'system-welcome',
+            author: 'Nexa System',
+            content: 'Welcome to Agora collaboration space! You can mention @Project Manager for assistance.',
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/system.png'
+          }]);
+        }
+
+        // Load channels
+        const savedChannels = localStorage.getItem(STORAGE_KEYS.CHANNELS);
+        if (savedChannels) {
+          setChannels(JSON.parse(savedChannels));
+        }
+
+        // Load notifications
+        const savedNotifications = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
+        if (savedNotifications) {
+          setNotifications(JSON.parse(savedNotifications));
+        }
+      } catch (error) {
+        console.error('Error loading persisted data:', error);
+      }
+    };
+
+    loadPersistedData();
   }, []);
 
-  // Socket event listeners
+  // Persist messages whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+    } catch (error) {
+      console.error('Error persisting messages:', error);
+    }
+  }, [messages]);
+
+  // Persist channels whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CHANNELS, JSON.stringify(channels));
+    } catch (error) {
+      console.error('Error persisting channels:', error);
+    }
+  }, [channels]);
+
+  // Persist notifications whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
+    } catch (error) {
+      console.error('Error persisting notifications:', error);
+    }
+  }, [notifications]);
+
+  // Update socket event listeners to handle message synchronization
   useEffect(() => {
     if (!socket) return;
 
     // Listen for new messages
     const handleNewMessage = (data) => {
-      setMessages(prev => [...prev, {
-        id: prev.length + 1,
-        author: data.author || 'Unknown',
-        content: data.content,
-        mentions: data.mentions || [],
-        timestamp: new Date().toLocaleTimeString(),
-        avatar: data.avatar || '/static/images/avatar/default.png'
-      }]);
+      // Check if message already exists to prevent duplicates
+      setMessages(prev => {
+        if (!prev.some(msg => msg.id === data.messageId)) {
+          const newMessage = {
+            id: data.messageId || `msg-${Date.now()}`,
+            author: data.author || 'Unknown',
+            content: data.content,
+            mentions: data.mentions || [],
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: data.avatar || '/static/images/avatar/default.png',
+            channel: data.channel
+          };
+          return [...prev, newMessage];
+        }
+        return prev;
+      });
 
       // Update unread count if not in the current channel
       if (data.channel && data.channel !== selectedChannel) {
@@ -125,13 +194,36 @@ export default function Agora() {
       }
     };
 
-    socket.on('new_message', handleNewMessage);
+    // Handle message synchronization on reconnect
+    const handleReconnect = () => {
+      console.log('Socket reconnected, syncing messages...');
+      socket.emit('sync_messages', {
+        lastMessageId: messages.length > 0 ? messages[messages.length - 1].id : null
+      });
+    };
 
-    // Cleanup
+    // Handle sync response
+    const handleSync = (data) => {
+      if (data.messages && Array.isArray(data.messages)) {
+        setMessages(prev => {
+          const newMessages = data.messages.filter(
+            newMsg => !prev.some(existingMsg => existingMsg.id === newMsg.id)
+          );
+          return [...prev, ...newMessages];
+        });
+      }
+    };
+
+    socket.on('new_message', handleNewMessage);
+    socket.on('connect', handleReconnect);
+    socket.on('sync_messages', handleSync);
+
     return () => {
       socket.off('new_message', handleNewMessage);
+      socket.off('connect', handleReconnect);
+      socket.off('sync_messages', handleSync);
     };
-  }, [socket, selectedChannel]);
+  }, [socket, selectedChannel, messages]);
 
   // Handle mention notifications
   useEffect(() => {
@@ -306,31 +398,33 @@ export default function Agora() {
       // Add to processed messages
       processedMessageIds.add(data.messageId);
       
-      // Remove typing indicator if present
-      setMessages(prev => prev.filter(msg => 
-        msg.id !== 'typing-project-manager'
-      ));
-      
       // Add Project Manager's response
       setMessages(prev => [...prev, {
         id: data.messageId || `pm-${Date.now()}`,
         author: 'Project Manager',
-        content: data.message,
+        content: data.content,
         timestamp: new Date().toLocaleTimeString(),
         avatar: '/static/images/avatar/agent.png',
         isAgentResponse: true,
-        channel: data.channel
+        channel: data.channel,
+        isError: data.isError
       }]);
+    };
+
+    const handleRemoveTypingIndicator = (data) => {
+      setMessages(prev => prev.filter(msg => msg.id !== data.id));
     };
 
     // Add event listeners
     socket.on('agent_response', handleAgentResponse);
     socket.on('project-manager-message', handleProjectManagerMessage);
+    socket.on('remove_typing_indicator', handleRemoveTypingIndicator);
 
     // Cleanup
     return () => {
       socket.off('agent_response', handleAgentResponse);
       socket.off('project-manager-message', handleProjectManagerMessage);
+      socket.off('remove_typing_indicator', handleRemoveTypingIndicator);
     };
   }, [socket]);
 
@@ -527,7 +621,7 @@ export default function Agora() {
         console.log('Project Manager mentioned:', processedContent);
         
         // Add typing indicator with unique ID
-        const typingId = `typing-project-manager-${Date.now()}`;
+        const typingId = `typing-project-manager-${messageId}`;
         setMessages(prev => [...prev, {
           id: typingId,
           author: 'Project Manager',
