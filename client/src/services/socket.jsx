@@ -112,9 +112,10 @@ export function SocketProvider({ children }) {
           reconnectionDelayMax: 5000,
           reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
           timeout: 20000,
-          autoConnect: false,
+          autoConnect: true,
           forceNew: true,
-          closeOnBeforeunload: false
+          closeOnBeforeunload: false,
+          path: '/socket.io'
         });
 
         // Set up event listeners before connecting
@@ -163,6 +164,18 @@ export function SocketProvider({ children }) {
           
           // Dispatch event for the ProjectManagerChat component
           const event = new CustomEvent('project-manager-message', {
+            detail: data
+          });
+          window.dispatchEvent(event);
+        });
+
+        // Add agent_response event listener
+        socketInstance.on('agent_response', (data) => {
+          if (cleanupRef.current || unmountingRef.current) return;
+          logger.debug('Agent response received:', data);
+          
+          // Dispatch event for the Agora component
+          const event = new CustomEvent('agent_response', {
             detail: data
           });
           window.dispatchEvent(event);

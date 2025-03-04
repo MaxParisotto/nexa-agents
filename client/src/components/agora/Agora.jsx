@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, Paper, TextField, IconButton, Avatar, 
-  Divider, CircularProgress, Alert, Chip, Popover, Button
+  Divider, CircularProgress, Alert, Chip, Popover, Button, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 
-import { Send, Tag, Add, Notifications as NotificationsIcon } from '@mui/icons-material';
+import { Send, Tag, Add, Notifications as NotificationsIcon, DeleteOutline } from '@mui/icons-material';
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
 import { useSocket } from '../../services/socket.jsx';
@@ -19,9 +19,9 @@ export default function Agora() {
   const [newMessage, setNewMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [channels, setChannels] = useState([
-    { id: 'general', name: 'general', unread: 0 },
-    { id: 'agents', name: 'agents', unread: 0 },
-    { id: 'system', name: 'system', unread: 0 }
+    { id: 'general', name: 'general', unread: 0, description: 'General discussion' },
+    { id: 'agents', name: 'agents', unread: 0, description: 'Agent coordination' },
+    { id: 'system', name: 'system', unread: 0, description: 'System notifications' }
   ]);
   const [loading, setLoading] = useState(false);
   const [agents, setAgents] = useState([]);
@@ -32,6 +32,8 @@ export default function Agora() {
   const [users, setUsers] = useState([]);
   const textFieldRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
+  const [showAddChannelDialog, setShowAddChannelDialog] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
 
   // Fetch users and agents on component mount
   useEffect(() => {
@@ -42,13 +44,26 @@ export default function Agora() {
           apiService.getUsers()
         ]);
         
+        // Add Project Manager first
+        const projectManager = {
+          id: 'agent-project-manager',
+          name: 'Project Manager',
+          type: 'agent',
+          displayName: 'Project Manager',
+          avatar: '/static/images/avatar/agent.png',
+          isProjectManager: true
+        };
+
         const allUsers = [
-          ...(agentsResponse?.data || []).map(agent => ({
-            ...agent,
-            type: 'agent',
-            displayName: agent.name,
-            avatar: agent.avatar || '/static/images/avatar/agent.png'
-          })),
+          projectManager, // Add Project Manager first
+          ...(agentsResponse?.data || [])
+            .filter(agent => agent.id !== 'agent-project-manager') // Filter out any duplicate Project Manager
+            .map(agent => ({
+              ...agent,
+              type: 'agent',
+              displayName: agent.name,
+              avatar: agent.avatar || '/static/images/avatar/agent.png'
+            })),
           ...(usersResponse?.data || []).map(user => ({
             ...user,
             type: 'user',
@@ -72,7 +87,7 @@ export default function Agora() {
     setMessages([{
       id: 1,
       author: 'Nexa System',
-      content: 'Welcome to Agora collaboration space!',
+      content: 'Welcome to Agora collaboration space! You can mention @Project Manager for assistance.',
       timestamp: new Date().toLocaleTimeString(),
       avatar: '/static/images/avatar/system.png'
     }]);
@@ -146,6 +161,13 @@ export default function Agora() {
   // Identify user on connection
   useEffect(() => {
     if (socket && connected && settings?.user) {
+      console.log('Identifying user:', {
+        userId: settings.user.id,
+        userName: settings.user.name,
+        userType: 'user',
+        avatar: settings.user.avatar
+      });
+      
       socket.emit('identify', {
         userId: settings.user.id,
         userName: settings.user.name,
@@ -202,60 +224,153 @@ export default function Agora() {
     }
   };
 
-  // Enhanced message sending with mention handling
-  const handleSendMessage = useCallback(() => {
-    if (!newMessage.trim()) return;
+  // Add channel management functions
+  const handleAddChannel = () => {
+    if (newChannelName.trim()) {
+      const channelId = newChannelName.toLowerCase().replace(/\s+/g, '-');
+      setChannels(prev => [
+        ...prev,
+        {
+          id: channelId,
+          name: newChannelName.trim(),
+          unread: 0,
+          description: `Channel for ${newChannelName} discussions`
+        }
+      ]);
+      setNewChannelName('');
+      setShowAddChannelDialog(false);
+    }
+  };
 
+  const handleDeleteChannel = (channelId) => {
+    if (channelId === 'general' || channelId === 'agents' || channelId === 'system') {
+      return; // Prevent deletion of default channels
+    }
+    setChannels(prev => prev.filter(channel => channel.id !== channelId));
+    if (selectedChannel === channelId) {
+      setSelectedChannel('general');
+    }
+  };
+
+  // Handle agent responses
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleAgentResponse = (data) => {
+      console.log('Agent response received:', data);
+      // Remove typing indicator if present
+      setMessages(prev => prev.filter(msg => msg.id !== 'typing-' + data.agentId));
+      
+      // Add agent's response
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        author: data.agentName || 'Agent',
+        content: data.message,
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: data.avatar || '/static/images/avatar/agent.png',
+        isAgentResponse: true
+      }]);
+    };
+
+    const handleProjectManagerMessage = (data) => {
+      console.log('Project Manager message received:', data);
+      // Remove typing indicator if present
+      setMessages(prev => prev.filter(msg => msg.id !== 'typing-project-manager'));
+      
+      // Add Project Manager's response
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        author: 'Project Manager',
+        content: data.message,
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: '/static/images/avatar/agent.png',
+        isAgentResponse: true
+      }]);
+    };
+
+    // Add event listeners
+    socket.on('agent_response', handleAgentResponse);
+    socket.on('project-manager-message', handleProjectManagerMessage);
+
+    // Cleanup
+    return () => {
+      socket.off('agent_response', handleAgentResponse);
+      socket.off('project-manager-message', handleProjectManagerMessage);
+    };
+  }, [socket]);
+
+  // Handle sending messages with improved mention handling
+  const handleSendMessage = useCallback(async () => {
+    if (!newMessage.trim() || !socket) return;
+
+    try {
+      setLoading(true);
+
+      // Check for Project Manager mention
+      const hasPMMention = newMessage.toLowerCase().includes('@project manager');
+      const projectManager = users.find(u => u.isProjectManager);
+
+      if (hasPMMention && projectManager) {
+        console.log('Project Manager mentioned:', newMessage);
+        
+        // Add typing indicator
+        setMessages(prev => [...prev, {
+          id: 'typing-project-manager',
+          author: 'Project Manager',
+          content: '...',
+          timestamp: new Date().toLocaleTimeString(),
+          avatar: '/static/images/avatar/agent.png',
+          isTyping: true
+        }]);
+
+        // Emit the message to the Project Manager
+        socket.emit('project-manager-request', {
+          message: newMessage,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Emit the message to all users
+      socket.emit('new_message', {
+        content: newMessage,
+        channel: selectedChannel,
+        mentions: extractMentions(newMessage),
+        timestamp: new Date().toISOString()
+      });
+
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [newMessage, socket, selectedChannel, users]);
+
+  // Helper function to extract mentions
+  const extractMentions = (text) => {
     const mentions = [];
-    const mentionRegex = /@(\w+)/g;
+    const regex = /@(\w+)/g;
     let match;
     
-    // Extract all mentions
-    while ((match = mentionRegex.exec(newMessage)) !== null) {
+    while ((match = regex.exec(text)) !== null) {
       const mentionedName = match[1];
-      const mentionedUser = users.find(u => u.displayName === mentionedName);
-      if (mentionedUser) {
+      const user = users.find(u => 
+        u.displayName.toLowerCase() === mentionedName.toLowerCase() ||
+        (mentionedName.toLowerCase() === 'project' && 
+         u.displayName.toLowerCase().includes('project manager'))
+      );
+      
+      if (user) {
         mentions.push({
-          id: mentionedUser.id,
-          type: mentionedUser.type,
-          name: mentionedUser.displayName
+          id: user.id,
+          name: user.displayName,
+          type: user.type
         });
       }
     }
-
-    // Add message to local state
-    const message = {
-      id: messages.length + 1,
-      author: 'You',
-      content: newMessage,
-      mentions,
-      channel: selectedChannel,
-      timestamp: new Date().toLocaleTimeString(),
-      avatar: '/static/images/avatar/user.png'
-    };
-
-    setMessages(prev => [...prev, message]);
-    setNewMessage('');
-
-    // Send message via socket if connected
-    if (socket && connected) {
-      socket.emit('send_message', {
-        content: newMessage,
-        mentions,
-        channel: selectedChannel
-      });
-      
-      // Send notifications for mentions
-      mentions.forEach(mention => {
-        socket.emit('mention_notification', {
-          mentionedId: mention.id,
-          mentionedType: mention.type,
-          message: newMessage,
-          channel: selectedChannel
-        });
-      });
-    }
-  }, [newMessage, users, messages.length, selectedChannel, socket, connected]);
+    
+    return mentions;
+  };
 
   // Handle channel selection
   const handleChannelSelect = (channelId) => {
@@ -375,6 +490,63 @@ export default function Agora() {
     }
   };
 
+  // Message display with enhanced agent response styling
+  const renderMessage = (message) => (
+    <Box key={message.id} sx={styles.message}>
+      <Avatar src={message.avatar} sx={{ 
+        width: 32, 
+        height: 32,
+        ...(message.isAgentResponse && {
+          border: '2px solid',
+          borderColor: 'primary.main'
+        })
+      }} />
+      <Box sx={styles.messageContent}>
+        <Box sx={styles.messageAuthorLine}>
+          <Typography variant="body2" fontWeight="500" sx={{
+            ...(message.isAgentResponse && {
+              color: 'primary.main'
+            })
+          }}>
+            {message.author}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {message.timestamp}
+          </Typography>
+        </Box>
+        <Typography variant="body2">
+          {message.isTyping ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} />
+              <span>Thinking...</span>
+            </Box>
+          ) : (
+            message.content.split(' ').map((word, i) => {
+              if (word.startsWith('@')) {
+                const username = word.substring(1);
+                const isValidMention = users.some(u => u.displayName === username);
+                
+                if (isValidMention) {
+                  return (
+                    <Chip
+                      key={i}
+                      label={word}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                      sx={{ mr: 0.5 }}
+                    />
+                  );
+                }
+              }
+              return <span key={i}>{word} </span>;
+            })
+          )}
+        </Typography>
+      </Box>
+    </Box>
+  );
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Agora</Typography>
@@ -391,7 +563,6 @@ export default function Agora() {
             color="primary"
             variant="outlined"
             onClick={() => {
-              // Mark all notifications as read
               setNotifications(prev => prev.map(n => ({ ...n, read: true })));
             }}
           />
@@ -411,7 +582,7 @@ export default function Agora() {
         <Box sx={styles.sidebar}>
           <Box sx={styles.sidebarHeader}>
             <Typography variant="subtitle1">Channels</Typography>
-            <IconButton size="small">
+            <IconButton size="small" onClick={() => setShowAddChannelDialog(true)}>
               <Add fontSize="small" />
             </IconButton>
           </Box>
@@ -429,28 +600,44 @@ export default function Agora() {
                     ...(selectedChannel === channel.id ? { 
                       backgroundColor: 'primary.main',
                       color: 'primary.contrastText'
-                    } : {})
+                    } : {}),
+                    display: 'flex',
+                    justifyContent: 'space-between'
                   }}
-                  onClick={() => handleChannelSelect(channel.id)}
                 >
-                  <Tag fontSize="small" sx={{ mr: 1 }} />
-                  <Typography variant="body2">{channel.name}</Typography>
-                  {totalCount > 0 && (
-                    <Box component="span" sx={styles.unreadBadge}>
-                      {totalCount}
-                    </Box>
-                  )}
-                  {notificationCount > 0 && (
-                    <Box
-                      component="span"
-                      sx={{
-                        ...styles.unreadBadge,
-                        ml: 0.5,
-                        bgcolor: 'warning.main'
+                  <Box 
+                    sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      flex: 1,
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => handleChannelSelect(channel.id)}
+                  >
+                    <Tag fontSize="small" sx={{ mr: 1 }} />
+                    <Typography variant="body2">{channel.name}</Typography>
+                    {totalCount > 0 && (
+                      <Box component="span" sx={styles.unreadBadge}>
+                        {totalCount}
+                      </Box>
+                    )}
+                  </Box>
+                  {/* Add delete button for non-default channels */}
+                  {!['general', 'agents', 'system'].includes(channel.id) && (
+                    <IconButton 
+                      size="small" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteChannel(channel.id);
+                      }}
+                      sx={{ 
+                        opacity: 0,
+                        '&:hover': { opacity: 1 },
+                        ...(selectedChannel === channel.id ? { color: 'primary.contrastText' } : {})
                       }}
                     >
-                      @{notificationCount}
-                    </Box>
+                      <DeleteOutline fontSize="small" />
+                    </IconButton>
                   )}
                 </Box>
               );
@@ -473,43 +660,7 @@ export default function Agora() {
             ) : (
               messages
                 .filter(msg => !msg.channel || msg.channel === selectedChannel)
-                .map(message => (
-                <Box key={message.id} sx={styles.message}>
-                  <Avatar src={message.avatar} sx={{ width: 32, height: 32 }} />
-                  <Box sx={styles.messageContent}>
-                    <Box sx={styles.messageAuthorLine}>
-                      <Typography variant="body2" fontWeight="500">
-                        {message.author}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {message.timestamp}
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2">
-                      {message.content.split(' ').map((word, i) => {
-                        if (word.startsWith('@')) {
-                          const username = word.substring(1);
-                          const isValidMention = agents.some(a => a.name === username);
-                          
-                          if (isValidMention) {
-                            return (
-                              <Chip
-                                key={i}
-                                label={word}
-                                size="small"
-                                color="primary"
-                                variant="outlined"
-                                sx={{ mr: 0.5 }}
-                              />
-                            );
-                          }
-                        }
-                        return <span key={i}>{word} </span>;
-                      })}
-                    </Typography>
-                  </Box>
-                </Box>
-              ))
+                .map(message => renderMessage(message))
             )}
           </Box>
 
@@ -587,6 +738,37 @@ export default function Agora() {
           </Box>
         </Box>
       </Paper>
+
+      {/* Add Channel Dialog */}
+      <Dialog 
+        open={showAddChannelDialog} 
+        onClose={() => setShowAddChannelDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add New Channel</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Channel Name"
+            fullWidth
+            value={newChannelName}
+            onChange={(e) => setNewChannelName(e.target.value)}
+            helperText="Enter a name for the new channel"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAddChannelDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={handleAddChannel}
+            disabled={!newChannelName.trim()}
+            variant="contained"
+          >
+            Add Channel
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

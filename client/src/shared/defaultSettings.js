@@ -61,10 +61,14 @@ export const DEFAULT_SETTINGS = {
       {
         id: 'user-admin',
         name: 'Admin',
-        type: 'admin',
+        type: 'user',
         avatar: '/static/images/avatar/admin.png',
         enabled: true,
-        permissions: ['manage_agents', 'manage_tools', 'manage_settings']
+        permissions: {
+          manageAgents: true,
+          manageTools: true,
+          manageSettings: true
+        }
       },
       {
         id: 'user-default',
@@ -72,7 +76,10 @@ export const DEFAULT_SETTINGS = {
         type: 'user',
         avatar: '/static/images/avatar/user.png',
         enabled: true,
-        permissions: ['use_agents', 'use_tools']
+        permissions: {
+          useAgents: true,
+          useTools: true
+        }
       }
     ]
   },

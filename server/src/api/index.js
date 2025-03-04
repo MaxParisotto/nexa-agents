@@ -49,8 +49,8 @@ const server = http.createServer(app);
 const corsOptions = {
   origin: NODE_ENV === 'production' 
     ? ['https://your-production-domain.com']
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
+    : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
@@ -65,6 +65,7 @@ const API_PREFIX = '/api';
 
 // Mount API routes
 app.use(`${API_PREFIX}/agents`, agentsRoutes);
+app.use(`${API_PREFIX}/users`, require('./routes/users'));
 app.use(`${API_PREFIX}/workflows`, workflowsRoutes);
 app.use(`${API_PREFIX}/metrics`, metricsRoutes);
 app.use(`${API_PREFIX}/settings`, settingsRoutes);
@@ -97,7 +98,11 @@ app.use((err, req, res, next) => {
 
 // Initialize Socket.IO with CORS and other options
 const io = new Server(server, {
-  cors: corsOptions,
+  cors: {
+    origin: corsOptions.origin,
+    methods: corsOptions.methods,
+    credentials: true
+  },
   allowEIO3: true,
   transports: ['websocket', 'polling'],
   pingTimeout: 60000,
@@ -460,19 +465,44 @@ io.on('connection', (socket) => {
     socketLogger.info(`User identified [id=${socketId}]:`, userInfo);
   });
 
+  // Handle Project Manager requests directly
+  socket.on('project-manager-request', async (data) => {
+    try {
+      const { message } = data;
+      socketLogger.debug('Processing Project Manager request:', message);
+      
+      // Process the message with the Project Manager
+      const response = await processProjectManagerMessage(message);
+      
+      // Send the response back
+      socketLogger.debug('Sending Project Manager response:', response);
+      io.emit('project-manager-message', {
+        message: response,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      socketLogger.error('Error handling Project Manager request:', error);
+      socket.emit('error', { message: 'Failed to process Project Manager request' });
+    }
+  });
+
   // Handle sending messages
-  socket.on('send_message', async (data) => {
+  socket.on('new_message', async (data) => {
     try {
       const { content, mentions, channel } = data;
+      socketLogger.debug(`Received message from ${socketId}:`, { content, mentions, channel });
       
       // Process mentions and send notifications
       if (mentions && mentions.length > 0) {
         for (const mention of mentions) {
+          socketLogger.debug('Processing mention:', mention);
+          
           // Find mentioned user's socket
           const mentionedSocket = Array.from(connectedUsers.values())
             .find(u => u.id === mention.id && u.type === mention.type)?.socketId;
           
           if (mentionedSocket) {
+            socketLogger.debug(`Sending notification to ${mentionedSocket}`);
             // Send notification to mentioned user
             io.to(mentionedSocket).emit('mention_notification', {
               message: content,
@@ -485,6 +515,7 @@ io.on('connection', (socket) => {
           // If mentioned user is an agent, process agent mention
           if (mention.type === 'agent') {
             try {
+              socketLogger.debug(`Processing agent mention for ${mention.id}`);
               const response = await processAgentMention(mention.id, {
                 content,
                 channel,
@@ -493,11 +524,12 @@ io.on('connection', (socket) => {
               
               // Broadcast agent's response
               if (response) {
-                io.to(channel).emit('new_message', {
-                  author: mention.name,
-                  content: response,
-                  timestamp: new Date().toISOString(),
-                  avatar: `/static/images/avatar/${mention.id}.png`
+                socketLogger.debug('Broadcasting agent response:', response);
+                io.emit('agent_response', {
+                  agentId: mention.id,
+                  agentName: mention.name,
+                  message: response,
+                  timestamp: new Date().toISOString()
                 });
               }
             } catch (error) {
@@ -508,6 +540,7 @@ io.on('connection', (socket) => {
       }
       
       // Broadcast message to channel
+      socketLogger.debug(`Broadcasting message to channel ${channel}`);
       socket.to(channel).emit('new_message', {
         author: userInfo?.name || 'Anonymous',
         content,
@@ -523,16 +556,62 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle agent mentions directly
+  socket.on('agent_mention', async (data) => {
+    try {
+      const { agentId, message, channel } = data;
+      socketLogger.debug(`Received agent mention:`, { agentId, message, channel });
+      
+      // Process the message with the Project Manager
+      if (agentId === 'agent-project-manager') {
+        socketLogger.debug('Processing Project Manager message');
+        const response = await processProjectManagerMessage(message);
+        
+        // Send the response back
+        socketLogger.debug('Sending Project Manager response:', response);
+        io.to(channel).emit('agent_response', {
+          agentName: 'Project Manager',
+          response,
+          channel,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Handle other agent mentions through the regular process
+        socketLogger.debug(`Processing regular agent mention for ${agentId}`);
+        const response = await processAgentMention(agentId, {
+          content: message,
+          channel,
+          from: userInfo
+        });
+        
+        if (response) {
+          socketLogger.debug('Sending agent response:', response);
+          io.to(channel).emit('agent_response', {
+            agentName: agentId === 'agent-project-manager' ? 'Project Manager' : 'Agent',
+            response,
+            channel,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } catch (error) {
+      socketLogger.error(`Error handling agent mention [id=${socketId}]:`, error);
+      socket.emit('error', { message: 'Failed to process agent mention' });
+    }
+  });
+
   // Handle mention notifications
   socket.on('mention_notification', async (data) => {
     try {
       const { mentionedId, mentionedType, message, channel } = data;
+      socketLogger.debug(`Processing mention notification:`, { mentionedId, mentionedType, channel });
       
       // Find mentioned user's socket
       const mentionedSocket = Array.from(connectedUsers.values())
         .find(u => u.id === mentionedId && u.type === mentionedType)?.socketId;
       
       if (mentionedSocket) {
+        socketLogger.debug(`Sending notification to ${mentionedSocket}`);
         io.to(mentionedSocket).emit('mention_notification', {
           message,
           channel,

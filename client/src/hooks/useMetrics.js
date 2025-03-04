@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
-import { useSocket } from '../services/socket-service';
+import { useSocket } from '../services/socket';
 
 /**
  * Custom hook for managing system metrics
