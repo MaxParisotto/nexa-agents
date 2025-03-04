@@ -236,7 +236,7 @@ ${JSON.stringify(settings.tools?.items || [], null, 2)}`;
 
     // Process message with LLM
     const response = await llmService.processMessage(
-      message,
+      typeof message === 'string' ? message : JSON.stringify(message),
       systemPrompt,
       {
         temperature: projectManager.temperature || 0.7,
