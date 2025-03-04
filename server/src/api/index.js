@@ -465,31 +465,10 @@ io.on('connection', (socket) => {
     socketLogger.info(`User identified [id=${socketId}]:`, userInfo);
   });
 
-  // Handle Project Manager requests directly
-  socket.on('project-manager-request', async (data) => {
-    try {
-      const { message } = data;
-      socketLogger.debug('Processing Project Manager request:', message);
-      
-      // Process the message with the Project Manager
-      const response = await processProjectManagerMessage(message);
-      
-      // Send the response back
-      socketLogger.debug('Sending Project Manager response:', response);
-      io.emit('project-manager-message', {
-        message: response,
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      socketLogger.error('Error handling Project Manager request:', error);
-      socket.emit('error', { message: 'Failed to process Project Manager request' });
-    }
-  });
-
   // Handle sending messages
   socket.on('new_message', async (data) => {
     try {
-      const { content, mentions, channel } = data;
+      const { content, mentions, channel, author, avatar } = data;
       socketLogger.debug(`Received message from ${socketId}:`, { content, mentions, channel });
       
       // Process mentions and send notifications
@@ -529,7 +508,8 @@ io.on('connection', (socket) => {
                   agentId: mention.id,
                   agentName: mention.name,
                   message: response,
-                  timestamp: new Date().toISOString()
+                  timestamp: new Date().toISOString(),
+                  channel
                 });
               }
             } catch (error) {
@@ -539,15 +519,15 @@ io.on('connection', (socket) => {
         }
       }
       
-      // Broadcast message to channel
+      // Broadcast message to all clients except sender
       socketLogger.debug(`Broadcasting message to channel ${channel}`);
-      socket.to(channel).emit('new_message', {
-        author: userInfo?.name || 'Anonymous',
+      socket.broadcast.emit('new_message', {
+        author: author || userInfo?.name || 'Anonymous',
         content,
         mentions,
         channel,
         timestamp: new Date().toISOString(),
-        avatar: userInfo?.avatar || '/static/images/avatar/default.png'
+        avatar: avatar || userInfo?.avatar || '/static/images/avatar/default.png'
       });
       
     } catch (error) {
@@ -556,24 +536,47 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle Project Manager requests directly
+  socket.on('project-manager-request', async (data) => {
+    try {
+      const { message, channel, messageId } = data;
+      socketLogger.debug('Processing Project Manager request:', { message, messageId });
+      
+      // Process the message with the Project Manager
+      const response = await processProjectManagerMessage(message);
+      
+      // Send the response back to all clients with the original messageId
+      socketLogger.debug('Sending Project Manager response:', { response, messageId });
+      io.emit('project-manager-message', {
+        message: response,
+        timestamp: new Date().toISOString(),
+        channel,
+        messageId // Include messageId in response
+      });
+    } catch (error) {
+      socketLogger.error('Error handling Project Manager request:', error);
+      socket.emit('error', { message: 'Failed to process Project Manager request' });
+    }
+  });
+
   // Handle agent mentions directly
   socket.on('agent_mention', async (data) => {
     try {
-      const { agentId, message, channel } = data;
-      socketLogger.debug(`Received agent mention:`, { agentId, message, channel });
+      const { agentId, message, channel, messageId } = data;
+      socketLogger.debug(`Received agent mention:`, { agentId, message, channel, messageId });
       
       // Process the message with the Project Manager
       if (agentId === 'agent-project-manager') {
         socketLogger.debug('Processing Project Manager message');
         const response = await processProjectManagerMessage(message);
         
-        // Send the response back
-        socketLogger.debug('Sending Project Manager response:', response);
-        io.to(channel).emit('agent_response', {
-          agentName: 'Project Manager',
-          response,
+        // Send the response back with messageId
+        socketLogger.debug('Sending Project Manager response:', { response, messageId });
+        io.emit('project-manager-message', {
+          message: response,
+          timestamp: new Date().toISOString(),
           channel,
-          timestamp: new Date().toISOString()
+          messageId
         });
       } else {
         // Handle other agent mentions through the regular process
@@ -581,16 +584,18 @@ io.on('connection', (socket) => {
         const response = await processAgentMention(agentId, {
           content: message,
           channel,
-          from: userInfo
+          from: userInfo,
+          messageId
         });
         
         if (response) {
-          socketLogger.debug('Sending agent response:', response);
-          io.to(channel).emit('agent_response', {
+          socketLogger.debug('Sending agent response:', { response, messageId });
+          io.emit('agent_response', {
             agentName: agentId === 'agent-project-manager' ? 'Project Manager' : 'Agent',
-            response,
+            message: response,
             channel,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            messageId
           });
         }
       }

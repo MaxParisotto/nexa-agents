@@ -3,11 +3,18 @@ import {
   Box, Typography, Paper, TextField, IconButton, Avatar, 
   Divider, CircularProgress, Alert, Chip, Popover, Button, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
-
-import { Send, Tag, Add, Notifications as NotificationsIcon, DeleteOutline } from '@mui/icons-material';
+import { Link } from '@mui/material';
+import { Send, Tag, Add, Notifications as NotificationsIcon, DeleteOutline, AttachFile } from '@mui/icons-material';
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
 import { useSocket } from '../../services/socket.jsx';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { materialDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 /**
  * Agora Component - Discord-like chat interface for agent collaboration
@@ -85,7 +92,7 @@ export default function Agora() {
   // Initialize with system message
   useEffect(() => {
     setMessages([{
-      id: 1,
+      id: 'system-welcome',
       author: 'Nexa System',
       content: 'Welcome to Agora collaboration space! You can mention @Project Manager for assistance.',
       timestamp: new Date().toLocaleTimeString(),
@@ -252,39 +259,67 @@ export default function Agora() {
     }
   };
 
-  // Handle agent responses
+  // Handle agent responses with messageId tracking and prevent duplicates
   useEffect(() => {
     if (!socket) return;
 
+    const processedMessageIds = new Set();
+
     const handleAgentResponse = (data) => {
       console.log('Agent response received:', data);
+      
+      // Skip if we've already processed this message
+      if (processedMessageIds.has(data.messageId)) {
+        console.log('Skipping duplicate message:', data.messageId);
+        return;
+      }
+      
+      // Add to processed messages
+      processedMessageIds.add(data.messageId);
+      
       // Remove typing indicator if present
-      setMessages(prev => prev.filter(msg => msg.id !== 'typing-' + data.agentId));
+      setMessages(prev => prev.filter(msg => 
+        msg.id !== 'typing-' + data.agentId
+      ));
       
       // Add agent's response
       setMessages(prev => [...prev, {
-        id: prev.length + 1,
+        id: data.messageId || `agent-${Date.now()}`,
         author: data.agentName || 'Agent',
         content: data.message,
         timestamp: new Date().toLocaleTimeString(),
         avatar: data.avatar || '/static/images/avatar/agent.png',
-        isAgentResponse: true
+        isAgentResponse: true,
+        channel: data.channel
       }]);
     };
 
     const handleProjectManagerMessage = (data) => {
       console.log('Project Manager message received:', data);
+      
+      // Skip if we've already processed this message
+      if (processedMessageIds.has(data.messageId)) {
+        console.log('Skipping duplicate message:', data.messageId);
+        return;
+      }
+      
+      // Add to processed messages
+      processedMessageIds.add(data.messageId);
+      
       // Remove typing indicator if present
-      setMessages(prev => prev.filter(msg => msg.id !== 'typing-project-manager'));
+      setMessages(prev => prev.filter(msg => 
+        msg.id !== 'typing-project-manager'
+      ));
       
       // Add Project Manager's response
       setMessages(prev => [...prev, {
-        id: prev.length + 1,
+        id: data.messageId || `pm-${Date.now()}`,
         author: 'Project Manager',
         content: data.message,
         timestamp: new Date().toLocaleTimeString(),
         avatar: '/static/images/avatar/agent.png',
-        isAgentResponse: true
+        isAgentResponse: true,
+        channel: data.channel
       }]);
     };
 
@@ -299,43 +334,228 @@ export default function Agora() {
     };
   }, [socket]);
 
-  // Handle sending messages with improved mention handling
+  // Message display with enhanced formatting
+  const renderMessage = (message) => {
+    // Function to render code blocks with syntax highlighting
+    const CodeBlock = ({ node, inline, className, children, ...props }) => {
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : '';
+      
+      return !inline && language ? (
+        <SyntaxHighlighter
+          style={materialDark}
+          language={language}
+          PreTag="div"
+          {...props}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      ) : (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    };
+
+    // Function to render message content with markdown and mentions
+    const renderContent = (content) => {
+      if (message.isTyping) {
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={16} />
+            <span>Thinking...</span>
+          </Box>
+        );
+      }
+
+      return (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+          components={{
+            code: CodeBlock,
+            p: ({ children }) => (
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                {children}
+              </Typography>
+            ),
+            a: ({ href, children }) => (
+              <Link href={href} target="_blank" rel="noopener noreferrer">
+                {children}
+              </Link>
+            ),
+            // Handle mentions specially
+            span: ({ children }) => {
+              const text = String(children);
+              if (text.startsWith('@')) {
+                const username = text.substring(1);
+                const isValidMention = users.some(u => u.displayName === username);
+                
+                if (isValidMention) {
+                  return (
+                    <Chip
+                      label={text}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                      sx={{ mr: 0.5 }}
+                    />
+                  );
+                }
+              }
+              return <span>{text}</span>;
+            }
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      );
+    };
+
+    return (
+      <Box key={message.id} sx={styles.message}>
+        <Avatar src={message.avatar} sx={{ 
+          width: 32, 
+          height: 32,
+          ...(message.isAgentResponse && {
+            border: '2px solid',
+            borderColor: 'primary.main'
+          })
+        }} />
+        <Box sx={styles.messageContent}>
+          <Box sx={styles.messageAuthorLine}>
+            <Typography variant="body2" fontWeight="500" sx={{
+              ...(message.isAgentResponse && {
+                color: 'primary.main'
+              })
+            }}>
+              {message.author}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {message.timestamp}
+            </Typography>
+          </Box>
+          <Box sx={{ 
+            mt: 0.5,
+            '& pre': {
+              borderRadius: 1,
+              p: 1.5,
+              my: 1,
+              overflow: 'auto',
+              maxHeight: '400px'
+            },
+            '& code': {
+              fontFamily: 'monospace',
+              backgroundColor: 'action.hover',
+              p: 0.5,
+              borderRadius: 0.5
+            },
+            '& blockquote': {
+              borderLeft: '4px solid',
+              borderColor: 'primary.main',
+              pl: 2,
+              my: 1,
+              color: 'text.secondary'
+            },
+            '& table': {
+              borderCollapse: 'collapse',
+              width: '100%',
+              my: 1
+            },
+            '& th, & td': {
+              border: '1px solid',
+              borderColor: 'divider',
+              p: 1
+            },
+            '& ul, & ol': {
+              pl: 3,
+              my: 1
+            }
+          }}>
+            {renderContent(message.content)}
+          </Box>
+          {message.attachments && message.attachments.length > 0 && (
+            <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {message.attachments.map((attachment, index) => (
+                <Chip
+                  key={index}
+                  label={attachment.name}
+                  variant="outlined"
+                  size="small"
+                  onClick={() => window.open(attachment.url)}
+                  icon={<AttachFile fontSize="small" />}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+      </Box>
+    );
+  };
+
+  // Handle sending messages with improved mention handling and messageId
   const handleSendMessage = useCallback(async () => {
     if (!newMessage.trim() || !socket) return;
 
     try {
       setLoading(true);
+      const messageId = `msg-${Date.now()}`;
+
+      // Process message content for code blocks and formatting
+      const processedContent = newMessage.replace(/\`\`\`(\w+)?\n([\s\S]+?)\`\`\`/g, (_, lang, code) => {
+        return `\`\`\`${lang || ''}\n${code.trim()}\n\`\`\``;
+      });
+
+      // Add the message to local state first
+      const localMessage = {
+        id: messageId,
+        author: settings?.user?.name || 'You',
+        content: processedContent,
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
+        channel: selectedChannel
+      };
+      
+      // Update messages state immediately
+      setMessages(prev => [...prev, localMessage]);
 
       // Check for Project Manager mention
-      const hasPMMention = newMessage.toLowerCase().includes('@project manager');
+      const hasPMMention = processedContent.toLowerCase().includes('@project manager');
       const projectManager = users.find(u => u.isProjectManager);
 
       if (hasPMMention && projectManager) {
-        console.log('Project Manager mentioned:', newMessage);
+        console.log('Project Manager mentioned:', processedContent);
         
-        // Add typing indicator
+        // Add typing indicator with unique ID
+        const typingId = `typing-project-manager-${Date.now()}`;
         setMessages(prev => [...prev, {
-          id: 'typing-project-manager',
+          id: typingId,
           author: 'Project Manager',
           content: '...',
           timestamp: new Date().toLocaleTimeString(),
           avatar: '/static/images/avatar/agent.png',
-          isTyping: true
+          isTyping: true,
+          channel: selectedChannel
         }]);
 
         // Emit the message to the Project Manager
         socket.emit('project-manager-request', {
-          message: newMessage,
-          timestamp: new Date().toISOString()
+          message: processedContent,
+          timestamp: new Date().toISOString(),
+          channel: selectedChannel,
+          messageId
         });
       }
 
       // Emit the message to all users
       socket.emit('new_message', {
-        content: newMessage,
+        content: processedContent,
         channel: selectedChannel,
-        mentions: extractMentions(newMessage),
-        timestamp: new Date().toISOString()
+        mentions: extractMentions(processedContent),
+        timestamp: new Date().toISOString(),
+        author: settings?.user?.name || 'You',
+        avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
+        messageId
       });
 
       setNewMessage('');
@@ -344,7 +564,7 @@ export default function Agora() {
     } finally {
       setLoading(false);
     }
-  }, [newMessage, socket, selectedChannel, users]);
+  }, [newMessage, socket, selectedChannel, users, settings?.user]);
 
   // Helper function to extract mentions
   const extractMentions = (text) => {
@@ -489,63 +709,6 @@ export default function Agora() {
       marginRight: 0.5
     }
   };
-
-  // Message display with enhanced agent response styling
-  const renderMessage = (message) => (
-    <Box key={message.id} sx={styles.message}>
-      <Avatar src={message.avatar} sx={{ 
-        width: 32, 
-        height: 32,
-        ...(message.isAgentResponse && {
-          border: '2px solid',
-          borderColor: 'primary.main'
-        })
-      }} />
-      <Box sx={styles.messageContent}>
-        <Box sx={styles.messageAuthorLine}>
-          <Typography variant="body2" fontWeight="500" sx={{
-            ...(message.isAgentResponse && {
-              color: 'primary.main'
-            })
-          }}>
-            {message.author}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {message.timestamp}
-          </Typography>
-        </Box>
-        <Typography variant="body2">
-          {message.isTyping ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={16} />
-              <span>Thinking...</span>
-            </Box>
-          ) : (
-            message.content.split(' ').map((word, i) => {
-              if (word.startsWith('@')) {
-                const username = word.substring(1);
-                const isValidMention = users.some(u => u.displayName === username);
-                
-                if (isValidMention) {
-                  return (
-                    <Chip
-                      key={i}
-                      label={word}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                      sx={{ mr: 0.5 }}
-                    />
-                  );
-                }
-              }
-              return <span key={i}>{word} </span>;
-            })
-          )}
-        </Typography>
-      </Box>
-    </Box>
-  );
 
   return (
     <Box>
