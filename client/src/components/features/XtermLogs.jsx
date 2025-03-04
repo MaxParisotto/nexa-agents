@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { Box, useTheme } from '@mui/material';
 import '@xterm/xterm/css/xterm.css';
 
 /**
@@ -10,46 +11,84 @@ import '@xterm/xterm/css/xterm.css';
  * @param {string} props.logs - Log content to display
  */
 const XtermLogs = ({ logs }) => {
+  const theme = useTheme();
   const terminalRef = useRef(null);
   const terminalInstance = useRef(null);
   const fitAddon = useRef(null);
+  const [isReady, setIsReady] = useState(false);
+  const containerRef = useRef(null);
 
   // Initialize terminal on mount
   useEffect(() => {
-    if (!terminalRef.current) return;
+    if (!containerRef.current) return;
 
-    // Initialize terminal
-    terminalInstance.current = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      rows: 20,
-      cols: 100,
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#f0f0f0',
-        cursor: '#f0f0f0',
-        selection: 'rgba(255, 255, 255, 0.3)',
-        black: '#000000',
-        red: '#e06c75',
-        green: '#98c379',
-        yellow: '#e5c07b',
-        blue: '#61afef',
-        magenta: '#c678dd',
-        cyan: '#56b6c2',
-        white: '#d0d0d0'
+    const initTerminal = () => {
+      try {
+        // Initialize terminal with proper dimensions
+        const { offsetWidth, offsetHeight } = containerRef.current;
+        const cols = Math.floor((offsetWidth - 20) / 9); // Approximate character width
+        const rows = Math.floor((offsetHeight - 20) / 20); // Approximate line height
+
+        terminalInstance.current = new Terminal({
+          cursorBlink: false,
+          fontSize: 14,
+          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+          rows: Math.max(rows, 10),
+          cols: Math.max(cols, 40),
+          theme: {
+            background: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
+            foreground: theme.palette.mode === 'dark' ? '#f0f0f0' : '#000000',
+            cursor: theme.palette.mode === 'dark' ? '#f0f0f0' : '#000000',
+            selection: 'rgba(128, 128, 128, 0.3)',
+            black: '#000000',
+            red: theme.palette.error.main,
+            green: theme.palette.success.main,
+            yellow: theme.palette.warning.main,
+            blue: theme.palette.info.main,
+            magenta: '#c678dd',
+            cyan: '#56b6c2',
+            white: theme.palette.mode === 'dark' ? '#d0d0d0' : '#000000'
+          },
+          allowTransparency: true,
+          scrollback: 5000
+        });
+
+        fitAddon.current = new FitAddon();
+        terminalInstance.current.loadAddon(fitAddon.current);
+        
+        if (terminalRef.current) {
+          terminalInstance.current.open(terminalRef.current);
+          fitAddon.current.fit();
+          setIsReady(true);
+        }
+      } catch (error) {
+        console.error('Error initializing terminal:', error);
+      }
+    };
+
+    // Wait for container to be properly sized
+    const resizeObserver = new ResizeObserver(() => {
+      if (terminalInstance.current && fitAddon.current) {
+        try {
+          fitAddon.current.fit();
+        } catch (error) {
+          console.warn('Error fitting terminal:', error);
+        }
+      } else {
+        initTerminal();
       }
     });
 
-    fitAddon.current = new FitAddon();
-    terminalInstance.current.loadAddon(fitAddon.current);
-    terminalInstance.current.open(terminalRef.current);
-    fitAddon.current.fit();
+    resizeObserver.observe(containerRef.current);
 
     // Handle window resize
     const handleResize = () => {
-      if (fitAddon.current) {
-        fitAddon.current.fit();
+      if (fitAddon.current && terminalInstance.current) {
+        try {
+          fitAddon.current.fit();
+        } catch (error) {
+          console.warn('Error fitting terminal:', error);
+        }
       }
     };
 
@@ -57,48 +96,84 @@ const XtermLogs = ({ logs }) => {
 
     // Cleanup
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       if (terminalInstance.current) {
-        terminalInstance.current.dispose();
+        try {
+          terminalInstance.current.dispose();
+        } catch (error) {
+          console.warn('Error disposing terminal:', error);
+        }
       }
     };
-  }, []);
+  }, [theme.palette.mode]);
 
   // Update terminal content when logs change
   useEffect(() => {
-    if (terminalInstance.current && logs) {
-      terminalInstance.current.clear();
-      
-      // Apply color formatting for different log levels
-      const lines = logs.split('\n');
-      lines.forEach(line => {
-        if (line.includes('[ERROR]')) {
-          terminalInstance.current.write('\x1b[31m' + line + '\x1b[0m\r\n'); // Red
-        } else if (line.includes('[WARN]')) {
-          terminalInstance.current.write('\x1b[33m' + line + '\x1b[0m\r\n'); // Yellow
-        } else if (line.includes('[INFO]')) {
-          terminalInstance.current.write('\x1b[36m' + line + '\x1b[0m\r\n'); // Cyan
-        } else if (line.includes('[DEBUG]')) {
-          terminalInstance.current.write('\x1b[90m' + line + '\x1b[0m\r\n'); // Gray
-        } else {
-          terminalInstance.current.write(line + '\r\n');
-        }
-      });
+    if (terminalInstance.current && logs && isReady) {
+      try {
+        terminalInstance.current.clear();
+        
+        // Apply color formatting for different log levels
+        const lines = logs.split('\n');
+        lines.forEach(line => {
+          let formattedLine = line;
+          
+          // Add newline if not present
+          if (!formattedLine.endsWith('\n')) {
+            formattedLine += '\r\n';
+          }
+
+          if (line.includes('[ERROR]')) {
+            terminalInstance.current.write('\x1b[31m' + formattedLine + '\x1b[0m');
+          } else if (line.includes('[WARN]')) {
+            terminalInstance.current.write('\x1b[33m' + formattedLine + '\x1b[0m');
+          } else if (line.includes('[INFO]')) {
+            terminalInstance.current.write('\x1b[36m' + formattedLine + '\x1b[0m');
+          } else if (line.includes('[DEBUG]')) {
+            terminalInstance.current.write('\x1b[90m' + formattedLine + '\x1b[0m');
+          } else {
+            terminalInstance.current.write(formattedLine);
+          }
+        });
+
+        // Scroll to bottom
+        terminalInstance.current.scrollToBottom();
+      } catch (error) {
+        console.warn('Error updating terminal content:', error);
+      }
     }
-  }, [logs]);
+  }, [logs, isReady]);
 
   return (
-    <div 
-      ref={terminalRef}
-      style={{
+    <Box
+      ref={containerRef}
+      sx={{
         height: '500px',
         width: '100%',
-        backgroundColor: '#1e1e1e',
+        backgroundColor: theme => theme.palette.mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
         padding: '8px',
         overflow: 'hidden',
-        borderRadius: '4px'
+        borderRadius: '4px',
+        position: 'relative'
       }}
-    />
+    >
+      <Box
+        ref={terminalRef}
+        sx={{
+          height: '100%',
+          width: '100%',
+          '& .xterm': {
+            height: '100%',
+            width: '100%',
+            padding: '4px'
+          },
+          '& .xterm-viewport': {
+            overflow: 'auto !important'
+          }
+        }}
+      />
+    </Box>
   );
 };
 

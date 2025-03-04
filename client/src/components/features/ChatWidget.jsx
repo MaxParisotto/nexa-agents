@@ -26,6 +26,9 @@ import { useSocket } from '../../services/socket';
 
 import 'react-resizable/css/styles.css';
 
+// Constants
+const DRAWER_WIDTH = 240; // Width of the sidebar drawer
+
 /**
  * ProjectManagerChat component that provides a floating, resizable, draggable chat interface
  * for interacting with the Project Manager agent
@@ -418,9 +421,42 @@ const ProjectManagerChat = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // If minimized, don't render the widget
+  // If minimized, show only the floating button
   if (minimized) {
-    return null;
+    return (
+      <Box
+        sx={{
+          position: 'fixed',
+          left: `${DRAWER_WIDTH + 16}px`,
+          bottom: '16px',
+          zIndex: 1000,
+          transition: 'all 0.3s ease-in-out',
+        }}
+      >
+        <Paper
+          elevation={3}
+          sx={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            cursor: 'pointer',
+            backgroundColor: 'primary.main',
+            color: 'white',
+            '&:hover': {
+              backgroundColor: 'primary.dark',
+              transform: 'scale(1.1)',
+            },
+            transition: 'all 0.2s ease-in-out',
+          }}
+          onClick={() => setMinimized(false)}
+        >
+          <SmartToyIcon />
+        </Paper>
+      </Box>
+    );
   }
 
   return (
@@ -512,9 +548,14 @@ const ProjectManagerChat = () => {
               }}
             >
               <Typography variant="subtitle1" fontWeight="bold">Project Manager</Typography>
-              <IconButton onClick={handleCollapse} size="small" sx={{ color: 'white' }}>
-                {isCollapsed ? <OpenInFullIcon /> : <MinimizeIcon />}
-              </IconButton>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <IconButton onClick={handleCollapse} size="small" sx={{ color: 'white' }}>
+                  {isCollapsed ? <OpenInFullIcon /> : <MinimizeIcon />}
+                </IconButton>
+                <IconButton onClick={() => setMinimized(true)} size="small" sx={{ color: 'white' }}>
+                  <CloseIcon />
+                </IconButton>
+              </Box>
             </Box>
             
             {!isCollapsed && (

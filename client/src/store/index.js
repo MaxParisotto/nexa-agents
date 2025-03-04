@@ -1,4 +1,7 @@
 import { configureStore, createSlice } from '@reduxjs/toolkit';
+import { persistStore, persistReducer } from 'redux-persist';
+import storage from 'redux-persist/lib/storage';
+import logsReducer from './slices/logsSlice';
 
 const settingsSlice = createSlice({
   name: 'settings',
@@ -21,10 +24,25 @@ const settingsSlice = createSlice({
 
 export const { updateSettings } = settingsSlice.actions;
 
+// Configure persist for settings
+const persistConfig = {
+  key: 'root',
+  storage,
+  whitelist: ['settings'] // Only persist settings
+};
+
+const persistedReducer = persistReducer(persistConfig, settingsSlice.reducer);
+
 const store = configureStore({
   reducer: {
-    settings: settingsSlice.reducer
-  }
+    settings: persistedReducer,
+    logs: logsReducer
+  },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: false // Disable serializable check for persist
+    })
 });
 
+export const persistor = persistStore(store);
 export default store; 

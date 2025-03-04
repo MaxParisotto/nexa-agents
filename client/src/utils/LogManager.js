@@ -8,6 +8,10 @@ class LogManager {
   static maxLogs = 1000;
   static listeners = [];
 
+  constructor() {
+    this.store = null;
+  }
+
   /**
    * Get singleton instance
    * @returns {LogManager}
@@ -17,6 +21,16 @@ class LogManager {
       LogManager.instance = new LogManager();
     }
     return LogManager.instance;
+  }
+
+  /**
+   * Initialize with Redux store
+   * @param {Object} store - Redux store
+   */
+  initializeWithStore(store) {
+    this.store = store;
+    // Initialize logs in Redux using the proper action type
+    store.dispatch({ type: 'logs/initializeLogs' });
   }
 
   /**
@@ -42,6 +56,11 @@ class LogManager {
     // Trim logs if exceeding max size
     if (LogManager.logs.length > LogManager.maxLogs) {
       LogManager.logs = LogManager.logs.slice(0, LogManager.maxLogs);
+    }
+
+    // Dispatch to Redux if store is available
+    if (this.store) {
+      this.store.dispatch({ type: 'logs/addLog', payload: logEntry });
     }
 
     // Notify listeners
@@ -107,6 +126,9 @@ class LogManager {
    */
   clearLogs() {
     LogManager.logs = [];
+    if (this.store) {
+      this.store.dispatch({ type: 'logs/clearLogs' });
+    }
     LogManager.listeners.forEach(listener => listener(null, 'clear'));
   }
 

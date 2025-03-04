@@ -7,7 +7,8 @@ import {
   Assignment as TasksIcon,
   Timeline as MetricsIcon,
   Assessment as LogsIcon,
-  Settings as SettingsIcon 
+  Settings as SettingsIcon,
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 
 /**
@@ -38,10 +39,12 @@ const Sidebar = () => {
         '& .MuiDrawer-paper': {
           width: drawerWidth,
           boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
         },
       }}
     >
-      <Box sx={{ overflow: 'auto' }}>
+      <Box sx={{ overflow: 'auto', flex: 1 }}>
         <List>
           {navItems.map((item, index) => (
             <ListItem 
@@ -66,6 +69,36 @@ const Sidebar = () => {
           ))}
         </List>
         <Divider />
+      </Box>
+      
+      {/* Chat button at the bottom */}
+      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+        <ListItem 
+          button 
+          sx={{ 
+            borderRadius: 1,
+            '&:hover': {
+              backgroundColor: 'action.hover'
+            }
+          }}
+          onClick={() => {
+            const event = new CustomEvent('toggle-chat-widget', {
+              detail: { isOpen: true }
+            });
+            window.dispatchEvent(event);
+          }}
+        >
+          <ListItemIcon>
+            <SmartToyIcon color="primary" />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Project Manager" 
+            primaryTypographyProps={{
+              variant: 'body2',
+              color: 'primary'
+            }}
+          />
+        </ListItem>
       </Box>
     </Drawer>
   );

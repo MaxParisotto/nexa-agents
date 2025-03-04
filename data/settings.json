@@ -1,6 +1,6 @@
 {
   "theme": {
-    "darkMode": false,
+    "darkMode": true,
     "accentColor": "#4a76a8"
   },
   "api": {
@@ -153,8 +153,8 @@
         "id": "agent-project-manager",
         "name": "Project Manager",
         "description": "Advanced agent that can help create and manage other agents, tools, and the environment",
-        "providerId": "provider-ollama",
-        "model": "llama3:8b",
+        "providerId": "provider-lmstudio",
+        "model": "qwen2.5-7b-instruct-1m",
         "enabled": true,
         "personality": "Professional, efficient, and proactive",
         "directives": [
@@ -165,9 +165,14 @@
           "Maintain a comprehensive understanding of the system architecture"
         ],
         "hierarchyLevel": 4,
-        "tools": ["web-search", "calculator", "weather"],
+        "tools": [
+          "web-search",
+          "calculator",
+          "weather",
+          "tool-code-analyzer"
+        ],
         "systemPrompt": "You are the Project Manager, an advanced AI agent with the ability to help users create and manage other agents, configure tools, and optimize the environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.",
-        "temperature": 0.5,
+        "temperature": 0.7,
         "maxTokens": 4096,
         "isProjectManager": true
       },
@@ -187,7 +192,9 @@
           "Monitor code patterns and trends"
         ],
         "hierarchyLevel": 2,
-        "tools": ["tool-code-analyzer"],
+        "tools": [
+          "tool-code-analyzer"
+        ],
         "systemPrompt": "You are a Code Quality Assistant, specialized in analyzing and improving code quality. Your role is to help developers write better, more efficient, and more maintainable code. Use the Code Analyzer tool to identify issues and suggest improvements. Always provide clear explanations for your suggestions and consider both immediate fixes and long-term maintainability.",
         "temperature": 0.7,
         "maxTokens": 2048
@@ -215,8 +222,60 @@
   "version": "1.0.0",
   "lastUpdated": "2025-03-04T15:11:37.308Z",
   "features": {
+    "enableFileUploads": false,
+    "enableVoiceInput": false,
+    "chatWidget": true,
     "projectManagerAgent": true,
-    "workflowAgent": false,
-    "codeAgent": false
+    "taskManagement": true,
+    "loggingSystem": true,
+    "notifications": true,
+    "metrics": true,
+    "autoSave": true,
+    "debugMode": true,
+    "experimentalFeatures": true
+  },
+  "projectManager": {
+    "apiUrl": "http://localhost:1234/v1",
+    "model": "qwen2.5-7b-instruct-1m",
+    "serverType": "lmStudio",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "repeatPenalty": 1.1,
+      "maxTokens": 1024,
+      "contextLength": 4096
+    }
+  },
+  "llmProviders": [
+    {
+      "id": "provider-lmstudio",
+      "name": "LM Studio",
+      "type": "lmstudio",
+      "apiKey": "",
+      "baseUrl": "http://localhost:1234/v1",
+      "models": ["qwen2.5-7b-instruct-1m"],
+      "defaultModel": "qwen2.5-7b-instruct-1m",
+      "enabled": true,
+      "contextWindow": 4096,
+      "temperature": 0.7
+    },
+    {
+      "id": "provider-ollama",
+      "name": "Ollama",
+      "type": "ollama",
+      "apiKey": "",
+      "baseUrl": "http://localhost:11434",
+      "models": ["deepseek-r1:1.5b"],
+      "defaultModel": "deepseek-r1:1.5b",
+      "enabled": false,
+      "contextWindow": 4096,
+      "temperature": 0.7
+    }
+  ],
+  "advanced": {
+    "debugMode": true,
+    "experimentalFeatures": true,
+    "customScripts": true
   }
 }

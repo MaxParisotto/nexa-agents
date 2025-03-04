@@ -191,14 +191,16 @@ const DEFAULT_SETTINGS = {
   }
 };
 
-// Local storage helpers
+// Constants for storage
 const LOCAL_STORAGE_KEYS = {
   SETTINGS: 'nexa_settings',
   THEME: 'nexa_theme',
-  USER_PREFERENCES: 'nexa_user_prefs'
+  USER_PREFERENCES: 'nexa_user_prefs',
+  LAST_SYNC: 'nexa_last_sync'
 };
 
-const getLocalItem = (key, defaultValue) => {
+// Helper functions for local storage
+const getLocalItem = (key, defaultValue = null) => {
   try {
     const item = localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
@@ -213,68 +215,76 @@ const setLocalItem = (key, value) => {
     localStorage.setItem(key, JSON.stringify(value));
     return true;
   } catch (error) {
-    console.error(`Error writing ${key} to localStorage:`, error);
+    console.error(`Error saving ${key} to localStorage:`, error);
     return false;
   }
 };
 
-// API service methods with local fallbacks built in
+// API service methods with enhanced persistence
 export const apiService = {
-  // Settings with localStorage fallback
+  // Settings with enhanced localStorage sync
   getSettings: async () => {
-    // Skip network request in offline mode
-    if (NETWORK_CONFIG.OFFLINE_MODE) {
-      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+    const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS);
+    const lastSync = getLocalItem(LOCAL_STORAGE_KEYS.LAST_SYNC);
+    const now = Date.now();
+    
+    // If we have recent local settings (less than 5 minutes old), use them
+    if (localSettings && lastSync && (now - lastSync < 300000)) {
       return { data: localSettings };
     }
     
     try {
       const serverAvailable = await checkBackendAvailability();
       
-      if (!serverAvailable) {
-        // Return directly from localStorage without attempting API call
-        const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-        return { data: localSettings };
+      if (serverAvailable) {
+        // Get settings from server
+        const response = await apiClient.get('/api/settings');
+        const serverSettings = response.data;
+        
+        // Merge with local settings to preserve any offline changes
+        const mergedSettings = localSettings ? 
+          { ...localSettings, ...serverSettings } : 
+          serverSettings;
+        
+        // Update local storage
+        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, mergedSettings);
+        setLocalItem(LOCAL_STORAGE_KEYS.LAST_SYNC, now);
+        
+        return { data: mergedSettings };
       }
-      
-      // Only try API if server is available
-      const response = await apiClient.get('/api/settings');
-      return response;
     } catch (err) {
-      // Fallback to localStorage
-      const localSettings = getLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-      return { data: localSettings };
+      console.warn('Error fetching settings from server:', err);
     }
+    
+    // Fallback to local settings or defaults
+    return { 
+      data: localSettings || DEFAULT_SETTINGS,
+      offline: true
+    };
   },
   
   updateSettings: async (settings) => {
-    // Skip network request in offline mode
-    if (NETWORK_CONFIG.OFFLINE_MODE) {
-      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, settings);
-      return { data: { success: true } };
-    }
+    // Always update localStorage first for immediate feedback
+    setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, settings);
+    setLocalItem(LOCAL_STORAGE_KEYS.LAST_SYNC, Date.now());
     
     try {
       const serverAvailable = await checkBackendAvailability();
       
-      if (!serverAvailable) {
-        // Save directly to localStorage without attempting API call
-        setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, settings);
-        return { data: { success: true } };
+      if (serverAvailable) {
+        // Sync to server
+        const response = await apiClient.put('/api/settings', settings);
+        return response;
       }
-      
-      // Only try API if server is available
-      const response = await apiClient.put('/api/settings', settings);
-      
-      // Also update localStorage as backup
-      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, settings);
-      
-      return response;
     } catch (err) {
-      // Fallback to localStorage
-      setLocalItem(LOCAL_STORAGE_KEYS.SETTINGS, settings);
-      return { data: { success: true } };
+      console.warn('Error syncing settings to server:', err);
+      // Don't throw error since we've already saved locally
     }
+    
+    return { 
+      data: settings,
+      offline: true
+    };
   },
   
   // LLM Provider Testing - Connect directly to local services

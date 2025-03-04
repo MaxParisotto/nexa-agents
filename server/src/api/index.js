@@ -174,15 +174,13 @@ io.on('connection', (socket) => {
   // Handle project manager requests
   socket.on('project-manager-request', async (data) => {
     try {
-      // Log the raw data for debugging
-      socketLogger.info(`Raw data received:`, data);
-
       // Parse the message from the data
       let message;
       if (typeof data === 'string') {
         message = data;
       } else if (typeof data === 'object') {
-        message = data.message;
+        // If data is already an object, extract message
+        message = data.message || JSON.stringify(data);
       } else {
         throw new Error('Invalid message format');
       }

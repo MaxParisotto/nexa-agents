@@ -12,128 +12,82 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 // Default settings
 const DEFAULT_SETTINGS = {
-  theme: {
-    darkMode: false,
-    accentColor: '#4a76a8'
-  },
-  api: {
-    lmStudio: {
-      apiUrl: 'http://localhost:1234',
+  llmProviders: [
+    {
+      id: 'provider-lmstudio',
+      name: 'LM Studio',
+      type: 'lmstudio',
       apiKey: '',
-      defaultModel: 'unknown'
+      baseUrl: 'http://localhost:1234/v1',
+      models: ['qwen2.5-7b-instruct-1m'],
+      defaultModel: 'qwen2.5-7b-instruct-1m',
+      enabled: true,
+      contextWindow: 4096,
+      temperature: 0.7
     },
-    ollama: {
-      apiUrl: 'http://localhost:11434',
-      defaultModel: 'llama2'
-    },
+    {
+      id: 'provider-ollama',
+      name: 'Ollama',
+      type: 'ollama',
+      apiKey: '',
+      baseUrl: 'http://localhost:11434',
+      models: ['deepseek-r1:1.5b'],
+      defaultModel: 'deepseek-r1:1.5b',
+      enabled: false,
+      contextWindow: 4096,
+      temperature: 0.7
+    }
+  ],
+  agents: {
+    items: [
+      {
+        id: 'agent-project-manager',
+        name: 'Project Manager',
+        description: 'Advanced agent that can help create and manage other agents, tools, and the environment',
+        providerId: 'provider-lmstudio',
+        model: 'qwen2.5-7b-instruct-1m',
+        enabled: true,
+        personality: 'Professional, efficient, and proactive',
+        directives: [
+          'Help users create and manage AI agents',
+          'Assist with tool configuration and management',
+          'Provide guidance on environment setup and optimization',
+          'Respond to natural language requests for system management',
+          'Maintain a comprehensive understanding of the system architecture'
+        ],
+        hierarchyLevel: 4,
+        tools: ['web-search', 'calculator', 'weather', 'tool-code-analyzer'],
+        systemPrompt: 'You are the Project Manager, an advanced AI agent with the ability to help users create and manage other agents, configure tools, and optimize the environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.',
+        temperature: 0.7,
+        maxTokens: 4096,
+        isProjectManager: true
+      }
+    ]
   },
-  notifications: {
-    enabled: true,
-    sound: true
-  },
-  system: {
-    autoSave: true,
-    loggingLevel: 'info',
-    metricsEnabled: true
-  },
-  version: '1.0.0',
-  lastUpdated: new Date().toISOString(),
   features: {
+    enableFileUploads: false,
+    enableVoiceInput: false,
+    chatWidget: true,
     projectManagerAgent: true,
-    workflowAgent: false,
-    codeAgent: false
+    taskManagement: true,
+    loggingSystem: true,
+    notifications: true,
+    metrics: true,
+    autoSave: true,
+    debugMode: true,
+    experimentalFeatures: true
   },
   projectManager: {
-    enabled: true,
-    systemPrompt: `You are a Project Manager AI assistant with comprehensive capabilities in the Nexa Agents environment.
-
-AVAILABLE AI ASSISTANT TOOLS:
-1. codebase_search: Find relevant code snippets using semantic search
-2. read_file: Read contents of files with line-specific precision
-3. run_terminal_cmd: Execute terminal commands (requires user approval)
-4. list_dir: List directory contents for workspace exploration
-5. grep_search: Perform text-based regex searches in files
-6. edit_file: Make changes to existing files
-7. file_search: Fuzzy search for files by name
-8. delete_file: Remove files from the workspace
-9. reapply: Retry failed edits with a smarter model
-10. web_search: Search the web for real-time information
-11. diff_history: View recent file changes
-
-NATIVE CAPABILITIES:
-1. Tool Management:
-   - Create and configure custom tools with:
-     * Names and descriptions
-     * Categories and parameters
-     * Enable/disable states
-     * Custom configurations
-   - Manage tool categories and organization
-   - Monitor tool usage and performance
-
-2. Project Management:
-   - Create and organize projects
-   - Set up development environments
-   - Manage project dependencies
-   - Track project status and progress
-   - Generate project documentation
-
-3. Environment Management:
-   - Configure LLM providers:
-     * LM Studio integration
-     * Ollama integration
-     * Model selection and configuration
-   - Manage API endpoints and connections
-   - Handle system settings
-   - Monitor system health and logs
-
-4. Development Support:
-   - Code organization and structure
-   - Dependency management
-   - Debugging assistance
-   - Performance optimization
-   - API integration
-   - Security implementation
-
-INTEGRATED FEATURES:
-- Parallel editing and code optimization
-- Strong logging and monitoring systems
-- Multi-step task execution
-- Error handling and recovery
-- Real-time status updates
-- Documentation generation
-- Security best practices
-- Testing and validation
-
-INTERACTION GUIDELINES:
-- Be professional but conversational
-- Provide clear explanations for actions
-- Ask clarifying questions when needed
-- Suggest improvements proactively
-- Reference specific files and code regions
-- Use available tools effectively
-- Guide users through complex setups
-- Help troubleshoot issues
-- Maintain clear documentation
-
-Your goal is to help users manage their development environment effectively by:
-1. Using AI assistant tools for direct code and system interaction
-2. Leveraging native capabilities for tool and project management
-3. Maintaining high code quality and best practices
-4. Ensuring clear documentation and communication
-5. Providing proactive support and improvements`,
-    model: 'default',
-    temperature: 0.7,
-    maxTokens: 2048
-  },
-  llm: {
-    provider: 'lmstudio', // or 'ollama'
-    lmstudio: {
-      endpoint: 'http://localhost:1234/v1',
-      apiKey: ''
-    },
-    ollama: {
-      endpoint: 'http://localhost:11434',
-      model: 'llama2'
+    apiUrl: 'http://localhost:1234/v1',
+    model: 'qwen2.5-7b-instruct-1m',
+    serverType: 'lmStudio',
+    parameters: {
+      temperature: 0.7,
+      topP: 0.9,
+      topK: 40,
+      repeatPenalty: 1.1,
+      maxTokens: 1024,
+      contextLength: 4096
     }
   }
 };

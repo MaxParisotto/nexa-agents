@@ -3,7 +3,8 @@ import {
   Container, Typography, Paper, Box, Chip, FormControl, InputLabel, Select,
   MenuItem, Grid, TextField, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, Button, Stack, Divider, Switch, FormControlLabel,
-  Card, CardContent, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
+  Card, CardContent, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
+  LinearProgress
 } from '@mui/material';
 import { 
   Refresh as RefreshIcon,
@@ -39,27 +40,29 @@ const LogsPage = () => {
   const [isTerminalView, setIsTerminalView] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Load logs on mount
+  // Load logs on mount and set up listener for new logs
   useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const response = await axios.get('/api/logs');
-        const fetchedLogs = response.data.logs || [];
-        setLogs(fetchedLogs);
-        setFilteredLogs(fetchedLogs);
-      } catch (error) {
-        console.error('Failed to fetch logs from server:', error);
+    // Initial load
+    setLogs(LogManager.getAllLogs());
+    
+    // Add listener for new logs
+    const removeListener = LogManager.addListener((log, action) => {
+      if (action === 'clear') {
         setLogs([]);
         setFilteredLogs([]);
+      } else if (log) {
+        setLogs(prevLogs => [log, ...prevLogs]);
       }
-    };
+    });
 
-    fetchLogs();
+    // Initialize system logs if none exist
+    if (LogManager.getAllLogs().length === 0) {
+      initializeSystemLogs();
+    }
 
-    const intervalId = setInterval(fetchLogs, 60000); // Refresh logs every minute
-
-    return () => clearInterval(intervalId);
+    return () => removeListener();
   }, []);
 
   // Save view preference when it changes
@@ -67,10 +70,10 @@ const LogsPage = () => {
     localStorage.setItem('logsPlainTextView', isPlainTextView.toString());
   }, [isPlainTextView]);
 
-  // Apply filters when filter selections change
+  // Apply filters when logs change
   useEffect(() => {
-    applyFilters();
-  }, [selectedLevel, selectedCategory, searchQuery, startDate, endDate, logs]);
+    applyFilters(logs);
+  }, [logs, selectedLevel, selectedCategory, searchQuery, startDate, endDate]);
 
   // Update terminal logs when filtered logs change
   useEffect(() => {
@@ -273,13 +276,27 @@ const LogsPage = () => {
   };
 
   const confirmDeleteAllLogs = () => {
-    LogManager.clearLogs();
-    closeDeleteDialog();
+    setIsLoading(true);
+    try {
+      LogManager.clearLogs();
+      setLogs([]);
+      setFilteredLogs([]);
+    } finally {
+      setIsLoading(false);
+      closeDeleteDialog();
+    }
   };
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" gutterBottom>System Logs</Typography>
+      
+      {isLoading && (
+        <LinearProgress 
+          variant="indeterminate" 
+          sx={{ mb: 2 }}
+        />
+      )}
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box>
