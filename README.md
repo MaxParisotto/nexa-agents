@@ -1,96 +1,109 @@
-# Nexa Agents
+# Nexa Agents Server
 
-A framework for building and orchestrating AI agents that work together.
+Backend server for the Nexa Agents application that handles API requests, manages agents, and orchestrates workflows.
 
 ## Overview
 
-Nexa Agents is a platform for creating, managing, and orchestrating AI agents. It allows developers to build intelligent agents that can collaborate on complex tasks through configurable workflows.
+The server component of Nexa Agents provides:
 
-## Features
-
-- **Agent Management**: Create, configure, and monitor AI agents
-- **Workflow Orchestration**: Design multi-step workflows for agent collaboration
-- **Real-time Monitoring**: Track agent activities and system metrics
-- **Model Integration**: Connect to various LLM providers
-- **Extensible Architecture**: Build custom agent capabilities
+- RESTful API endpoints for client interaction
+- WebSocket connections for real-time updates
+- Agent execution environment
+- Workflow orchestration
+- System monitoring
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18+ (LTS recommended)
 - npm or yarn
-- Access to LLM providers (OpenAI, LM Studio, Ollama, etc.)
+- Access to LLM providers (if using AI capabilities)
 
 ### Installation
 
-1. Clone the repository:
-
-```bash
-git clone https://github.com/yourusername/nexa-agents.git
-cd nexa-agents
-```
-
-2; Install dependencies:
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-3; Start the development server:
+   Set up environment variables by creating a `.env` file (see `.env.example` for required variables)
+
+   Start the development server:
 
 ```bash
 npm run dev
 ```
 
-## Project Structure
+## API Documentation
 
-``
-nexa-agents/
-├── client/             # Frontend React application
-├── server/             # Backend Node.js server
-├── shared/             # Code shared between client and server
-├── config/             # Configuration files
-├── data/               # Data storage
-└── tests/              # Test files
-``
+The server exposes the following API endpoints:
+
+### Workflows
+
+- `GET /api/workflows` - List all workflows
+- `GET /api/workflows/:id` - Get a specific workflow
+- `POST /api/workflows` - Create a new workflow
+- `PUT /api/workflows/:id` - Update a workflow
+- `DELETE /api/workflows/:id` - Delete a workflow
+
+### Workflow Steps
+
+- `GET /api/workflows/:workflowId/steps` - List steps in a workflow
+- `POST /api/workflows/:workflowId/steps` - Add a step to a workflow
+- `PUT /api/workflows/:workflowId/steps/:stepId` - Update a workflow step
+- `DELETE /api/workflows/:workflowId/steps/:stepId` - Delete a workflow step
+
+### Agents
+
+- `GET /api/agents` - List all agents
+- `GET /api/agents/:id` - Get a specific agent
+- `POST /api/agents` - Create a new agent
+- `PUT /api/agents/:id` - Update an agent
+- `DELETE /api/agents/:id` - Delete an agent
+
+### System
+
+- `GET /api/system/status` - Get system status
+- `GET /api/metrics/system` - Get current system metrics
+- `GET /api/metrics/history` - Get historical metrics
+
+### Settings
+
+- `GET /api/settings` - Get application settings
+- `PUT /api/settings` - Update settings
+- `POST /api/settings/reset` - Reset settings to defaults
+
+## Configuration
+
+Configuration options are managed through environment variables and the `config` directory.
 
 ## Development
 
-### Client
+### Project Structure
 
-The client is built using React and Material-UI:
+``
+server/
+├── src/             # Source files
+│   ├── api/         # API routes and controllers
+│   ├── models/      # Data models
+│   ├── services/    # Business logic and services
+│   ├── utils/       # Utility functions
+│   └── index.js     # Entry point
+├── config/          # Configuration files
+├── tests/           # Test files
+└── .env.example     # Example environment variables
+``
 
-```bash
-cd client
-npm run dev
-```
+### Testing
 
-### Server
-
-The server is built using Express:
-
-```bash
-cd server
-npm run start:dev
-```
-
-### Running Both
-
-To run both client and server concurrently:
+Run tests with:
 
 ```bash
-npm run dev
+npm test
 ```
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License.
