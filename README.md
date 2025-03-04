@@ -1,87 +1,55 @@
 # Nexa Agents
 
-A framework for building and orchestrating AI agents that work together.
+A modern application for AI-powered agents with tool-use capabilities.
 
-## Overview
+## Project Structure
 
-Nexa Agents is a platform for creating, managing, and orchestrating AI agents. It allows developers to build intelligent agents that can collaborate on complex tasks through configurable workflows.
+The project has been restructured to keep all files at the root level:
 
-## Features
-
-- **Agent Management**: Create, configure, and monitor AI agents
-- **Workflow Orchestration**: Design multi-step workflows for agent collaboration
-- **Real-time Monitoring**: Track agent activities and system metrics
-- **Model Integration**: Connect to various LLM providers
-- **Extensible Architecture**: Build custom agent capabilities
+```
+nexa-agents/
+├── public/          # Static assets
+├── src/             # Source code
+│   ├── components/  # React components
+│   ├── contexts/    # React contexts
+│   ├── routes/      # Route components
+│   ├── services/    # API services
+│   ├── utils/       # Utility functions
+│   ├── App.jsx      # Main App component
+│   └── main.jsx     # Entry point
+├── package.json     # Dependencies and scripts
+└── vite.config.js   # Vite configuration
+```
 
 ## Getting Started
 
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-- Access to LLM providers (OpenAI, LM Studio, Ollama, etc.)
-
-### Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/yourusername/nexa-agents.git
-cd nexa-agents
-```
-
-2; Install dependencies:
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-3; Start the development server:
+2. Start the development server:
 
 ```bash
 npm run dev
 ```
 
-## Project Structure
+3. Open your browser and navigate to: `http://localhost:3000`
 
-``
-nexa-agents/
-├── client/             # Frontend React application
-├── server/             # Backend Node.js server
-├── shared/             # Code shared between client and server
-├── config/             # Configuration files
-├── data/               # Data storage
-└── tests/              # Test files
-``
+## Features
 
-## Development
+- Project management with AI assistance
+- LLM benchmarking tools
+- Real-time agent collaboration
+- Tool-use capabilities for AI agents
 
-### Client
+## Scripts
 
-The client is built using React and Material-UI:
-
-```bash
-cd client
-npm run dev
-```
-
-### Server
-
-The server is built using Express:
-
-```bash
-cd server
-npm run start:dev
-```
-
-### Running Both
-
-To run both client and server concurrently:
-
-```bash
-npm run dev
-```
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build locally
+- `npm run lint` - Lint code
 
 ## Contributing
 
