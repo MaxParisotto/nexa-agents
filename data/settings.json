@@ -1,6 +1,6 @@
 {
   "theme": {
-    "darkMode": true,
+    "darkMode": false,
     "accentColor": "#4a76a8"
   },
   "api": {
@@ -23,78 +23,200 @@
     "loggingLevel": "info",
     "metricsEnabled": true
   },
-  "version": "1.0.0",
-  "lastUpdated": "2025-03-04T15:11:37.308Z",
-  "features": {
-    "projectManagerAgent": true
-  },
-  "projectManager": {
-    "enabled": true,
-    "name": "Project Manager",
-    "description": "AI assistant that helps manage projects and workflows",
-    "model": "default",
-    "temperature": 0.7,
-    "maxTokens": 2048,
-    "capabilities": [
-      "project_management",
-      "task_creation",
-      "workflow_management",
-      "agent_coordination"
+  "tools": {
+    "categories": [
+      {
+        "id": "development",
+        "name": "Development",
+        "description": "Tools for code development and analysis"
+      },
+      {
+        "id": "utility",
+        "name": "Utility",
+        "description": "General purpose utility tools"
+      }
     ],
-    "systemPrompt": "You are the Project Manager AI assistant. Your role is to:\n- Help users manage their projects and workflows\n- Create and assign tasks\n- Monitor project progress\n- Coordinate with other agents\n- Provide project insights and recommendations\n\nPlease be professional, efficient, and proactive in your responses."
+    "items": [
+      {
+        "id": "tool-code-analyzer",
+        "name": "Code Analyzer",
+        "description": "Analyzes code for patterns, potential issues, and optimization opportunities",
+        "category": "development",
+        "enabled": true,
+        "parameters": [
+          {
+            "name": "source",
+            "type": "string",
+            "required": true,
+            "description": "Source code or file path to analyze"
+          },
+          {
+            "name": "language",
+            "type": "string",
+            "required": true,
+            "description": "Programming language of the source code"
+          },
+          {
+            "name": "analysisType",
+            "type": "string",
+            "required": false,
+            "default": "all",
+            "description": "Type of analysis to perform (performance, security, style, or all)"
+          },
+          {
+            "name": "suggestFixes",
+            "type": "boolean",
+            "required": false,
+            "default": true,
+            "description": "Whether to suggest fixes for identified issues"
+          }
+        ]
+      },
+      {
+        "id": "web-search",
+        "name": "Web Search",
+        "description": "Search the web for real-time information and resources",
+        "category": "utility",
+        "enabled": true,
+        "parameters": [
+          {
+            "name": "query",
+            "type": "string",
+            "required": true,
+            "description": "Search query to look up"
+          },
+          {
+            "name": "maxResults",
+            "type": "number",
+            "required": false,
+            "default": 5,
+            "description": "Maximum number of results to return"
+          }
+        ]
+      },
+      {
+        "id": "calculator",
+        "name": "Calculator",
+        "description": "Perform mathematical calculations and conversions",
+        "category": "utility",
+        "enabled": true,
+        "parameters": [
+          {
+            "name": "expression",
+            "type": "string",
+            "required": true,
+            "description": "Mathematical expression to evaluate"
+          },
+          {
+            "name": "precision",
+            "type": "number",
+            "required": false,
+            "default": 2,
+            "description": "Number of decimal places in the result"
+          }
+        ]
+      },
+      {
+        "id": "weather",
+        "name": "Weather",
+        "description": "Get weather information for a specific location",
+        "category": "utility",
+        "enabled": true,
+        "parameters": [
+          {
+            "name": "location",
+            "type": "string",
+            "required": true,
+            "description": "Location to get weather for (city, coordinates, etc.)"
+          },
+          {
+            "name": "units",
+            "type": "string",
+            "required": false,
+            "default": "metric",
+            "description": "Units system (metric or imperial)"
+          },
+          {
+            "name": "forecast",
+            "type": "boolean",
+            "required": false,
+            "default": false,
+            "description": "Whether to include forecast data"
+          }
+        ]
+      }
+    ]
   },
-  "llmProviders": [
-    {
-      "id": "provider-1741102895536",
-      "name": "LM Studio Local",
-      "type": "lmstudio",
-      "apiKey": "",
-      "baseUrl": "http://localhost:1234/v1",
-      "models": [
-        "deepseek-r1-distill-qwen-7b",
-        "qwen2.5-coder-14b-instruct-mlx",
-        "qwen2.5-0.5b-instruct-mlx",
-        "codegeex4-all-9b",
-        "cognitivecomputations_dolphin3.0-r1-mistral-24b",
-        "nousresearch_deephermes-3-llama-3-8b-preview",
-        "aion-rp-llama-3.1-8b",
-        "text-embedding-nomic-embed-text-v1.5",
-        "prithivmlmods.viper-coder-v1.1",
-        "agentica-org_deepscaler-1.5b-preview@f16",
-        "agentica-org_deepscaler-1.5b-preview@q8_0",
-        "agentica-org_deepscaler-1.5b-preview@q4_0",
-        "agentica-org_deepscaler-1.5b-preview@q6_k_l",
-        "qwen2.5-coder-14b-instruct",
-        "qwen2.5-7b-instruct-1m",
-        "qwen2.5-coder-3b-instruct",
-        "deepseek-ai.deepseek-r1-distill-qwen-14b",
-        "qwen2.5-7b-instruct"
-      ],
-      "defaultModel": "deepseek-r1-distill-qwen-7b",
-      "enabled": true,
-      "contextWindow": 4096,
-      "temperature": 0.7,
-      "maxTokens": 2048
-    }
-  ],
   "agents": {
     "items": [
       {
         "id": "agent-project-manager",
         "name": "Project Manager",
         "description": "Advanced agent that can help create and manage other agents, tools, and the environment",
-        "providerId": "provider-1741102895536",
-        "model": "qwen2.5-0.5b-instruct-mlx",
+        "providerId": "provider-ollama",
+        "model": "llama3:8b",
         "enabled": true,
         "personality": "Professional, efficient, and proactive",
-        "directives": [],
+        "directives": [
+          "Help users create and manage AI agents",
+          "Assist with tool configuration and management",
+          "Provide guidance on environment setup and optimization",
+          "Respond to natural language requests for system management",
+          "Maintain a comprehensive understanding of the system architecture"
+        ],
         "hierarchyLevel": 4,
-        "tools": [],
-        "systemPrompt": "",
-        "temperature": 0.7,
-        "maxTokens": 2048,
+        "tools": ["web-search", "calculator", "weather"],
+        "systemPrompt": "You are the Project Manager, an advanced AI agent with the ability to help users create and manage other agents, configure tools, and optimize the environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.",
+        "temperature": 0.5,
+        "maxTokens": 4096,
         "isProjectManager": true
+      },
+      {
+        "id": "agent-code-quality",
+        "name": "Code Quality Assistant",
+        "description": "Specialized agent for analyzing and improving code quality",
+        "providerId": "provider-lmstudio",
+        "model": "qwen2.5-coder-14b-instruct",
+        "enabled": true,
+        "personality": "Detail-oriented, analytical, and helpful",
+        "directives": [
+          "Analyze code for potential issues and improvements",
+          "Suggest optimizations and best practices",
+          "Help maintain code quality standards",
+          "Provide detailed explanations for suggested changes",
+          "Monitor code patterns and trends"
+        ],
+        "hierarchyLevel": 2,
+        "tools": ["tool-code-analyzer"],
+        "systemPrompt": "You are a Code Quality Assistant, specialized in analyzing and improving code quality. Your role is to help developers write better, more efficient, and more maintainable code. Use the Code Analyzer tool to identify issues and suggest improvements. Always provide clear explanations for your suggestions and consider both immediate fixes and long-term maintainability.",
+        "temperature": 0.7,
+        "maxTokens": 2048
+      }
+    ],
+    "hierarchyLevels": [
+      {
+        "id": 1,
+        "name": "Assistant"
+      },
+      {
+        "id": 2,
+        "name": "Specialist"
+      },
+      {
+        "id": 3,
+        "name": "Supervisor"
+      },
+      {
+        "id": 4,
+        "name": "Manager"
       }
     ]
+  },
+  "version": "1.0.0",
+  "lastUpdated": "2025-03-04T15:11:37.308Z",
+  "features": {
+    "projectManagerAgent": true,
+    "workflowAgent": false,
+    "codeAgent": false
   }
 }
