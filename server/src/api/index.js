@@ -21,6 +21,10 @@ const logger = require('../utils/logger');
 const socketLogger = logger.createLogger('socket.io');
 const httpLogger = logger.createLogger('http');
 
+// Import settings service
+const settingsService = require('../services/settingsService');
+const llmService = require('../services/llmService');
+
 // Environment variables
 const PORT = process.env.API_PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -74,14 +78,19 @@ app.get(`${API_PREFIX}/health`, (req, res) => {
   });
 });
 
-// Error handling middleware
+// Error handling middleware with safe error serialization
 app.use((err, req, res, next) => {
-  httpLogger.error('API Error:', err);
-  res.status(err.status || 500).json({
-    error: {
-      message: err.message || 'Internal Server Error',
-      status: err.status || 500
-    }
+  const errorDetails = {
+    message: err.message || 'Internal Server Error',
+    status: err.status || 500,
+    path: req.path,
+    method: req.method
+  };
+
+  httpLogger.error('API Error:', JSON.stringify(errorDetails, getCircularReplacer()));
+  
+  res.status(errorDetails.status).json({
+    error: errorDetails
   });
 });
 
@@ -121,95 +130,118 @@ io.use((socket, next) => {
   next();
 });
 
+/**
+ * Process a message from the Project Manager chat
+ * @param {string} message - The message to process
+ * @returns {Promise<string>} - The response message
+ */
+async function processProjectManagerMessage(message) {
+  try {
+    socketLogger.info('Processing Project Manager message:', message);
+    
+    // Get current settings
+    const settings = settingsService.getSettings();
+    
+    // Check if Project Manager is enabled
+    if (!settings?.features?.projectManagerAgent) {
+      throw new Error('Project Manager feature is not enabled. Please enable it in settings.');
+    }
+
+    // Get Project Manager configuration
+    const projectManager = settings.projectManager;
+    if (!projectManager) {
+      throw new Error('Project Manager is not configured. Please check your settings.');
+    }
+
+    // Process message with LLM
+    const response = await llmService.processMessage(
+      message,
+      projectManager.systemPrompt
+    );
+
+    return response;
+  } catch (error) {
+    socketLogger.error('Error processing Project Manager message:', error);
+    throw error;
+  }
+}
+
 // Socket.IO event handlers
 io.on('connection', (socket) => {
-  socketLogger.info(`Client connected [id=${socket.customId}] from ${socket.handshake.address}`);
-  
-  // Send initial connection status
-  socket.emit('connection_status', { 
-    status: 'connected',
-    socketId: socket.customId,
-    timestamp: new Date().toISOString(),
-    serverTime: socket.connectionTime
-  });
-  
-  socket.on('error', (error) => {
-    socketLogger.error(`Socket error [id=${socket.customId}]:`, error);
-  });
-  
-  // Agent status updates
-  socket.on('agent_status', (data) => {
-    socketLogger.info(`Agent status update [id=${socket.customId}]:`, data);
-    
+  const socketId = socket.id;
+  socketLogger.info(`Client connected [id=${socketId}] from ${socket.handshake.address}`);
+
+  // Handle project manager requests
+  socket.on('project-manager-request', async (data) => {
     try {
-      const agentsService = require('../services/agentsService');
-      const updatedAgent = agentsService.updateAgentStatus(data.id, data.status);
+      // Log the raw data for debugging
+      socketLogger.info(`Raw data received:`, data);
+
+      // Parse the message from the data
+      let message;
+      if (typeof data === 'string') {
+        message = data;
+      } else if (typeof data === 'object') {
+        message = data.message;
+      } else {
+        throw new Error('Invalid message format');
+      }
+
+      // Ensure message is a string
+      if (typeof message !== 'string') {
+        throw new Error('Message must be a string');
+      }
+
+      socketLogger.info(`Project manager request received [id=${socketId}]: ${message}`);
+
+      // Process the message and send response
+      const response = await processProjectManagerMessage(message);
       
-      // Broadcast to all clients
-      io.emit('agent_status', updatedAgent);
-    } catch (error) {
-      socketLogger.error(`Error handling agent status update [id=${socket.customId}]:`, error);
-      socket.emit('error', {
-        message: 'Failed to update agent status',
-        error: error.message
+      socket.emit('project-manager-message', {
+        message: response,
+        timestamp: new Date().toISOString()
       });
-    }
-  });
-  
-  // Workflow updates
-  socket.on('workflow_update', (data) => {
-    socketLogger.info(`Workflow update [id=${socket.customId}]:`, data);
-    io.emit('workflow_update', data);
-  });
-  
-  // Chat message handler
-  socket.on('send_message', async (data) => {
-    socketLogger.info(`Chat message received [id=${socket.customId}]:`, data);
-    
-    try {
-      const settingsService = require('../services/settingsService');
-      const settings = settingsService.getSettings();
       
-      if (!settings.features?.projectManagerAgent) {
-        throw new Error('Project Manager feature is not enabled');
-      }
+      socketLogger.info(`Response sent [id=${socketId}]`);
+    } catch (error) {
+      socketLogger.error(`Error handling project manager request [id=${socketId}]:`, 
+        error.message || 'Unknown error'
+      );
       
-      const projectManager = settings.projectManager;
-      if (!projectManager) {
-        throw new Error('Project Manager is not configured');
-      }
-      
-      socket.emit('new_message', {
-        author: 'Project Manager',
-        content: '...',
-        avatar: '/static/images/avatar/system.png',
+      socket.emit('project-manager-message', {
+        message: `Error: ${error.message}`,
         timestamp: new Date().toISOString(),
-        isThinking: true
-      });
-      
-      const response = await generateLlmResponse(projectManager, data.content);
-      
-      const responseMessage = {
-        author: 'Project Manager',
-        content: response,
-        avatar: '/static/images/avatar/system.png',
-        timestamp: new Date().toISOString()
-      };
-      
-      socket.emit('new_message', responseMessage);
-      socketLogger.info(`Response sent [id=${socket.customId}]:`, responseMessage);
-    } catch (error) {
-      socketLogger.error(`Error handling chat message [id=${socket.customId}]:`, error);
-      
-      socket.emit('new_message', {
-        author: 'System',
-        content: `Error: ${error.message}. Please check your Project Manager configuration in settings.`,
-        avatar: '/static/images/avatar/system.png',
-        timestamp: new Date().toISOString()
+        error: true
       });
     }
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', (reason) => {
+    socketLogger.info(`Client disconnected [id=${socketId}] reason: ${reason}`);
+  });
+
+  // Handle errors
+  socket.on('error', (error) => {
+    socketLogger.error(`Socket error [id=${socketId}]:`, 
+      error.message || 'Unknown error'
+    );
   });
 });
+
+// Helper function to handle circular references in JSON.stringify
+function getCircularReplacer() {
+  const seen = new WeakSet();
+  return (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+    }
+    return value;
+  };
+}
 
 // Error handling for the HTTP server
 server.on('error', (error) => {

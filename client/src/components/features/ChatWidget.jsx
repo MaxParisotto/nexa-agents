@@ -22,6 +22,7 @@ import axios from 'axios';
 import PersonIcon from '@mui/icons-material/Person';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useSelector } from 'react-redux';
+import { useSocket } from '../../services/socket';
 
 import 'react-resizable/css/styles.css';
 
@@ -41,6 +42,7 @@ const ProjectManagerChat = () => {
   const chatContainerRef = useRef(null);
   const [messageListenerAdded, setMessageListenerAdded] = useState(false);
   const settings = useSelector(state => state?.settings);
+  const { connected, sendProjectManagerMessage } = useSocket();
   
   const [connectionStatus, setConnectionStatus] = useState({
     status: 'checking',
@@ -92,20 +94,37 @@ const ProjectManagerChat = () => {
 
   useEffect(() => {
     // Setup event listeners for project manager messages
-    if (!messageListenerAdded) {
-      window.addEventListener('project-manager-message', handleProjectManagerMessage);
-      setMessageListenerAdded(true);
+    const handleProjectManagerMessage = (event) => {
+      const { message, error } = event.detail;
       
-      console.log('Added project-manager-message event listener');
-    }
-    
-    return () => {
-      if (messageListenerAdded) {
-        window.removeEventListener('project-manager-message', handleProjectManagerMessage);
-        console.log('Removed project-manager-message event listener');
+      if (error) {
+        // Handle error message
+        setConversation(prev => {
+          const filtered = prev.filter(msg => !msg.isThinking);
+          return [...filtered, {
+            role: 'assistant',
+            content: message,
+            timestamp: new Date().toISOString(),
+            error: true
+          }];
+        });
+        return;
       }
+      
+      // Handle normal message
+      setConversation(prev => {
+        const filtered = prev.filter(msg => !msg.isThinking);
+        return [...filtered, {
+          role: 'assistant',
+          content: message,
+          timestamp: new Date().toISOString()
+        }];
+      });
     };
-  }, [messageListenerAdded]);
+
+    window.addEventListener('project-manager-message', handleProjectManagerMessage);
+    return () => window.removeEventListener('project-manager-message', handleProjectManagerMessage);
+  }, []);
   
   // Auto-scroll to bottom when chat history updates
   useEffect(() => {
@@ -152,59 +171,25 @@ const ProjectManagerChat = () => {
   };
 
   /**
-   * Handle messages from the ProjectManager agent
-   */
-  const handleProjectManagerMessage = (event) => {
-    console.log('Received project-manager-message:', event.detail);
-    
-    // Extract message content from event detail, handling both formats
-    const message = typeof event.detail === 'object' ? (event.detail.message || event.detail.content) : event.detail;
-    
-    if (!message) {
-      console.error('Received empty message from ProjectManager');
-      return;
-    }
-    
-    // Add message to conversation with proper formatting
-    const newMessage = {
-      role: 'assistant',
-      content: message,
-      timestamp: new Date().toISOString(),
-    };
-    
-    console.log('Adding message to conversation:', newMessage);
-    
-    setConversation(prev => {
-      // Remove any "thinking" messages first
-      const filtered = prev.filter(msg => !msg.isThinking);
-      return [...filtered, newMessage];
-    });
-  };
-  
-  /**
    * Send a message to the chat
    */
   const handleSendMessage = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() || !connected) return;
 
     const userMessage = {
-      id: `msg-${Date.now()}`,
-      author: 'You',
+      role: 'user',
       content: message.trim(),
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
 
-    setConversation(prev => [...prev, userMessage, { role: 'assistant', content: 'Thinking...', timestamp: new Date().toISOString(), isThinking: true }]);
+    setConversation(prev => [...prev, userMessage, {
+      role: 'assistant',
+      content: 'Thinking...',
+      timestamp: new Date().toISOString(),
+      isThinking: true
+    }]);
 
-    // Dispatch the chat message event with the correct format
-    const event = new CustomEvent('project-manager-request', {
-      detail: {
-        message: message.trim(),
-        timestamp: new Date().toISOString()
-      }
-    });
-
-    window.dispatchEvent(event);
+    sendProjectManagerMessage(message.trim());
     setMessage('');
   };
 

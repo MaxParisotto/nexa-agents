@@ -19,6 +19,7 @@ const SocketContext = createContext({
   socket: null,
   connected: false,
   events: [],
+  sendProjectManagerMessage: () => {},
 });
 
 /**
@@ -33,6 +34,20 @@ export function SocketProvider({ children }) {
   const cleanupRef = useRef(false);
   const unmountingRef = useRef(false);
   const MAX_RECONNECT_ATTEMPTS = 5;
+
+  // Define sendProjectManagerMessage as a component function using useCallback
+  const sendProjectManagerMessage = useCallback((message) => {
+    if (!socketRef.current || !socketRef.current.connected) {
+      logger.warn('Socket not connected, cannot send message');
+      return;
+    }
+    
+    logger.debug('Sending message to Project Manager:', message);
+    socketRef.current.emit('project-manager-request', {
+      message,
+      timestamp: new Date().toISOString()
+    });
+  }, []);
 
   // Cleanup function defined outside useEffect to ensure consistency
   const cleanup = useCallback(() => {
@@ -141,6 +156,18 @@ export function SocketProvider({ children }) {
           logger.error('Socket error:', error);
         });
 
+        // Project Manager specific events
+        socketInstance.on('project-manager-message', (data) => {
+          if (cleanupRef.current || unmountingRef.current) return;
+          logger.debug('Project Manager message received:', data);
+          
+          // Dispatch event for the ProjectManagerChat component
+          const event = new CustomEvent('project-manager-message', {
+            detail: data
+          });
+          window.dispatchEvent(event);
+        });
+
         // Event handlers for application events
         ['agent_status', 'task_update', 'workflow_update', 'metrics_update'].forEach(eventType => {
           socketInstance.on(eventType, (data) => {
@@ -184,7 +211,12 @@ export function SocketProvider({ children }) {
   }, [cleanup]);
 
   return (
-    <SocketContext.Provider value={{ socket, connected, events }}>
+    <SocketContext.Provider value={{ 
+      socket: socketRef.current,
+      connected,
+      events,
+      sendProjectManagerMessage
+    }}>
       {children}
     </SocketContext.Provider>
   );

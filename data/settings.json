@@ -1,0 +1,100 @@
+{
+  "theme": {
+    "darkMode": true,
+    "accentColor": "#4a76a8"
+  },
+  "api": {
+    "lmStudio": {
+      "apiUrl": "http://localhost:1234",
+      "apiKey": "",
+      "defaultModel": "unknown"
+    },
+    "ollama": {
+      "apiUrl": "http://localhost:11434",
+      "defaultModel": "llama2"
+    }
+  },
+  "notifications": {
+    "enabled": true,
+    "sound": true
+  },
+  "system": {
+    "autoSave": true,
+    "loggingLevel": "info",
+    "metricsEnabled": true
+  },
+  "version": "1.0.0",
+  "lastUpdated": "2025-03-04T15:11:37.308Z",
+  "features": {
+    "projectManagerAgent": true
+  },
+  "projectManager": {
+    "enabled": true,
+    "name": "Project Manager",
+    "description": "AI assistant that helps manage projects and workflows",
+    "model": "default",
+    "temperature": 0.7,
+    "maxTokens": 2048,
+    "capabilities": [
+      "project_management",
+      "task_creation",
+      "workflow_management",
+      "agent_coordination"
+    ],
+    "systemPrompt": "You are the Project Manager AI assistant. Your role is to:\n- Help users manage their projects and workflows\n- Create and assign tasks\n- Monitor project progress\n- Coordinate with other agents\n- Provide project insights and recommendations\n\nPlease be professional, efficient, and proactive in your responses."
+  },
+  "llmProviders": [
+    {
+      "id": "provider-1741102895536",
+      "name": "LM Studio Local",
+      "type": "lmstudio",
+      "apiKey": "",
+      "baseUrl": "http://localhost:1234/v1",
+      "models": [
+        "deepseek-r1-distill-qwen-7b",
+        "qwen2.5-coder-14b-instruct-mlx",
+        "qwen2.5-0.5b-instruct-mlx",
+        "codegeex4-all-9b",
+        "cognitivecomputations_dolphin3.0-r1-mistral-24b",
+        "nousresearch_deephermes-3-llama-3-8b-preview",
+        "aion-rp-llama-3.1-8b",
+        "text-embedding-nomic-embed-text-v1.5",
+        "prithivmlmods.viper-coder-v1.1",
+        "agentica-org_deepscaler-1.5b-preview@f16",
+        "agentica-org_deepscaler-1.5b-preview@q8_0",
+        "agentica-org_deepscaler-1.5b-preview@q4_0",
+        "agentica-org_deepscaler-1.5b-preview@q6_k_l",
+        "qwen2.5-coder-14b-instruct",
+        "qwen2.5-7b-instruct-1m",
+        "qwen2.5-coder-3b-instruct",
+        "deepseek-ai.deepseek-r1-distill-qwen-14b",
+        "qwen2.5-7b-instruct"
+      ],
+      "defaultModel": "deepseek-r1-distill-qwen-7b",
+      "enabled": true,
+      "contextWindow": 4096,
+      "temperature": 0.7,
+      "maxTokens": 2048
+    }
+  ],
+  "agents": {
+    "items": [
+      {
+        "id": "agent-project-manager",
+        "name": "Project Manager",
+        "description": "Advanced agent that can help create and manage other agents, tools, and the environment",
+        "providerId": "provider-1741102895536",
+        "model": "qwen2.5-0.5b-instruct-mlx",
+        "enabled": true,
+        "personality": "Professional, efficient, and proactive",
+        "directives": [],
+        "hierarchyLevel": 4,
+        "tools": [],
+        "systemPrompt": "",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "isProjectManager": true
+      }
+    ]
+  }
+}
