@@ -21,6 +21,26 @@ LogManager.info('SYSTEM', 'Application starting', {
   timestamp: new Date().toISOString()
 });
 
+// Log system information
+LogManager.info('SYSTEM', 'System information', {
+  userAgent: navigator.userAgent,
+  platform: navigator.platform,
+  language: navigator.language,
+  screenSize: `${window.screen.width}x${window.screen.height}`,
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+});
+
+// Log network status
+LogManager.info('NETWORK', 'Network status', {
+  online: navigator.onLine,
+  connection: navigator.connection ? {
+    effectiveType: navigator.connection.effectiveType,
+    downlink: navigator.connection.downlink,
+    rtt: navigator.connection.rtt,
+    saveData: navigator.connection.saveData
+  } : 'Not available'
+});
+
 // Configure future flags for React Router v7
 const router = {
   future: {
