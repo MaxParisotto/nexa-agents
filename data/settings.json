@@ -117,35 +117,6 @@
         ]
       },
       {
-        "id": "weather",
-        "name": "Weather",
-        "description": "Get weather information for a specific location",
-        "category": "utility",
-        "enabled": true,
-        "parameters": [
-          {
-            "name": "location",
-            "type": "string",
-            "required": true,
-            "description": "Location to get weather for (city, coordinates, etc.)"
-          },
-          {
-            "name": "units",
-            "type": "string",
-            "required": false,
-            "default": "metric",
-            "description": "Units system (metric or imperial)"
-          },
-          {
-            "name": "forecast",
-            "type": "boolean",
-            "required": false,
-            "default": false,
-            "description": "Whether to include forecast data"
-          }
-        ]
-      },
-      {
         "id": "tool-personal-voice",
         "name": "Personal Voice",
         "description": "Learn how a person writes and format text with that style",
@@ -178,6 +149,23 @@
         ],
         "created": "2025-03-04T20:39:50.505Z",
         "updated": "2025-03-04T20:39:50.505Z"
+      },
+      {
+        "id": "tool-password-generator",
+        "name": "Password Generator",
+        "description": "Counts words and characters in a given text.",
+        "category": "Utility",
+        "enabled": true,
+        "parameters": [
+          {
+            "name": "text",
+            "type": "string",
+            "required": true,
+            "description": "The text to analyze."
+          }
+        ],
+        "created": "2025-03-04T21:21:32.433Z",
+        "updated": "2025-03-04T21:21:32.433Z"
       }
     ]
   },

@@ -8,6 +8,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const morgan = require('morgan');
+const fetch = require('node-fetch');
 
 // Import route modules
 const agentsRoutes = require('./routes/agents');
@@ -153,8 +154,162 @@ async function processProjectManagerMessage(message) {
       throw new Error('Project Manager is not configured. Please check your settings.');
     }
 
+    // Add tool management command handling
+    const toolCommandPatterns = {
+      create: /(create|make|add)\s+a?\s*tool/i,
+      delete: /(delete|remove)\s+a?\s*tool/i,
+      update: /(update|modify|change)\s+a?\s*tool/i,
+      list: /(list|show|what)\s+tools/i
+    };
+
+    // Check for tool management commands
+    const lowerMessage = message.toLowerCase();
+    let toolCommand = null;
+
+    // Detect command type
+    for (const [cmd, pattern] of Object.entries(toolCommandPatterns)) {
+      if (pattern.test(lowerMessage)) {
+        toolCommand = cmd;
+        break;
+      }
+    }
+
+    // Handle tool management commands
+    if (toolCommand) {
+      // Extract tool name with more flexible patterns
+      const toolName = message.match(/(?:named|called)\s+"([^"]+)"/i)?.[1] || 
+                      message.match(/(?:named|called)\s+'([^']+)'/i)?.[1] ||
+                      message.match(/(?:named|called)\s+(\w[\w\s]+)/i)?.[1] ||
+                      message.match(/delete\s+(?:the\s+)?tool\s+"([^"]+)"/i)?.[1] ||
+                      message.match(/delete\s+(?:the\s+)?tool\s+'([^']+)'/i)?.[1] ||
+                      message.match(/delete\s+(?:the\s+)?tool\s+(\w[\w\s]+)(?:\s|$)/i)?.[1];
+
+      const toolId = toolName ? `tool-${toolName.toLowerCase().replace(/\s+/g, '-')}` : null;
+
+      switch (toolCommand) {
+        case 'create':
+          try {
+            // Extract tool configuration from message
+            const toolConfig = {
+              name: message.match(/Name:\s*([^\n]+)/)?.[1] || 
+                    message.match(/call\s+it\s+([^,]+)/i)?.[1] ||
+                    message.match(/create\s+(?:a\s+)?tool\s+(?:called|named)\s+["']?([^"',]+)/i)?.[1],
+              description: message.match(/Description:\s*([^\n]+)/)?.[1] || 
+                         "Counts words and characters in a given text.",
+              category: message.match(/category\s*[:"]\s*["']?([^"'\n]+)["']?/i)?.[1] || 
+                       message.match(/Category:\s*([^\n]+)/)?.[1] || 
+                       "Utility",
+              enabled: true,
+              parameters: []
+            };
+
+            // Set default parameters if none specified
+            if (!message.includes('Parameters:')) {
+              toolConfig.parameters = [{
+                name: "text",
+                type: "string",
+                required: true,
+                description: "The text to analyze."
+              }];
+            } else {
+              // Extract parameters as before
+              const paramSection = message.match(/Parameters:([\s\S]*?)(?=\n\s*\n|$)/)?.[1] || '';
+              const paramLines = paramSection.split('\n').filter(line => line.trim().startsWith('-'));
+              
+              paramLines.forEach(line => {
+                const paramName = line.match(/[-\s]*(\w+):/)?.[1];
+                const paramDesc = line.match(/:\s*([^.]+)/)?.[1];
+                if (paramName && paramDesc) {
+                  const param = {
+                    name: paramName,
+                    type: paramName.includes('count_') ? 'boolean' : 'string',
+                    required: line.toLowerCase().includes('required'),
+                    description: paramDesc.trim(),
+                    default: paramName.includes('count_') ? false : undefined
+                  };
+                  toolConfig.parameters.push(param);
+                }
+              });
+            }
+
+            // Validate required fields
+            if (!toolConfig.name || !toolConfig.description || !toolConfig.category) {
+              return "Please provide all required tool information: Name, Description, and Category";
+            }
+
+            // Create the tool using run_terminal_cmd format
+            const jsonConfig = JSON.stringify(toolConfig).replace(/"/g, '\\"');
+            const command = `curl -X POST http://localhost:3001/api/tools -H "Content-Type: application/json" -d "${jsonConfig}"`;
+            
+            const response = await fetch('http://localhost:3001/api/tools', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(toolConfig)
+            });
+
+            if (response.ok) {
+              return `Successfully created tool "${toolConfig.name}" with the following configuration:\n${JSON.stringify(toolConfig, null, 2)}`;
+            } else {
+              const error = await response.text();
+              return `Failed to create tool: ${error}`;
+            }
+          } catch (error) {
+            return `Error creating tool: ${error.message}`;
+          }
+
+        case 'delete':
+          if (!toolId) {
+            return "Please specify the tool name to delete. For example: 'delete tool named \"Tool Name\"' or 'delete tool Tool Name'";
+          }
+          try {
+            // First verify the tool exists
+            const listResponse = await fetch('http://localhost:3001/api/tools');
+            const tools = await listResponse.json();
+            const toolExists = tools.some(t => t.id === toolId || t.name.toLowerCase() === toolName.toLowerCase());
+            
+            if (!toolExists) {
+              return `Tool "${toolName}" not found. Available tools:\n${tools.map(t => `- ${t.name}`).join('\n')}`;
+            }
+
+            // Proceed with deletion
+            const response = await fetch(`http://localhost:3001/api/tools/${toolId}`, {
+              method: 'DELETE'
+            });
+            
+            if (response.ok) {
+              return `Successfully deleted tool "${toolName}"`;
+            } else {
+              const error = await response.text();
+              return `Failed to delete tool "${toolName}": ${error}`;
+            }
+          } catch (error) {
+            return `Error deleting tool: ${error.message}`;
+          }
+
+        case 'list':
+          try {
+            const response = await fetch('http://localhost:3001/api/tools');
+            const tools = await response.json();
+            return `Current tools:\n${tools.map(t => `- ${t.name} (${t.category}): ${t.description}`).join('\n')}`;
+          } catch (error) {
+            return `Error listing tools: ${error.message}`;
+          }
+
+        // Add other command handlers here...
+      }
+    }
+
     // Get the system prompt with tools information
     const systemPrompt = `You are a Project Manager AI assistant with comprehensive capabilities in the Nexa Agents environment.
+
+IMPORTANT: When handling tool management requests, you should:
+1. IMMEDIATELY execute the appropriate command using run_terminal_cmd
+2. DO NOT explain what you're going to do first
+3. DO NOT ask for confirmation unless the request is ambiguous
+4. After executing the command, briefly explain what was done
+5. If there's an error, explain what went wrong and how to fix it
 
 AVAILABLE AI ASSISTANT TOOLS:
 1. codebase_search: Find relevant code snippets using semantic search
@@ -168,6 +323,45 @@ AVAILABLE AI ASSISTANT TOOLS:
 9. reapply: Retry failed edits with a smarter model
 10. web_search: Search the web for real-time information
 11. diff_history: View recent file changes
+
+TOOL MANAGEMENT COMMANDS:
+1. Create Tool:
+   run_terminal_cmd('curl -X POST http://localhost:3001/api/tools -H "Content-Type: application/json" -d \'{tool_config}\'')
+
+2. Delete Tool:
+   run_terminal_cmd('curl -X DELETE http://localhost:3001/api/tools/{tool_id}')
+
+3. Update Tool:
+   run_terminal_cmd('curl -X PUT http://localhost:3001/api/tools/{tool_id} -H "Content-Type: application/json" -d \'{updated_config}\'')
+
+4. List Tools:
+   run_terminal_cmd('curl http://localhost:3001/api/tools')
+
+COMMAND PATTERNS TO RECOGNIZE:
+- Create: "create a tool", "make a new tool", "add a tool"
+- Delete: "delete tool", "remove tool", "delete the tool"
+- Update: "update tool", "modify tool", "change tool"
+- List: "list tools", "show tools", "what tools"
+
+RESPONSE GUIDELINES:
+1. For tool creation:
+   - Extract name, description, category, parameters from request
+   - Execute create command
+   - Confirm creation with "Created tool {name}"
+
+2. For tool deletion:
+   - Extract tool ID from request
+   - Execute delete command
+   - Confirm deletion with "Deleted tool {id}"
+
+3. For tool updates:
+   - Extract tool ID and changes from request
+   - Execute update command
+   - Confirm update with "Updated tool {id}"
+
+4. For tool listing:
+   - Execute list command
+   - Format response as a clean list of tools
 
 NATIVE CAPABILITIES:
 1. Tool Management:
@@ -212,17 +406,6 @@ INTEGRATED FEATURES:
 - Documentation generation
 - Security best practices
 - Testing and validation
-
-INTERACTION GUIDELINES:
-- Be professional but conversational
-- Provide clear explanations for actions
-- Ask clarifying questions when needed
-- Suggest improvements proactively
-- Reference specific files and code regions
-- Use available tools effectively
-- Guide users through complex setups
-- Help troubleshoot issues
-- Maintain clear documentation
 
 Your goal is to help users manage their development environment effectively by:
 1. Using AI assistant tools for direct code and system interaction
