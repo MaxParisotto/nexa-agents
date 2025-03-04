@@ -7,12 +7,13 @@ const winston = require("winston");
 const path = require("path");
 const fs = require("fs");
 
-// __dirname and __filename are already available in CommonJS modules
+// Define logs directory relative to data directory
+const DATA_DIR = path.join(__dirname, '../../../data');
+const LOGS_DIR = path.join(DATA_DIR, 'logs');
 
 // Ensure logs directory exists
-const logsDir = path.join(__dirname, '../../../logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+if (!fs.existsSync(LOGS_DIR)) {
+  fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
 // Set to handle circular references
@@ -24,10 +25,10 @@ const customFormat = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.splat(),
   winston.format.json(),
-  winston.format.printf(({ level, message, timestamp, ...meta }) => {
+  winston.format.printf(({ level, message, timestamp, label, ...meta }) => {
+    const prefix = label ? `[${label}] ` : '';
     const metaStr = Object.keys(meta).length ? 
       JSON.stringify(meta, (key, value) => {
-        // Handle circular references
         if (key && typeof value === 'object' && value !== null) {
           if (seen.has(value)) {
             return '[Circular]';
@@ -36,52 +37,63 @@ const customFormat = winston.format.combine(
         }
         return value;
       }, 2) : '';
-    seen = new Set(); // Reset for next use
-    return `${timestamp} ${level}: ${message} ${metaStr}`;
+    seen = new Set();
+    return `${timestamp} ${level}: ${prefix}${message} ${metaStr}`;
   })
 );
 
 // Create default logger
 const logger = winston.createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  level: process.env.LOG_LEVEL || 'debug',
   format: customFormat,
   transports: [
     // Console output with colors
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.printf(({ level, message, timestamp, ...meta }) => {
+        winston.format.printf(({ level, message, timestamp, label, ...meta }) => {
+          const prefix = label ? `[${label}] ` : '';
           const metaStr = Object.keys(meta).length && !meta.silent ? 
             ('\n' + JSON.stringify(meta, null, 2)) : '';
-          return `${timestamp} ${level}: ${message}${metaStr}`;
+          return `${timestamp} ${level}: ${prefix}${message}${metaStr}`;
         })
       )
     }),
     // Error logs
     new winston.transports.File({ 
-      filename: path.join(logsDir, 'error.log'), 
+      filename: path.join(LOGS_DIR, 'error.log'), 
       level: 'error',
       maxsize: 5242880, // 5MB
       maxFiles: 5,
     }),
     // All logs
     new winston.transports.File({ 
-      filename: path.join(logsDir, 'combined.log'),
+      filename: path.join(LOGS_DIR, 'combined.log'),
       maxsize: 10485760, // 10MB
       maxFiles: 5,
+    }),
+    // Socket.IO specific logs
+    new winston.transports.File({
+      filename: path.join(LOGS_DIR, 'socket.log'),
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+      format: winston.format.combine(
+        customFormat,
+        winston.format.label({ label: 'socket.io' })
+      )
     })
   ],
   exceptionHandlers: [
     new winston.transports.File({ 
-      filename: path.join(logsDir, 'exceptions.log'),
-      maxsize: 5242880, // 5MB,
+      filename: path.join(LOGS_DIR, 'exceptions.log'),
+      maxsize: 5242880, // 5MB
       maxFiles: 5,
     })
   ],
   rejectionHandlers: [
     new winston.transports.File({ 
-      filename: path.join(logsDir, 'rejections.log'),
-      maxsize: 5242880, // 5MB,
+      filename: path.join(LOGS_DIR, 'rejections.log'),
+      maxsize: 5242880, // 5MB
       maxFiles: 5,
     })
   ]

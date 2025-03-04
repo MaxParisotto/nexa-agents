@@ -21,6 +21,8 @@ import { debounce } from 'lodash';
 import { getModelScore } from '../utils/LlmModelParser';
 import lmStudioApi from '../utils/LmStudioApi';
 import LmStudioEndpointFinder from '../utils/LmStudioEndpointFinder';
+import { createWorkflow, listWorkflows, runWorkflow } from '../../hooks/useWorkflows';
+import { apiService } from '../../services/api';
 
 /**
  * ProjectManager component
@@ -62,86 +64,36 @@ const ProjectManager = () => {
     }
   });
   
-  // Initialize ProjectManagerSettings from Redux or sessionStorage
-  useEffect(() => {
-    if (settings?.lmStudio?.apiUrl && settings?.lmStudio?.defaultModel) {
-      setProjectManagerSettings({
-        apiUrl: settings.lmStudio.apiUrl,
-        model: settings.lmStudio.defaultModel,
-        serverType: 'lmStudio',
-        parameters: {
-          temperature: 0.7,
-          topP: 0.9,
-          maxTokens: 1024,
-          contextLength: 4096
-        }
-      });
-    } else if (settings?.ollama?.apiUrl && settings?.ollama?.defaultModel) {
-      setProjectManagerSettings({
-        apiUrl: settings.ollama.apiUrl,
-        model: settings.ollama.defaultModel,
-        serverType: 'ollama',
-        parameters: {
-          temperature: 0.7,
-          topP: 0.9,
-          maxTokens: 1024,
-          contextLength: 4096
-        }
-      });
-    }
-  }, [settings]);
+  const { settings: useSettingsSettings, isValid: useSettingsIsValid } = useSettings();
+  const { llmConfigured: useLlmConfigurationLlmConfigured, llmProvider: useLlmConfigurationLlmProvider } = useLlmConfiguration(useSettingsSettings);
   
-  // Custom logging function that saves logs to state and also outputs to console and Redux
-  const log = (level, message, data = null) => {
+  useEffect(() => {
+    if (!llmConfigured && useSettingsIsValid) {
+      log('warn', 'LLM configuration is invalid or missing.');
+    }
+  }, [llmConfigured, useSettingsIsValid]);
+
+  useEffect(() => {
+    if (!initialized) {
+      log('info', 'Initializing Project Manager...');
+      initializeProjectManager();
+      setInitialized(true);
+    }
+  }, [initialized]);
+  
+  // Enhanced logging function with explicit verification
+  const log = async (level, message, data = null) => {
     const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      level,
-      message,
-      data
-    };
-    
-    // Add to logs state
-    logRef.current = [...logRef.current, logEntry];
-    setLogs(logRef.current);
-    
-    // Also log to Redux based on level
-    switch (level) {
-      case 'error':
-        console.error(`[PM ${timestamp}] ${message}`, data || '');
-        dispatch(logError(LOG_CATEGORIES.SYSTEM, `ProjectManager: ${message}`, data));
-        break;
-      case 'warn':
-        console.warn(`[PM ${timestamp}] ${message}`, data || '');
-        dispatch(logWarning(LOG_CATEGORIES.SYSTEM, `ProjectManager: ${message}`, data));
-        break;
-      case 'info':
-        console.info(`[PM ${timestamp}] ${message}`, data || '');
-        dispatch(logInfo(LOG_CATEGORIES.SYSTEM, `ProjectManager: ${message}`, data));
-        break;
-      case 'debug':
-        console.log(`[PM ${timestamp}] ${message}`, data || '');
-        dispatch(logDebug(LOG_CATEGORIES.SYSTEM, `ProjectManager: ${message}`, data));
-        break;
-      default:
-        console.log(`[PM ${timestamp}] ${message}`, data || '');
-        dispatch(logInfo(LOG_CATEGORIES.SYSTEM, `ProjectManager: ${message}`, data));
+    const logEntry = { timestamp, level, message, data };
+
+    try {
+      const response = await axios.post('/api/logs', { level, message, meta: data });
+      console.info('Log sent successfully:', response.status, response.data);
+    } catch (error) {
+      console.error('Failed to send log to server:', error.message, error.response?.data);
     }
-    
-    // If it's an error or warning, send a notification
-    if (level === 'error') {
-      dispatch(addNotification({
-        type: 'error',
-        message: `ProjectManager: ${message}`,
-        timestamp: timestamp
-      }));
-    } else if (level === 'warn') {
-      dispatch(addNotification({
-        type: 'warning',
-        message: `ProjectManager: ${message}`,
-        timestamp: timestamp
-      }));
-    }
+
+    console[level](`[PM ${timestamp}] ${message}`, data || '');
   };
   
   // Initialize once on component mount
@@ -159,26 +111,21 @@ const ProjectManager = () => {
       log('info', 'Added chat-message event listener');
     }
     
-    // Check if welcome message has been shown this session
+    // Replace static welcome message with dynamic LLM call
     const welcomeShown = sessionStorage.getItem('pmWelcomeShown');
     
-    if (!welcomeShown) {
-      // Send welcome message (once per session)
-      setTimeout(() => {
-        log('info', 'Sending welcome message');
-        sendMessageToChat(
-          "Hello! I'm your Project Manager assistant. I can help you manage and run your agent workflows. Try these commands:\n\n" +
-          "• list workflows\n" +
-          "• create workflow [name]\n" +
-          "• run workflow [name]\n" +
-          "• describe workflow [name]\n" +
-          "• help\n" +
-          "• status (to check LLM configuration)"
-        );
-        
-        // Mark welcome message as shown
-        sessionStorage.setItem('pmWelcomeShown', 'true');
-      }, 1000);
+    if (!welcomeShown && llmConfigured) {
+      (async () => {
+        try {
+          const response = await processWithProjectManagerLLM('Introduce yourself and provide available commands.', projectManagerSettings);
+          sendMessageToChat(response);
+          sessionStorage.setItem('pmWelcomeShown', 'true');
+          log('info', 'Dynamic welcome message sent successfully');
+        } catch (error) {
+          log('error', 'Failed to send dynamic welcome message', error);
+          sendMessageToChat('Unable to connect to the server. Messages will be stored locally.');
+        }
+      })
     }
     
     // Add debug command listener
@@ -906,23 +853,24 @@ const ProjectManager = () => {
   
   /**
    * Send a message back to the chat widget
-   * @param {string} content - The message content to send back to the chat widget
    */
-  const sendMessageToChat = (content) => {
-    // Add null check to prevent TypeError
-    if (content) {
-      log('info', 'Sending message to chat', { 
-        contentPreview: content.substring(0, Math.min(50, content.length)) + (content.length > 50 ? '...' : '') 
-      });
-    } else {
+  const sendMessageToChat = async (content) => {
+    if (!content) {
       log('warn', 'Attempted to send empty message to chat');
       content = "Sorry, I encountered an error processing your request.";
     }
-    
-    const event = new CustomEvent('project-manager-message', {
-      detail: { message: content }
-    });
-    window.dispatchEvent(event);
+
+    try {
+      const response = await processWithProjectManagerLLM(content, projectManagerSettings);
+      const event = new CustomEvent('project-manager-message', { detail: { message: response } });
+      window.dispatchEvent(event);
+      log('info', 'Sent dynamic response to chat');
+    } catch (error) {
+      log('error', 'Failed to process message with LLM', error);
+      const offlineMessage = 'You are currently offline. Your message has been saved locally but the Project Manager cannot respond until connection is restored.';
+      const event = new CustomEvent('project-manager-message', { detail: { message: offlineMessage } });
+      window.dispatchEvent(event);
+    }
   };
   
   /**
@@ -1521,6 +1469,173 @@ When a user asks you to perform any action related to workflows or tasks, please
     // Default response for unrecognized commands
     return "I'm not connected to an LLM server at the moment. Please check your settings or try basic commands like 'help'.";
   };
+
+  // Extracted custom hook for settings management
+  const useSettings = () => {
+    const [settings, setSettings] = useState(null);
+    const [isValid, setIsValid] = useState(false);
+
+    useEffect(() => {
+      const loadSettings = () => {
+        try {
+          const rawSettings = localStorage.getItem('settings');
+          if (rawSettings) {
+            const localSettings = JSON.parse(rawSettings);
+            const validation = LlmDebugUtil.validateSettings(localSettings);
+            if (validation.valid) {
+              setSettings(localSettings);
+              setIsValid(true);
+            }
+          } else {
+            const fallbackSettings = {
+              lmStudio: {
+                apiUrl: localStorage.getItem('lmStudioAddress') || '',
+                defaultModel: localStorage.getItem('defaultLmStudioModel') || ''
+              },
+              ollama: {
+                apiUrl: localStorage.getItem('ollamaAddress') || '',
+                defaultModel: localStorage.getItem('defaultOllamaModel') || ''
+              }
+            };
+            const validation = LlmDebugUtil.validateSettings(fallbackSettings);
+            if (validation.valid) {
+              setSettings(fallbackSettings);
+              setIsValid(true);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading settings:', error);
+        }
+      };
+
+      loadSettings();
+    }, []);
+
+    return { settings, isValid };
+  };
+
+  // Extracted custom hook for LLM configuration management
+  const useLlmConfiguration = (settings) => {
+    const [llmConfigured, setLlmConfigured] = useState(false);
+    const [llmProvider, setLlmProvider] = useState(null);
+
+    useEffect(() => {
+      const validateAndConfigure = async () => {
+        if (!settings) return;
+
+        const validation = LlmDebugUtil.validateSettings(settings);
+        if (validation.valid) {
+          if (validation.details.lmStudio.valid) {
+            setLlmConfigured(true);
+            setLlmProvider('lmStudio');
+            await testLmStudioConnection(settings.lmStudio.apiUrl, settings.lmStudio.defaultModel);
+          } else if (validation.details.ollama.valid) {
+            setLlmConfigured(true);
+            setLlmProvider('ollama');
+            await testOllamaConnection(settings.ollama.apiUrl, settings.ollama.defaultModel);
+          }
+        } else {
+          setLlmConfigured(false);
+          setLlmProvider(null);
+        }
+      };
+
+      validateAndConfigure();
+    }, [settings]);
+
+    return { llmConfigured, llmProvider };
+  };
+
+  // Centralized tool handler function
+  const handleToolCall = async (functionCall) => {
+    log('info', 'Handling tool call', functionCall);
+
+    try {
+      const args = typeof functionCall.arguments === 'string' ? JSON.parse(functionCall.arguments) : functionCall.arguments;
+
+      switch (functionCall.name) {
+        case 'createTask':
+          return await createTask(args);
+        case 'updateTask':
+          return await updateTask(args.taskId, args);
+        case 'deleteTask':
+          return await deleteTask(args.taskId);
+        case 'listTasks':
+          return await listTasks(args?.status);
+        case 'create_workflow':
+          return await createWorkflow(args.name, args.description);
+        case 'run_workflow':
+          return await runWorkflow(args.workflow_name);
+        default:
+          throw new Error(`Function ${functionCall.name} not implemented`);
+      }
+    } catch (error) {
+      log('error', `Failed to execute tool call ${functionCall.name}`, error);
+      throw error;
+    }
+  };
+
+  // Placeholder implementation for missing functions
+  const dumpDebugInfo = () => {
+    log('debug', 'Dumping detailed debug information', {
+      settings,
+      llmConfigured,
+      llmProvider,
+      workflows,
+      logs,
+      chatHistory
+    });
+  };
+
+  const addNodeToWorkflow = async (workflow_name, node_type, node_name, configuration) => {
+    log('info', 'Adding node to workflow', { workflow_name, node_type, node_name, configuration });
+    try {
+      const response = await apiService.addNode(workflow_name, { node_type, node_name, configuration });
+      return response.data;
+    } catch (error) {
+      log('error', 'Failed to add node to workflow', error);
+      throw error;
+    }
+  };
+
+  // Ensure createWorkflowFromDescription is correctly scoped
+  const createWorkflowFromDescription = async (description, name) => {
+    log('info', 'Creating workflow from description', { description, name });
+    try {
+      const workflowData = { name, description, nodes: [], edges: [] };
+      const response = await apiService.createWorkflow(workflowData);
+      return response.data;
+    } catch (error) {
+      log('error', 'Failed to create workflow from description', error);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    const verifyConnection = async () => {
+      const apiUrl = projectManagerSettings.apiUrl;
+      log('info', `Attempting to connect to LLM server at ${apiUrl}`);
+
+      try {
+        const response = await axios.get(`${apiUrl}/v1/models`);
+        log('info', 'Successfully connected to LLM server', response.data);
+        setLlmConfigured(true);
+      } catch (error) {
+        log('error', 'Unable to connect to LLM server', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
+        });
+        setLlmConfigured(false);
+        dispatch(addNotification({
+          type: 'error',
+          message: `Unable to connect to LLM server at ${apiUrl}. Please ensure it is running and accessible.`
+        }));
+      }
+    };
+
+    verifyConnection();
+  }, [projectManagerSettings.apiUrl]);
 
   // This is a service component with no UI
   return null;

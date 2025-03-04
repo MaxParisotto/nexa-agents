@@ -7,6 +7,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const morgan = require('morgan');
 
 // Import route modules
 const agentsRoutes = require('./routes/agents');
@@ -14,6 +15,15 @@ const workflowsRoutes = require('./routes/workflows');
 const metricsRoutes = require('./routes/metrics');
 const settingsRoutes = require('./routes/settings');
 const toolsRoutes = require('./routes/tools');
+
+// Import logger
+const logger = require('../utils/logger');
+const socketLogger = logger.createLogger('socket.io');
+const httpLogger = logger.createLogger('http');
+
+// Environment variables
+const PORT = process.env.API_PORT || 3001;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Data directories
 const DATA_DIR = path.join(__dirname, '../../../data');
@@ -29,70 +39,107 @@ const LOGS_DIR = path.join(DATA_DIR, 'logs');
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
 
-// Environment variables
-const PORT = process.env.API_PORT || 3001;
+// Configure CORS for both Express and Socket.IO
+const corsOptions = {
+  origin: NODE_ENV === 'production' 
+    ? ['https://your-production-domain.com']
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
 
 // Middleware
+app.use(cors(corsOptions));
 app.use(express.json());
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(morgan('combined', { stream: httpLogger.stream }));
 
-// Basic status endpoint
-app.get('/api/status', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    version: '1.0.0',
+// API Routes prefix
+const API_PREFIX = '/api';
+
+// Mount API routes
+app.use(`${API_PREFIX}/agents`, agentsRoutes);
+app.use(`${API_PREFIX}/workflows`, workflowsRoutes);
+app.use(`${API_PREFIX}/metrics`, metricsRoutes);
+app.use(`${API_PREFIX}/settings`, settingsRoutes);
+app.use(`${API_PREFIX}/tools`, toolsRoutes);
+
+// Health check endpoint
+app.get(`${API_PREFIX}/health`, (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Mount route modules
-app.use('/api/agents', agentsRoutes);
-app.use('/api/workflows', workflowsRoutes);
-app.use('/api/metrics', metricsRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/tools', toolsRoutes);
-
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('API Error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: err.message,
-    path: req.path
+  httpLogger.error('API Error:', err);
+  res.status(err.status || 500).json({
+    error: {
+      message: err.message || 'Internal Server Error',
+      status: err.status || 500
+    }
   });
 });
 
-  // Socket.IO event handlers
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+// Initialize Socket.IO with CORS and other options
+const io = new Server(server, {
+  cors: corsOptions,
+  allowEIO3: true,
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
+  maxHttpBufferSize: 1e8,
+  connectTimeout: 45000,
+  path: '/socket.io',
+  cookie: false
+});
+
+// Socket.IO error handling middleware
+io.engine.on('connection_error', (err) => {
+  socketLogger.error('Socket.IO connection error:', err);
+});
+
+// Socket.IO middleware for logging and connection handling
+io.use((socket, next) => {
+  socketLogger.info(`Socket connection attempt from ${socket.handshake.address}`);
   
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  // Add custom properties to socket
+  socket.customId = `${socket.id}-${Date.now()}`;
+  socket.connectionTime = new Date();
+  
+  // Add disconnect listener early
+  socket.on('disconnect', (reason) => {
+    socketLogger.info(`Client disconnected [id=${socket.customId}]: ${reason}`);
+    // Cleanup any resources if needed
+  });
+  
+  next();
+});
+
+// Socket.IO event handlers
+io.on('connection', (socket) => {
+  socketLogger.info(`Client connected [id=${socket.customId}] from ${socket.handshake.address}`);
+  
+  // Send initial connection status
+  socket.emit('connection_status', { 
+    status: 'connected',
+    socketId: socket.customId,
+    timestamp: new Date().toISOString(),
+    serverTime: socket.connectionTime
+  });
+  
+  socket.on('error', (error) => {
+    socketLogger.error(`Socket error [id=${socket.customId}]:`, error);
   });
   
   // Agent status updates
   socket.on('agent_status', (data) => {
-    console.log('Agent status update:', data);
+    socketLogger.info(`Agent status update [id=${socket.customId}]:`, data);
     
     try {
       const agentsService = require('../services/agentsService');
@@ -101,7 +148,7 @@ io.on('connection', (socket) => {
       // Broadcast to all clients
       io.emit('agent_status', updatedAgent);
     } catch (error) {
-      console.error('Error handling agent status update:', error);
+      socketLogger.error(`Error handling agent status update [id=${socket.customId}]:`, error);
       socket.emit('error', {
         message: 'Failed to update agent status',
         error: error.message
@@ -111,32 +158,27 @@ io.on('connection', (socket) => {
   
   // Workflow updates
   socket.on('workflow_update', (data) => {
-    console.log('Workflow update:', data);
+    socketLogger.info(`Workflow update [id=${socket.customId}]:`, data);
     io.emit('workflow_update', data);
   });
   
   // Chat message handler
   socket.on('send_message', async (data) => {
-    console.log('Chat message received:', data);
+    socketLogger.info(`Chat message received [id=${socket.customId}]:`, data);
     
     try {
-      // Get settings to find the Project Manager configuration
       const settingsService = require('../services/settingsService');
       const settings = settingsService.getSettings();
       
-      // Check if Project Manager is enabled in features
       if (!settings.features?.projectManagerAgent) {
         throw new Error('Project Manager feature is not enabled');
       }
       
-      // Get Project Manager configuration
       const projectManager = settings.projectManager;
-      
       if (!projectManager) {
         throw new Error('Project Manager is not configured');
       }
       
-      // Send a "thinking" message to the client
       socket.emit('new_message', {
         author: 'Project Manager',
         content: '...',
@@ -145,10 +187,8 @@ io.on('connection', (socket) => {
         isThinking: true
       });
       
-      // Generate a response using the configured LLM
       const response = await generateLlmResponse(projectManager, data.content);
       
-      // Create a response message with the LLM-generated content
       const responseMessage = {
         author: 'Project Manager',
         content: response,
@@ -156,14 +196,11 @@ io.on('connection', (socket) => {
         timestamp: new Date().toISOString()
       };
       
-      // Emit the response back to the client
       socket.emit('new_message', responseMessage);
-      
-      console.log('Response sent:', responseMessage);
+      socketLogger.info(`Response sent [id=${socket.customId}]:`, responseMessage);
     } catch (error) {
-      console.error('Error handling chat message:', error);
+      socketLogger.error(`Error handling chat message [id=${socket.customId}]:`, error);
       
-      // Send error message back to the client
       socket.emit('new_message', {
         author: 'System',
         content: `Error: ${error.message}. Please check your Project Manager configuration in settings.`,
@@ -172,115 +209,56 @@ io.on('connection', (socket) => {
       });
     }
   });
-  
-  /**
-   * Generate a response using the configured LLM
-   * @param {Object} projectManager - Project Manager configuration
-   * @param {string} userMessage - User message
-   * @returns {Promise<string>} - Generated response
-   */
-  async function generateLlmResponse(projectManager, userMessage) {
-    const axios = require('axios');
-    
-    try {
-      // Get LLM configuration from Project Manager settings
-      const { apiUrl, model, serverType, parameters } = projectManager;
-      
-      if (serverType === 'lmStudio') {
-        // LM Studio uses the OpenAI-compatible API
-        const endpoint = `${apiUrl}/v1/chat/completions`;
-        
-        // Create a system prompt for the Project Manager
-        const systemPrompt = `You are the Project Manager, an advanced AI agent that helps users create and manage other agents, configure tools, and optimize their environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.
-        
-Your personality is professional, efficient, and proactive. You should be helpful and provide clear, concise responses.
+});
 
-Current date: ${new Date().toISOString().split('T')[0]}
-Current time: ${new Date().toLocaleTimeString()}`;
-        
-        // Create the request body
-        const requestBody = {
-          model: model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-          ],
-          temperature: parameters?.temperature ?? 0.7,
-          top_p: parameters?.topP ?? 0.9,
-          max_tokens: parameters?.maxTokens ?? 1024
-        };
-        
-        console.log('Sending request to LM Studio:', endpoint);
-        
-        // Send the request to the LLM API
-        const response = await axios.post(endpoint, requestBody, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000
-        });
-        
-        // Extract the response content
-        if (response.data.choices && response.data.choices.length > 0) {
-          return response.data.choices[0].message.content;
+// Error handling for the HTTP server
+server.on('error', (error) => {
+  logger.error('HTTP server error:', error);
+});
+
+// Start server with error handling
+const startServer = async () => {
+  try {
+    await new Promise((resolve, reject) => {
+      server.listen(PORT, (err) => {
+        if (err) {
+          reject(err);
+          return;
         }
-        
-        throw new Error('No completion in response');
-      } else if (serverType === 'ollama') {
-        // Ollama API
-        const endpoint = `${apiUrl}/api/generate`;
-        
-        // Create a system prompt for the Project Manager
-        const systemPrompt = `You are the Project Manager, an advanced AI agent that helps users create and manage other agents, configure tools, and optimize their environment. You have deep knowledge of the system architecture and can respond to natural language requests for system management.
-        
-Your personality is professional, efficient, and proactive. You should be helpful and provide clear, concise responses.
+        resolve();
+      });
+    });
 
-Current date: ${new Date().toISOString().split('T')[0]}
-Current time: ${new Date().toLocaleTimeString()}
-
-User message: ${userMessage}
-
-Your response:`;
-        
-        // Create the request body
-        const requestBody = {
-          model: model,
-          prompt: systemPrompt,
-          temperature: parameters?.temperature ?? 0.7,
-          top_p: parameters?.topP ?? 0.9,
-          num_predict: parameters?.maxTokens ?? 1024
-        };
-        
-        console.log('Sending request to Ollama:', endpoint);
-        
-        // Send the request to the LLM API
-        const response = await axios.post(endpoint, requestBody, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000
-        });
-        
-        return response.data.response;
+    logger.info(`Backend API server running on http://localhost:${PORT}`);
+    logger.info(`Socket.IO server running on ws://localhost:${PORT}`);
+    logger.info('Server configuration:', {
+      environment: NODE_ENV,
+      cors: corsOptions,
+      socketIO: {
+        transports: ['websocket', 'polling'],
+        pingTimeout: 60000,
+        pingInterval: 25000
       }
-      
-      throw new Error(`Unsupported LLM server type: ${serverType}`);
-    } catch (error) {
-      console.error('Error generating LLM response:', error);
-      return `I'm sorry, I encountered an error while processing your request: ${error.message}. Please try again later.`;
-    }
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
   }
+};
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  process.exit(1);
 });
 
-// Start server
-server.listen(PORT, () => {
-  console.log(`Backend API server running on http://localhost:${PORT}`);
-  console.log(`Socket.IO server running on ws://localhost:${PORT}`);
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+// Start the server
+startServer();
 
 module.exports = { app, server, io };

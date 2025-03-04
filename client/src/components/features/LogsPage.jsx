@@ -16,6 +16,7 @@ import {
   TextFields as TextFieldsIcon,
   DeleteForever as DeleteForeverIcon
 } from '@mui/icons-material';
+import axios from 'axios';
 
 import LogManager, { LOG_LEVELS, LOG_CATEGORIES } from '../../utils/LogManager';
 import XtermLogs from './XtermLogs';
@@ -41,34 +42,24 @@ const LogsPage = () => {
 
   // Load logs on mount
   useEffect(() => {
-    const allLogs = LogManager.getAllLogs();
-    setLogs(allLogs);
-    setFilteredLogs(allLogs);
-    
-    // Add listener for log updates
-    const removeListener = LogManager.addListener((logEntry, action) => {
-      if (action === 'clear') {
+    const fetchLogs = async () => {
+      try {
+        const response = await axios.get('/api/logs');
+        const fetchedLogs = response.data.logs || [];
+        setLogs(fetchedLogs);
+        setFilteredLogs(fetchedLogs);
+      } catch (error) {
+        console.error('Failed to fetch logs from server:', error);
         setLogs([]);
         setFilteredLogs([]);
-      } else if (logEntry) {
-        setLogs(prevLogs => {
-          const newLogs = [logEntry, ...prevLogs];
-          applyFilters(newLogs);
-          return newLogs;
-        });
       }
-    });
-    
-    // Initialize system logs if none exist
-    if (allLogs.length === 0) {
-      // Handle the async function properly
-      initializeSystemLogs().catch(error => {
-        console.error('Error initializing system logs:', error);
-        LogManager.error('SYSTEM', 'Error initializing system logs', { error: error.message });
-      });
-    }
-    
-    return () => removeListener();
+    };
+
+    fetchLogs();
+
+    const intervalId = setInterval(fetchLogs, 60000); // Refresh logs every minute
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Save view preference when it changes

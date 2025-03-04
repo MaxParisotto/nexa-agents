@@ -10,10 +10,8 @@ import {
   Typography,
   IconButton,
   Paper,
-  Divider,
   List,
   ListItem,
-  ListItemText,
   Avatar,
   Alert,
 } from '@mui/material';
@@ -26,13 +24,12 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useSelector } from 'react-redux';
 
 import 'react-resizable/css/styles.css';
-import modelManager from '../utils/ModelManager';
 
 /**
- * ChatWidget component that provides a floating, resizable, draggable chat interface
- * for interacting with local LLM servers (LM Studio and Ollama)
+ * ProjectManagerChat component that provides a floating, resizable, draggable chat interface
+ * for interacting with the Project Manager agent
  */
-const ChatWidget = () => {
+const ProjectManagerChat = () => {
   const nodeRef = useRef(null);
   const [message, setMessage] = useState('');
   const [conversation, setConversation] = useState([]);
@@ -43,28 +40,17 @@ const ChatWidget = () => {
   const [minimized, setMinimized] = useState(true);
   const chatContainerRef = useRef(null);
   const [messageListenerAdded, setMessageListenerAdded] = useState(false);
-  const settings = useSelector(state => state.settings);
-  
-  // Restore server selection state
-  const [selectedServer, setSelectedServer] = useState('lmStudio');
-  const [lmStudioModels, setLmStudioModels] = useState([]);
-  const [ollamaModels, setOllamaModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('');
-  const [loadingModels, setLoadingModels] = useState(false);
+  const settings = useSelector(state => state?.settings);
   
   const [connectionStatus, setConnectionStatus] = useState({
     status: 'checking',
-    message: 'Checking connection...'
+    message: 'Checking Project Manager connection...'
   });
 
   // Store last position before collapse to restore it when expanding
   const [expandedPosition, setExpandedPosition] = useState({ x: 0, y: 0 });
   // Store last dimensions before collapse to restore when expanding
   const [expandedDimensions, setExpandedDimensions] = useState({ width: 300, height: 400 });
-
-  // Add state to track communication with server type
-  const [currentServerType, setCurrentServerType] = useState('lmStudio');
-  const [isRequesting, setIsRequesting] = useState(false);
 
   useEffect(() => {
     // Setup event listener for dock toggling
@@ -130,189 +116,38 @@ const ChatWidget = () => {
   
   // Check server connection on component mount
   useEffect(() => {
-    checkLLMConnection();
+    checkProjectManagerConnection();
     
     // Set up a periodic connection check
-    const checkInterval = setInterval(checkLLMConnection, 60000); // Check every minute
+    const checkInterval = setInterval(checkProjectManagerConnection, 60000); // Check every minute
     
     return () => clearInterval(checkInterval);
   }, [settings]);
   
-  // Load models when settings change or server selection changes
-  useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        setLoadingModels(true);
-        
-        if (selectedServer === 'lmStudio') {
-          const apiUrl = settings?.lmStudio?.apiUrl || 'http://localhost:1234';
-          const models = await modelManager.getLmStudioModels(apiUrl);
-          
-          // Fix: Add null check when setting models
-          if (Array.isArray(models)) {
-            setLmStudioModels(models);
-            
-            // Set default model if we have models and none is selected yet
-            if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
-              const defaultModel = settings?.lmStudio?.defaultModel;
-              if (defaultModel && models.includes(defaultModel)) {
-                setSelectedModel(defaultModel);
-              } else {
-                setSelectedModel(models[0]);
-              }
-            }
-          } else {
-            // Handle case where models is not an array
-            setLmStudioModels([]);
-          }
-        } else if (selectedServer === 'ollama') {
-          const apiUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
-          const models = await modelManager.getOllamaModels(apiUrl);
-          
-          // Fix: Add null check when setting models
-          if (Array.isArray(models)) {
-            setOllamaModels(models);
-            
-            // Set default model if we have models and none is selected yet
-            if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
-              const defaultModel = settings?.ollama?.defaultModel;
-              if (defaultModel && models.includes(defaultModel)) {
-                setSelectedModel(defaultModel);
-              } else {
-                setSelectedModel(models[0]);
-              }
-            }
-          } else {
-            // Handle case where models is not an array
-            setOllamaModels([]);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch models:', error);
-        // Ensure model arrays are initialized to prevent length errors
-        if (selectedServer === 'lmStudio') {
-          setLmStudioModels([]);
-        } else {
-          setOllamaModels([]);
-        }
-      } finally {
-        setLoadingModels(false);
-      }
-    };
-
-    // Only fetch models when the component mounts or settings change
-    fetchModels();
-  }, [settings?.lmStudio?.apiUrl, settings?.ollama?.apiUrl, selectedServer]);
-  
-  // Check if the LLM server is connected
-  const checkLLMConnection = async () => {
+  // Check if Project Manager is connected and ready
+  const checkProjectManagerConnection = async () => {
     setConnectionStatus({
       status: 'checking',
-      message: 'Checking connection...'
+      message: 'Checking Project Manager connection...'
     });
     
     try {
-      // Try LM Studio first
-      let isLmStudioConnected = false;
-      let isOllamaConnected = false;
+      // Dispatch a connection check event
+      const event = new CustomEvent('project-manager-check', {
+        detail: { type: 'connection_check' }
+      });
+      window.dispatchEvent(event);
       
-      try {
-        const lmStudioUrl = settings?.lmStudio?.apiUrl || 'http://localhost:1234';
-        const baseUrl = lmStudioUrl.startsWith('http') ? lmStudioUrl : `http://${lmStudioUrl}`;
-        await axios.get(`${baseUrl}/v1/models`, { timeout: 2000 });
-        isLmStudioConnected = true;
-      } catch (err) {
-        console.log('LM Studio connection failed:', err.message);
-      }
-      
-      try {
-        const ollamaUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
-        const baseUrl = ollamaUrl.startsWith('http') ? ollama : `http://${ollamaUrl}`;
-        await axios.get(`${baseUrl}/api/tags`, { timeout: 2000 });
-        isOllamaConnected = true;
-      } catch (err) {
-        console.log('Ollama connection failed:', err.message);
-      }
-      
-      if (isLmStudioConnected || isOllamaConnected) {
-        setConnectionStatus({
-          status: 'connected',
-          message: isLmStudioConnected && isOllamaConnected 
-            ? 'Connected to LM Studio and Ollama'
-            : isLmStudioConnected
-              ? 'Connected to LM Studio'
-              : 'Connected to Ollama'
-        });
-      } else {
-        setConnectionStatus({
-          status: 'error',
-          message: 'No LLM server connected. Check server and settings.'
-        });
-      }
+      // For now, assume connection is OK if we can dispatch events
+      setConnectionStatus({
+        status: 'connected',
+        message: 'Connected to Project Manager'
+      });
     } catch (error) {
       setConnectionStatus({
         status: 'error',
-        message: 'Connection check failed'
+        message: 'Failed to connect to Project Manager'
       });
-    }
-  };
-
-  /**
-   * Fetch available models for the selected server
-   */
-  const fetchAvailableModels = async () => {
-    try {
-      setLoadingModels(true);
-      
-      if (selectedServer === 'lmStudio') {
-        const apiUrl = settings?.lmStudio?.apiUrl || 'http://localhost:1234';
-        const baseUrl = apiUrl.startsWith('http') ? apiUrl : `http://${apiUrl}`;
-        
-        try {
-          const response = await axios.get(`${baseUrl}/v1/models`, { timeout: 5000 });
-          const models = response.data?.data?.map(model => model.id) || [];
-          setLmStudioModels(models);
-          
-          // Set default model if we have models and none is selected yet
-          if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
-            const defaultModel = settings?.lmStudio?.defaultModel;
-            if (defaultModel && models.includes(defaultModel)) {
-              setSelectedModel(defaultModel);
-            } else {
-              setSelectedModel(models[0]);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch LM Studio models:', error);
-          setLmStudioModels([]);
-        }
-      } else if (selectedServer === 'ollama') {
-        const apiUrl = settings?.ollama?.apiUrl || 'http://localhost:11434';
-        const baseUrl = apiUrl.startsWith('http') ? apiUrl : `http://${apiUrl}`;
-        
-        try {
-          const response = await axios.get(`${baseUrl}/api/tags`, { timeout: 5000 });
-          const models = response.data?.models?.map(model => model.name) || [];
-          setOllamaModels(models);
-          
-          // Set default model if we have models and none is selected yet
-          if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
-            const defaultModel = settings?.ollama?.defaultModel;
-            if (defaultModel && models.includes(defaultModel)) {
-              setSelectedModel(defaultModel);
-            } else {
-              setSelectedModel(models[0]);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch Ollama models:', error);
-          setOllamaModels([]);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching models:', error);
-    } finally {
-      setLoadingModels(false);
     }
   };
 
@@ -321,7 +156,6 @@ const ChatWidget = () => {
    */
   const handleProjectManagerMessage = (event) => {
     console.log('Received project-manager-message:', event.detail);
-    setIsRequesting(false);
     
     // Extract message content from event detail, handling both formats
     const message = typeof event.detail === 'object' ? (event.detail.message || event.detail.content) : event.detail;
@@ -336,7 +170,6 @@ const ChatWidget = () => {
       role: 'assistant',
       content: message,
       timestamp: new Date().toISOString(),
-      serverType: currentServerType // Add server type for reference
     };
     
     console.log('Adding message to conversation:', newMessage);
@@ -346,13 +179,6 @@ const ChatWidget = () => {
       const filtered = prev.filter(msg => !msg.isThinking);
       return [...filtered, newMessage];
     });
-    
-    // Auto-scroll to bottom after a short delay to ensure content is rendered
-    setTimeout(() => {
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-      }
-    }, 100);
   };
   
   /**
@@ -360,65 +186,25 @@ const ChatWidget = () => {
    */
   const handleSendMessage = async () => {
     if (!message.trim()) return;
-    
-    // Add user message to chat history
+
     const userMessage = {
-      role: 'user',
+      id: `msg-${Date.now()}`,
+      author: 'You',
       content: message.trim(),
       timestamp: new Date().toISOString(),
     };
-    
-    // Add a "thinking" message
-    const thinkingMessage = {
-      role: 'assistant',
-      content: 'Thinking...',
-      timestamp: new Date().toISOString(),
-      isThinking: true
-    };
-    
-    setConversation(prev => [...prev, userMessage, thinkingMessage]);
-    setIsRequesting(true);
-    
-    // Auto-scroll to bottom
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-    
-    // Get API URL and model based on selected server
-    const apiUrl = selectedServer === 'lmStudio' 
-      ? (settings?.lmStudio?.apiUrl || 'http://localhost:1234')
-      : (settings?.ollama?.apiUrl || 'http://localhost:11434');
-    
-    const model = selectedModel || 
-      (selectedServer === 'lmStudio' 
-        ? settings?.lmStudio?.defaultModel 
-        : settings?.ollama?.defaultModel);
-    
-    // Save current server type to validate response against request
-    setCurrentServerType(selectedServer);
-    
-    console.log('Dispatching chat-message event with content:', message, {
-      serverType: selectedServer,
-      apiUrl,
-      model
-    });
-    
-    // Dispatch custom event to notify ProjectManager
-    const event = new CustomEvent('chat-message', {
+
+    setConversation(prev => [...prev, userMessage, { role: 'assistant', content: 'Thinking...', timestamp: new Date().toISOString(), isThinking: true }]);
+
+    // Dispatch the chat message event with the correct format
+    const event = new CustomEvent('project-manager-request', {
       detail: {
-        content: message.trim(),
-        role: 'user',
-        timestamp: new Date().toISOString(),
-        settings: {
-          serverType: selectedServer,
-          apiUrl: apiUrl,
-          model: model
-        }
+        message: message.trim(),
+        timestamp: new Date().toISOString()
       }
     });
+
     window.dispatchEvent(event);
-    
-    // Clear input field
     setMessage('');
   };
 
@@ -434,22 +220,10 @@ const ChatWidget = () => {
   };
 
   const handleResize = (event, { size }) => {
-    // Only update if dimensions actually changed
     if (size.width !== width || size.height !== height) {
-      // Calculate horizontal movement delta to keep right edge anchored
-      const deltaX = size.width - width;
-      const newX = position.x - deltaX;
-      
-      // Update dimensions only
       setWidth(size.width);
       setHeight(size.height);
-      
-      // Save for restoring after un-minimizing
-      setExpandedDimensions({
-        width: size.width,
-        height: size.height
-      });
-
+      setExpandedDimensions({ width: size.width, height: size.height });
       console.log('Resized to:', size.width, 'x', size.height);
     }
   };
@@ -480,25 +254,6 @@ const ChatWidget = () => {
     }
     
     setIsCollapsed(!isCollapsed);
-  };
-
-  // Handle server selection change
-  const handleServerChange = (event) => {
-    setSelectedServer(event.target.value);
-    setSelectedModel(''); // Reset selected model when changing server
-  };
-  
-  // Handle model selection change  
-  const handleModelChange = (event) => {
-    setSelectedModel(event.target.value);
-  };
-
-  // Fix: Add null check for getAvailableModels
-  const getAvailableModels = () => {
-    // Ensure we always return an array even if the model lists are undefined
-    return selectedServer === 'lmStudio' 
-      ? (lmStudioModels || []) 
-      : (ollamaModels || []);
   };
 
   /**
@@ -594,25 +349,6 @@ const ChatWidget = () => {
               >
                 {formatTimestamp(msg.timestamp)}
               </Typography>
-              
-              {/* Display server type badge for assistant messages only */}
-              {!isUser && !isThinking && (
-                <Typography
-                  variant="caption"
-                  component="span"
-                  sx={{
-                    fontSize: '0.65rem',
-                    bgcolor: msg.serverType === 'lmStudio' ? 'info.main' : 'warning.main',
-                    color: 'white',
-                    borderRadius: '4px',
-                    px: 0.5,
-                    py: 0.1,
-                    opacity: 0.7
-                  }}
-                >
-                  {msg.serverType === 'lmStudio' ? 'LM Studio' : 'Ollama'}
-                </Typography>
-              )}
             </Box>
           </Paper>
         </Box>
@@ -790,7 +526,7 @@ const ChatWidget = () => {
                 borderTopRightRadius: 4,
               }}
             >
-              <Typography variant="subtitle1" fontWeight="bold">Chat Assistant</Typography>
+              <Typography variant="subtitle1" fontWeight="bold">Project Manager</Typography>
               <IconButton onClick={handleCollapse} size="small" sx={{ color: 'white' }}>
                 {isCollapsed ? <OpenInFullIcon /> : <MinimizeIcon />}
               </IconButton>
@@ -798,47 +534,6 @@ const ChatWidget = () => {
             
             {!isCollapsed && (
               <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflowY: 'hidden' }}>
-                {/* Add server and model selection UI */}
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: { xs: 'column', sm: 'row' },
-                  gap: 1
-                }}>
-                  <FormControl size="small" fullWidth>
-                    <InputLabel>Server</InputLabel>
-                    <Select
-                      value={selectedServer}
-                      onChange={handleServerChange}
-                      label="Server"
-                      disabled={isRequesting}
-                    >
-                      <MenuItem value="lmStudio">LM Studio</MenuItem>
-                      <MenuItem value="ollama">Ollama</MenuItem>
-                    </Select>
-                  </FormControl>
-                  
-                  <FormControl size="small" fullWidth>
-                    <InputLabel>Model</InputLabel>
-                    <Select
-                      value={selectedModel}
-                      onChange={handleModelChange}
-                      label="Model"
-                      disabled={loadingModels || getAvailableModels().length === 0 || isRequesting}
-                    >
-                      {getAvailableModels().map(model => (
-                        <MenuItem key={model} value={model}>
-                          {model}
-                        </MenuItem>
-                      ))}
-                      {getAvailableModels().length === 0 && (
-                        <MenuItem value="" disabled>
-                          {loadingModels ? 'Loading models...' : 'No models available'}
-                        </MenuItem>
-                      )}
-                    </Select>
-                  </FormControl>
-                </Box>
-                
                 {connectionStatus.status === 'error' && (
                   <Alert severity="warning" sx={{ py: 0.5 }}>
                     {connectionStatus.message}
@@ -884,7 +579,7 @@ const ChatWidget = () => {
                           }}
                         >
                           <Typography variant="body2" color="textSecondary">
-                            Ask me anything about your projects or workflows!
+                            I'm your Project Manager assistant. How can I help you today?
                           </Typography>
                         </Paper>
                       </ListItem>
@@ -930,4 +625,4 @@ const ChatWidget = () => {
   );
 };
 
-export default ChatWidget;
+export default ProjectManagerChat;

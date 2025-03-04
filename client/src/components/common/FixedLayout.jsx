@@ -5,7 +5,7 @@ import {
   List, ListItem, ListItemButton, ListItemIcon, ListItemText, Tooltip,
   useMediaQuery, useTheme, Menu, MenuItem, Avatar, Badge 
 } from '@mui/material';
-import ChatWidget from '../ChatWidget';
+import ProjectManagerChat from '../features/ChatWidget';
 
 // Import icons
 import MenuIcon from '@mui/icons-material/Menu';
@@ -13,7 +13,6 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AssessmentIcon from '@mui/icons-material/Assessment';
-import BoltIcon from '@mui/icons-material/Bolt';
 import LinkIcon from '@mui/icons-material/Link';
 import PublicIcon from '@mui/icons-material/Public';
 import SpeedIcon from '@mui/icons-material/Speed';
@@ -27,6 +26,7 @@ import LogoIcon from '@mui/icons-material/Memory';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BuildIcon from '@mui/icons-material/Build';
+import ChatIcon from '@mui/icons-material/Chat';
 
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -234,6 +234,22 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
           </IconButton>
           <Box sx={{ flexGrow: 1 }} />
           
+          {/* Chat toggle */}
+          <Tooltip title="Toggle Chat">
+            <IconButton 
+              color="inherit" 
+              onClick={() => {
+                const event = new CustomEvent('toggle-chat-widget', {
+                  detail: { isOpen: true }
+                });
+                window.dispatchEvent(event);
+              }}
+              sx={{ ml: 1 }}
+            >
+              <ChatIcon />
+            </IconButton>
+          </Tooltip>
+          
           {/* Theme toggle */}
           <Tooltip title={darkMode ? 'Light Mode' : 'Dark Mode'}>
             <IconButton 
@@ -397,8 +413,8 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
         <Outlet /> {/* Render the nested routes */}
       </Box>
       
-      {/* Chat Widget */}
-      <ChatWidget />
+      {/* Project Manager Chat */}
+      <ProjectManagerChat />
     </Box>
   );
 }
