@@ -57,6 +57,8 @@ const ProjectManagerChat = () => {
   // Store last dimensions before collapse to restore when expanding
   const [expandedDimensions, setExpandedDimensions] = useState({ width: 300, height: 400 });
 
+  const [processedMessageIds] = useState(new Set());
+
   useEffect(() => {
     // Setup event listener for dock toggling
     const handleDockToggle = (event) => {
@@ -98,7 +100,24 @@ const ProjectManagerChat = () => {
   useEffect(() => {
     // Setup event listeners for project manager messages
     const handleProjectManagerMessage = (event) => {
-      const { message, error } = event.detail;
+      const { content, messageId, timestamp, error, source, channel } = event.detail;
+      
+      // Skip if we've already processed this message
+      if (messageId && processedMessageIds.has(messageId)) {
+        console.log('Skipping duplicate message:', messageId);
+        return;
+      }
+
+      // Skip if not for chat widget
+      if (source !== 'chat-widget' || channel !== 'chat-widget') {
+        console.log('Skipping message not for chat widget:', { source, channel });
+        return;
+      }
+
+      // Add to processed messages if we have an ID
+      if (messageId) {
+        processedMessageIds.add(messageId);
+      }
       
       if (error) {
         // Handle error message
@@ -106,9 +125,12 @@ const ProjectManagerChat = () => {
           const filtered = prev.filter(msg => !msg.isThinking);
           return [...filtered, {
             role: 'assistant',
-            content: message,
-            timestamp: new Date().toISOString(),
-            error: true
+            content: content,
+            timestamp: timestamp || new Date().toISOString(),
+            error: true,
+            messageId,
+            source: 'chat-widget',
+            channel: 'chat-widget'
           }];
         });
         return;
@@ -119,15 +141,19 @@ const ProjectManagerChat = () => {
         const filtered = prev.filter(msg => !msg.isThinking);
         return [...filtered, {
           role: 'assistant',
-          content: message,
-          timestamp: new Date().toISOString()
+          content: content,
+          timestamp: timestamp || new Date().toISOString(),
+          messageId,
+          source: 'chat-widget',
+          channel: 'chat-widget'
         }];
       });
     };
 
-    window.addEventListener('project-manager-message', handleProjectManagerMessage);
-    return () => window.removeEventListener('project-manager-message', handleProjectManagerMessage);
-  }, []);
+    // Listen for chat widget specific messages
+    window.addEventListener('chat-widget-message', handleProjectManagerMessage);
+    return () => window.removeEventListener('chat-widget-message', handleProjectManagerMessage);
+  }, [processedMessageIds]);
   
   // Auto-scroll to bottom when chat history updates
   useEffect(() => {
@@ -179,20 +205,28 @@ const ProjectManagerChat = () => {
   const handleSendMessage = async () => {
     if (!message.trim() || !connected) return;
 
+    const messageId = `msg-${Date.now()}`;
     const userMessage = {
       role: 'user',
       content: message.trim(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      messageId,
+      source: 'chat-widget',
+      channel: 'chat-widget'
     };
 
     setConversation(prev => [...prev, userMessage, {
       role: 'assistant',
       content: 'Thinking...',
       timestamp: new Date().toISOString(),
-      isThinking: true
+      isThinking: true,
+      messageId: `thinking-${messageId}`,
+      source: 'chat-widget',
+      channel: 'chat-widget'
     }]);
 
-    sendProjectManagerMessage(message.trim());
+    // Send message with messageId, source and channel
+    sendProjectManagerMessage(message.trim(), messageId, 'chat-widget', 'chat-widget');
     setMessage('');
   };
 

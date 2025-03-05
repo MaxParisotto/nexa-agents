@@ -395,6 +395,11 @@ export default function Agora() {
         return;
       }
       
+      // Remove typing indicator if present
+      setMessages(prev => prev.filter(msg => 
+        !msg.id.startsWith('typing-project-manager-')
+      ));
+      
       // Add to processed messages
       processedMessageIds.add(data.messageId);
       

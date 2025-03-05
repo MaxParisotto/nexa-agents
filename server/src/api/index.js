@@ -79,7 +79,7 @@ app.use(`${API_PREFIX}/tools`, toolsRoutes);
 // Health check endpoint
 app.get(`${API_PREFIX}/health`, (req, res) => {
   res.status(200).json({ 
-    status: 'ok', 
+    status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
@@ -559,7 +559,7 @@ io.on('connection', async (socket) => {
       });
     }
   });
-
+  
   // Handle Project Manager requests with persistence
   socket.on('project-manager-request', async (data) => {
     try {
@@ -568,7 +568,8 @@ io.on('connection', async (socket) => {
       const message = {
         ...data,
         id: data.messageId || `pm-${Date.now()}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        channel: data.channel || 'chat-widget'
       };
 
       // Save the user's message
@@ -581,11 +582,13 @@ io.on('connection', async (socket) => {
       const response = {
         messageId: `pm-response-${Date.now()}`,
         author: 'Project Manager',
-        content: pmResponse || 'Hello! How can I assist you today?',
+        content: pmResponse || '',
+        message: pmResponse || '', // Include both content and message for compatibility
         timestamp: new Date().toISOString(),
         avatar: '/static/images/avatar/agent.png',
-        channel: data.channel,
-        isAgentResponse: true
+        channel: data.channel || 'chat-widget',
+        isAgentResponse: true,
+        source: data.source || 'chat-widget'
       };
 
       // Save response to storage
@@ -593,7 +596,8 @@ io.on('connection', async (socket) => {
 
       // Remove typing indicator first
       io.emit('remove_typing_indicator', {
-        id: `typing-project-manager-${data.messageId}`
+        id: `typing-project-manager-${data.messageId}`,
+        channel: data.channel || 'chat-widget'
       });
 
       // Broadcast response to all clients
@@ -606,16 +610,19 @@ io.on('connection', async (socket) => {
         messageId: `pm-error-${Date.now()}`,
         author: 'Project Manager',
         content: `I apologize, but I encountered an error: ${error.message}`,
+        message: `I apologize, but I encountered an error: ${error.message}`, // Include both content and message
         timestamp: new Date().toISOString(),
         avatar: '/static/images/avatar/agent.png',
-        channel: data.channel,
+        channel: data.channel || 'chat-widget',
         isAgentResponse: true,
-        isError: true
+        isError: true,
+        source: data.source || 'chat-widget'
       };
 
       // Remove typing indicator
       io.emit('remove_typing_indicator', {
-        id: `typing-project-manager-${data.messageId}`
+        id: `typing-project-manager-${data.messageId}`,
+        channel: data.channel || 'chat-widget'
       });
 
       // Send error response

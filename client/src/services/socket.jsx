@@ -36,7 +36,7 @@ export function SocketProvider({ children }) {
   const MAX_RECONNECT_ATTEMPTS = 5;
 
   // Define sendProjectManagerMessage as a component function using useCallback
-  const sendProjectManagerMessage = useCallback((message) => {
+  const sendProjectManagerMessage = useCallback((message, messageId, source = 'chat-widget', channel = 'chat-widget') => {
     if (!socketRef.current || !socketRef.current.connected) {
       logger.warn('Socket not connected, cannot send message');
       return;
@@ -45,7 +45,10 @@ export function SocketProvider({ children }) {
     logger.debug('Sending message to Project Manager:', message);
     socketRef.current.emit('project-manager-request', {
       message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      messageId: messageId || `pm-${Date.now()}`,
+      source,
+      channel
     });
   }, []);
 
@@ -162,11 +165,27 @@ export function SocketProvider({ children }) {
           if (cleanupRef.current || unmountingRef.current) return;
           logger.debug('Project Manager message received:', data);
           
-          // Dispatch event for the ProjectManagerChat component
-          const event = new CustomEvent('project-manager-message', {
-            detail: data
-          });
-          window.dispatchEvent(event);
+          // Ensure we have a messageId and content
+          const messageWithId = {
+            ...data,
+            messageId: data.messageId || `pm-response-${Date.now()}`,
+            content: data.content || data.message // Handle both content and message fields
+          };
+          
+          // Check if this is from the chat widget or Agora
+          if (messageWithId.source === 'chat-widget') {
+            // Dispatch event for the ChatWidget component
+            const event = new CustomEvent('chat-widget-message', {
+              detail: messageWithId
+            });
+            window.dispatchEvent(event);
+          } else {
+            // Dispatch event for the Agora component
+            const event = new CustomEvent('project-manager-message', {
+              detail: messageWithId
+            });
+            window.dispatchEvent(event);
+          }
         });
 
         // Add agent_response event listener
