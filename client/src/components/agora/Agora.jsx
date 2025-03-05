@@ -435,29 +435,8 @@ export default function Agora() {
 
   // Message display with enhanced formatting
   const renderMessage = (message) => {
-    // Function to render code blocks with syntax highlighting
-    const CodeBlock = ({ node, inline, className, children, ...props }) => {
-      const match = /language-(\w+)/.exec(className || '');
-      const language = match ? match[1] : '';
-      
-      return !inline && language ? (
-        <SyntaxHighlighter
-          style={materialDark}
-          language={language}
-          PreTag="div"
-          {...props}
-        >
-          {String(children).replace(/\n$/, '')}
-        </SyntaxHighlighter>
-      ) : (
-        <code className={className} {...props}>
-          {children}
-        </code>
-      );
-    };
-
-    // Function to render message content with markdown and mentions
-    const renderContent = (content) => {
+    // Function to format message content with code blocks and commands
+    const formatMessageContent = (content) => {
       if (message.isTyping) {
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -467,111 +446,168 @@ export default function Agora() {
         );
       }
 
-      return (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-          components={{
-            code: CodeBlock,
-            p: ({ children }) => (
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                {children}
-              </Typography>
-            ),
-            a: ({ href, children }) => (
-              <Link href={href} target="_blank" rel="noopener noreferrer">
-                {children}
-              </Link>
-            ),
-            // Handle mentions specially
-            span: ({ children }) => {
-              const text = String(children);
-              if (text.startsWith('@')) {
-                const username = text.substring(1);
-                const isValidMention = users.some(u => u.displayName === username);
-                
-                if (isValidMention) {
-                  return (
-                    <Chip
-                      label={text}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                      sx={{ mr: 0.5 }}
-                    />
-                  );
-                }
-              }
-              return <span>{text}</span>;
-            }
-          }}
-        >
-          {content}
-        </ReactMarkdown>
-      );
+      // Check if this is a command message
+      if (content.includes('run_terminal_cmd(')) {
+        return (
+          <Box sx={{ width: '100%' }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+              Let me execute this command for you:
+            </Typography>
+            <Box 
+              component="pre"
+              sx={{ 
+                backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#1a1a1a' : '#f5f5f5',
+                padding: '12px',
+                borderRadius: '6px',
+                border: '1px solid',
+                borderColor: 'divider',
+                overflowX: 'auto',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                color: (theme) => theme.palette.mode === 'dark' ? '#e6e6e6' : '#333',
+                '&::-webkit-scrollbar': {
+                  height: '8px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f1f1f1',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: (theme) => theme.palette.mode === 'dark' ? '#666' : '#ccc',
+                  borderRadius: '4px',
+                },
+              }}
+            >
+              {content}
+            </Box>
+          </Box>
+        );
+      }
+
+      // Try to parse JSON response
+      try {
+        // Check if the content looks like a JSON string
+        if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
+          const jsonData = JSON.parse(content);
+          return (
+            <Box sx={{ width: '100%' }}>
+              <Box 
+                component="pre"
+                sx={{ 
+                  backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#1a1a1a' : '#f5f5f5',
+                  padding: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  overflowX: 'auto',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  color: (theme) => theme.palette.mode === 'dark' ? '#e6e6e6' : '#333',
+                  '&::-webkit-scrollbar': {
+                    height: '8px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f1f1f1',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    background: (theme) => theme.palette.mode === 'dark' ? '#666' : '#ccc',
+                    borderRadius: '4px',
+                  },
+                }}
+              >
+                {JSON.stringify(jsonData, null, 2)}
+              </Box>
+            </Box>
+          );
+        }
+      } catch (e) {
+        // Not JSON or invalid JSON, continue with normal formatting
+      }
+
+      // Handle code blocks with syntax highlighting
+      const parts = content.split(/(```[\s\S]*?```)/g);
+      return parts.map((part, index) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          const [, language, ...codeParts] = part.split('\n');
+          const code = codeParts.slice(0, -1).join('\n');
+          const lang = language?.trim() || '';
+          
+          return (
+            <Box key={index} sx={{ my: 2 }}>
+              {lang && (
+                <Typography variant="caption" sx={{ 
+                  display: 'block',
+                  color: 'text.secondary',
+                  mb: 0.5
+                }}>
+                  {lang}
+                </Typography>
+              )}
+              <SyntaxHighlighter
+                language={lang || 'plaintext'}
+                style={materialDark}
+                customStyle={{
+                  margin: 0,
+                  borderRadius: '4px',
+                  maxHeight: '400px'
+                }}
+              >
+                {code}
+              </SyntaxHighlighter>
+            </Box>
+          );
+        }
+
+        // Handle mentions and regular text
+        return (
+          <Typography key={index} variant="body2" component="span">
+            {part.split(' ').map((word, i) => {
+              const isMention = message.mentions?.some(mention => 
+                word === `@${users.find(u => u.id === mention.id)?.displayName}`
+              );
+              
+              return isMention ? (
+                <span key={i} style={styles.mention}>
+                  {word}{' '}
+                </span>
+              ) : (
+                <span key={i}>{word}{' '}</span>
+              );
+            })}
+          </Typography>
+        );
+      });
     };
 
     return (
-      <Box key={message.id} sx={styles.message}>
-        <Avatar src={message.avatar} sx={{ 
-          width: 32, 
-          height: 32,
-          ...(message.isAgentResponse && {
-            border: '2px solid',
-            borderColor: 'primary.main'
-          })
-        }} />
-        <Box sx={styles.messageContent}>
-          <Box sx={styles.messageAuthorLine}>
-            <Typography variant="body2" fontWeight="500" sx={{
-              ...(message.isAgentResponse && {
-                color: 'primary.main'
-              })
-            }}>
+      <Box sx={{
+        display: 'flex',
+        gap: 2,
+        p: 2,
+        '&:hover': {
+          backgroundColor: 'action.hover'
+        }
+      }}>
+        <Avatar src={message.avatar} sx={{ width: 32, height: 32 }} />
+        <Box sx={{ flex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
               {message.author}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {message.timestamp}
             </Typography>
+            {message.isError && (
+              <Chip
+                label="Error"
+                size="small"
+                color="error"
+                variant="outlined"
+                sx={{ ml: 1 }}
+              />
+            )}
           </Box>
-          <Box sx={{ 
-            mt: 0.5,
-            '& pre': {
-              borderRadius: 1,
-              p: 1.5,
-              my: 1,
-              overflow: 'auto',
-              maxHeight: '400px'
-            },
-            '& code': {
-              fontFamily: 'monospace',
-              backgroundColor: 'action.hover',
-              p: 0.5,
-              borderRadius: 0.5
-            },
-            '& blockquote': {
-              borderLeft: '4px solid',
-              borderColor: 'primary.main',
-              pl: 2,
-              my: 1,
-              color: 'text.secondary'
-            },
-            '& table': {
-              borderCollapse: 'collapse',
-              width: '100%',
-              my: 1
-            },
-            '& th, & td': {
-              border: '1px solid',
-              borderColor: 'divider',
-              p: 1
-            },
-            '& ul, & ol': {
-              pl: 3,
-              my: 1
-            }
-          }}>
-            {renderContent(message.content)}
+          <Box sx={{ wordBreak: 'break-word' }}>
+            {formatMessageContent(message.content)}
           </Box>
           {message.attachments && message.attachments.length > 0 && (
             <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>

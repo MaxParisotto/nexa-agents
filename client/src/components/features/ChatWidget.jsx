@@ -384,28 +384,96 @@ const ProjectManagerChat = () => {
   const formatMessageContent = (content) => {
     if (!content) return null;
     
+    // Check if content is a command
+    if (content.includes('run_terminal_cmd(')) {
+      return (
+        <Box sx={{ width: '100%' }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+            Let me execute this command for you:
+          </Typography>
+          <Box 
+            component="pre"
+            sx={{ 
+              backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#1a1a1a' : '#f5f5f5',
+              padding: '12px',
+              borderRadius: '6px',
+              border: '1px solid',
+              borderColor: 'divider',
+              overflowX: 'auto',
+              fontFamily: 'monospace',
+              fontSize: '0.85rem',
+              color: (theme) => theme.palette.mode === 'dark' ? '#e6e6e6' : '#333',
+              '&::-webkit-scrollbar': {
+                height: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f1f1f1',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: (theme) => theme.palette.mode === 'dark' ? '#666' : '#ccc',
+                borderRadius: '4px',
+              },
+            }}
+          >
+            {content}
+          </Box>
+        </Box>
+      );
+    }
+    
     // Split content into segments based on code blocks
     return content.split('```').map((segment, index) => {
       if (index % 2 === 1) {
         // This is a code block
+        const [language, ...codeLines] = segment.split('\n');
+        const code = codeLines.join('\n');
+        
         return (
           <Box 
             component="pre" 
             key={index}
             sx={{ 
-              backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f5f5f5',
-              padding: '8px',
-              borderRadius: '4px',
+              backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#1a1a1a' : '#f5f5f5',
+              padding: '12px',
+              borderRadius: '6px',
               overflowX: 'auto',
               fontFamily: 'monospace',
               fontSize: '0.85rem',
               margin: '8px 0',
               width: '100%',
               border: '1px solid',
-              borderColor: 'divider'
+              borderColor: 'divider',
+              position: 'relative',
+              '&::-webkit-scrollbar': {
+                height: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f1f1f1',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: (theme) => theme.palette.mode === 'dark' ? '#666' : '#ccc',
+                borderRadius: '4px',
+              },
             }}
           >
-            {segment}
+            {language && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  padding: '4px 8px',
+                  backgroundColor: 'primary.main',
+                  color: 'white',
+                  borderBottomLeftRadius: '4px',
+                  fontSize: '0.75rem',
+                  opacity: 0.8,
+                }}
+              >
+                {language}
+              </Box>
+            )}
+            {code || segment}
           </Box>
         );
       }
@@ -424,10 +492,10 @@ const ProjectManagerChat = () => {
             line = line.replace(/`(.*?)`/g, '<code>$1</code>');
             
             // Handle bullet points
-            if (line.trim().startsWith('•')) {
+            if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
               return (
                 <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
-                  <Box component="span" sx={{ mr: 1 }}>•</Box>
+                  <Box component="span" sx={{ mr: 1 }}>{line.trim().startsWith('•') ? '•' : '•'}</Box>
                   <Box component="span" dangerouslySetInnerHTML={{ __html: line.substring(1) }} />
                 </Box>
               );
