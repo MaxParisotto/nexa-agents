@@ -203,53 +203,33 @@ export default function GptUplink() {
     }
     
     try {
-      // Simulate server start (in a real app, this would call the backend)
-      addLog('info', 'Starting WebSocket server...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Start the uplink server
+      const response = await apiService.post('/api/uplink/start', uplinkConfig);
       
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      addLog('info', 'Starting WebSocket server...');
       addLog('info', `Binding to ${uplinkConfig.host}:${uplinkConfig.port}`);
-      await new Promise(resolve => setTimeout(resolve, 500));
       
       const exposedProviders = uplinkConfig.availableProviders.filter(p => p.exposed);
       for (const provider of exposedProviders) {
         addLog('info', `Registering provider: ${provider.name} (${provider.models.length} models)`);
-        await new Promise(resolve => setTimeout(resolve, 300));
       }
       
       addLog('info', 'Initializing schema registry');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
       addLog('success', `Server is running at ws://${uplinkConfig.host}:${uplinkConfig.port}`);
+      
       setServerRunning(true);
       setSuccess(`Uplink server is now running on port ${uplinkConfig.port}`);
       
-      // Periodically simulate client connections and requests
-      const interval = setInterval(() => {
-        if (Math.random() > 0.7) {
-          setConnectedClients(prev => {
-            const change = Math.random() > 0.5 ? 1 : (prev > 0 ? -1 : 0);
-            return prev + change;
-          });
-        }
-        
-        if (Math.random() > 0.5) {
-          setTotalRequests(prev => prev + Math.floor(Math.random() * 3) + 1);
-          
-          // Sometimes add a log entry for a request
-          if (Math.random() > 0.7) {
-            const provider = exposedProviders[Math.floor(Math.random() * exposedProviders.length)];
-            const model = provider.models[Math.floor(Math.random() * provider.models.length)] || 'unknown';
-            addLog('info', `Request: model=${model}, tokens=150, client=remote-user-${Math.floor(Math.random() * 100)}`);
-          }
-        }
-      }, 3000);
+      // Start polling server stats
+      pollServerStats();
       
-      // Store interval ID for cleanup
-      window.uplinkInterval = interval;
-      
-    } catch (err) {
-      setError(`Failed to start server: ${err.message}`);
-      addLog('error', `Server start failed: ${err.message}`);
+    } catch (error) {
+      setError(`Failed to start server: ${error.message}`);
+      addLog('error', `Server start failed: ${error.message}`);
     }
   };
   
@@ -259,36 +239,60 @@ export default function GptUplink() {
     setSuccess(null);
     
     try {
-      addLog('info', 'Stopping server...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Stop the uplink server
+      const response = await apiService.post('/api/uplink/stop');
       
-      addLog('info', 'Closing active connections...');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      addLog('info', 'Unregistering providers...');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      addLog('info', 'Server stopped');
-      
-      // Clean up the interval
-      if (window.uplinkInterval) {
-        clearInterval(window.uplinkInterval);
-        window.uplinkInterval = null;
+      if (response.error) {
+        throw new Error(response.error);
       }
+
+      addLog('info', 'Stopping server...');
+      addLog('info', 'Closing active connections...');
+      addLog('info', 'Unregistering providers...');
+      addLog('info', 'Server stopped');
       
       setServerRunning(false);
       setConnectedClients(0);
       setSuccess('Uplink server has been stopped');
-    } catch (err) {
-      setError(`Failed to stop server: ${err.message}`);
-      addLog('error', `Server stop failed: ${err.message}`);
+      
+      // Stop polling server stats
+      if (window.statsInterval) {
+        clearInterval(window.statsInterval);
+        window.statsInterval = null;
+      }
+      
+    } catch (error) {
+      setError(`Failed to stop server: ${error.message}`);
+      addLog('error', `Server stop failed: ${error.message}`);
     }
   };
-  
-  // Add log entry with timestamp
-  const addLog = (level, message) => {
-    const timestamp = new Date().toISOString();
-    setServerLogs(prev => [...prev, { level, message, timestamp }]);
+
+  // Poll server stats
+  const pollServerStats = async () => {
+    const pollStats = async () => {
+      try {
+        const response = await apiService.get('/api/uplink/stats');
+        if (response.data) {
+          setConnectedClients(response.data.connectedClients);
+          setTotalRequests(response.data.totalRequests);
+          
+          // Add log entries for new requests if any
+          if (response.data.recentLogs) {
+            response.data.recentLogs.forEach(log => {
+              addLog(log.level, log.message);
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch server stats:', error);
+      }
+    };
+
+    // Poll every 3 seconds
+    window.statsInterval = setInterval(pollStats, 3000);
+    
+    // Initial poll
+    pollStats();
   };
 
   // Save uplink settings
@@ -298,14 +302,44 @@ export default function GptUplink() {
     setSuccess(null);
     
     try {
-      // Update uplink section in settings
+      // Save settings to backend
+      const response = await apiService.post('/api/uplink/settings', uplinkConfig);
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      // Update settings in context
       await updateSection('uplink', uplinkConfig);
+      
+      // If server is running, update its settings
+      if (serverRunning) {
+        await apiService.post('/api/uplink/update', uplinkConfig);
+        addLog('info', 'Server settings updated');
+      }
+
       setSuccess("Uplink settings saved successfully");
     } catch (err) {
       setError(`Failed to save settings: ${err.message}`);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (window.statsInterval) {
+        clearInterval(window.statsInterval);
+        window.statsInterval = null;
+      }
+    };
+  }, []);
+
+  // Add log entry with timestamp
+  const addLog = (level, message) => {
+    const timestamp = new Date().toISOString();
+    setServerLogs(prev => [...prev, { level, message, timestamp }]);
   };
   
   // Clear server logs

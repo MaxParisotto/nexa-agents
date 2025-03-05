@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, Paper, TextField, IconButton, Avatar, 
-  Divider, CircularProgress, Alert, Chip, Popover, Button, Dialog, DialogTitle, DialogContent, DialogActions
+  CircularProgress, Alert, Chip, Popover, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  Switch, FormControlLabel
 } from '@mui/material';
-import { Link } from '@mui/material';
 import { Send, Tag, Add, Notifications as NotificationsIcon, DeleteOutline, AttachFile } from '@mui/icons-material';
 import { useSettings } from '../../contexts/SettingsContext';
 import { apiService } from '../../services/api';
 import { useSocket } from '../../services/socket.jsx';
-import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { materialDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 import 'katex/dist/katex.min.css';
 
 // Constants for storage keys
@@ -38,7 +36,6 @@ export default function Agora() {
     { id: 'system', name: 'system', unread: 0, description: 'System notifications' }
   ]);
   const [loading, setLoading] = useState(false);
-  const [agents, setAgents] = useState([]);
   const [mentionSuggestions, setMentionSuggestions] = useState([]);
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
   const [mentionAnchorEl, setMentionAnchorEl] = useState(null);
@@ -48,6 +45,10 @@ export default function Agora() {
   const [notifications, setNotifications] = useState([]);
   const [showAddChannelDialog, setShowAddChannelDialog] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
+  const [autoPMMention, setAutoPMMention] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const terminalRef = useRef(null);
+  const xtermRef = useRef(null);
 
   // Fetch users and agents on component mount
   useEffect(() => {
@@ -87,7 +88,6 @@ export default function Agora() {
         ];
         
         setUsers(allUsers);
-        setAgents(agentsResponse?.data || []);
       } catch (error) {
         console.error('Failed to fetch users:', error);
       }
@@ -260,178 +260,232 @@ export default function Agora() {
   // Identify user on connection
   useEffect(() => {
     if (socket && connected && settings?.user) {
-      console.log('Identifying user:', {
-        userId: settings.user.id,
-        userName: settings.user.name,
-        userType: 'user',
-        avatar: settings.user.avatar
+      // Connect to Halcyon WebSocket endpoint
+      socket.emit('connect_halcyon', {
+        type: 'connect',
+        auth_token: settings?.user?.token,
+        info: {
+          client_version: '1.0',
+          client_name: 'Nexa Agora Client',
+          client_type: 'web',
+          protocol: 'wss',
+          endpoint: 'api.nexaethos.ai',
+          port: '9001',
+          service: 'gpt-uplink'
+        }
       });
-      
+
+      // Send identification after connection
       socket.emit('identify', {
         userId: settings.user.id,
         userName: settings.user.name,
         userType: 'user',
-        avatar: settings.user.avatar
+        avatar: settings.user.avatar,
+        uplink: {
+          enabled: true,
+          service: 'gpt-uplink'
+        }
       });
     }
   }, [socket, connected, settings?.user]);
 
-  // Handle mention suggestions
-  const handleMentionInput = (event) => {
-    const text = event.target.value;
-    const cursorPos = event.target.selectionStart;
-    setCursorPosition(cursorPos);
-    
-    // Find the word being typed
-    const beforeCursor = text.slice(0, cursorPos);
-    const match = beforeCursor.match(/@(\w*)$/);
-    
-    if (match) {
-      const searchTerm = match[1].toLowerCase();
-      const suggestions = users.filter(user => 
-        user.displayName.toLowerCase().includes(searchTerm)
-      ).slice(0, 5); // Limit to 5 suggestions
-      
-      setMentionSuggestions(suggestions);
-      setShowMentionSuggestions(true);
-      setMentionAnchorEl(event.target);
-    } else {
-      setShowMentionSuggestions(false);
-    }
-    
-    setNewMessage(text);
-  };
-
-  // Handle mention selection
-  const handleMentionSelect = (user) => {
-    const text = newMessage;
-    const beforeCursor = text.slice(0, cursorPosition);
-    const afterCursor = text.slice(cursorPosition);
-    const mentionStart = beforeCursor.lastIndexOf('@');
-    
-    const newText = 
-      beforeCursor.slice(0, mentionStart) + 
-      `@${user.displayName} ` + 
-      afterCursor;
-    
-    setNewMessage(newText);
-    setShowMentionSuggestions(false);
-    
-    // Focus back on input
-    if (textFieldRef.current) {
-      textFieldRef.current.focus();
-    }
-  };
-
-  // Add channel management functions
-  const handleAddChannel = () => {
-    if (newChannelName.trim()) {
-      const channelId = newChannelName.toLowerCase().replace(/\s+/g, '-');
-      setChannels(prev => [
-        ...prev,
-        {
-          id: channelId,
-          name: newChannelName.trim(),
-          unread: 0,
-          description: `Channel for ${newChannelName} discussions`
-        }
-      ]);
-      setNewChannelName('');
-      setShowAddChannelDialog(false);
-    }
-  };
-
-  const handleDeleteChannel = (channelId) => {
-    if (channelId === 'general' || channelId === 'agents' || channelId === 'system') {
-      return; // Prevent deletion of default channels
-    }
-    setChannels(prev => prev.filter(channel => channel.id !== channelId));
-    if (selectedChannel === channelId) {
-      setSelectedChannel('general');
-    }
-  };
-
-  // Handle agent responses with messageId tracking and prevent duplicates
+  // Handle Halcyon WebSocket responses
   useEffect(() => {
     if (!socket) return;
 
-    const processedMessageIds = new Set();
+    const handleHalcyonResponse = (data) => {
+      console.log('Halcyon response received:', data);
+      
+      // Handle different response types according to API spec
+      switch (data.type) {
+        case 'connected':
+          console.log('Connected to Halcyon GPT Uplink:', data.message);
+          // Add connection status message
+          setMessages(prev => [...prev, {
+            id: `system-${Date.now()}`,
+            author: 'System',
+            content: `Connected to Halcyon GPT Uplink: ${data.message}`,
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/system.png',
+            channel: 'system'
+          }]);
+          break;
 
-    const handleAgentResponse = (data) => {
-      console.log('Agent response received:', data);
-      
-      // Skip if we've already processed this message
-      if (processedMessageIds.has(data.messageId)) {
-        console.log('Skipping duplicate message:', data.messageId);
-        return;
+        case 'action_executed':
+          // Remove typing indicator if present
+          setMessages(prev => prev.filter(msg => 
+            !msg.id.startsWith('typing-halcyon-')
+          ));
+          
+          // Add Halcyon's response
+          setMessages(prev => [...prev, {
+            id: `halcyon-${Date.now()}`,
+            author: 'Halcyon',
+            content: data.message,
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/halcyon.png',
+            isAgentResponse: true,
+            channel: data.channel
+          }]);
+          break;
+
+        case 'confirmation_required':
+          // Show confirmation dialog
+          setMessages(prev => [...prev, {
+            id: `confirm-${data.confirmation_id}`,
+            author: 'Halcyon',
+            content: `This action requires confirmation. Please confirm to proceed.\n\nConfirmation ID: ${data.confirmation_id}`,
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/halcyon.png',
+            isConfirmation: true,
+            confirmationId: data.confirmation_id,
+            channel: data.channel
+          }]);
+          break;
+
+        case 'error':
+          // Show error message
+          setMessages(prev => [...prev, {
+            id: `error-${Date.now()}`,
+            author: 'System',
+            content: data.message,
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/system.png',
+            isError: true,
+            channel: data.channel
+          }]);
+          break;
       }
-      
-      // Add to processed messages
-      processedMessageIds.add(data.messageId);
-      
-      // Remove typing indicator if present
-      setMessages(prev => prev.filter(msg => 
-        msg.id !== 'typing-' + data.agentId
-      ));
-      
-      // Add agent's response
-      setMessages(prev => [...prev, {
-        id: data.messageId || `agent-${Date.now()}`,
-        author: data.agentName || 'Agent',
-        content: data.message,
-        timestamp: new Date().toLocaleTimeString(),
-        avatar: data.avatar || '/static/images/avatar/agent.png',
-        isAgentResponse: true,
-        channel: data.channel
-      }]);
     };
 
-    const handleProjectManagerMessage = (data) => {
-      console.log('Project Manager message received:', data);
-      
-      // Skip if we've already processed this message
-      if (processedMessageIds.has(data.messageId)) {
-        console.log('Skipping duplicate message:', data.messageId);
-        return;
+    const handleCommandOutput = (data) => {
+      if (xtermRef.current) {
+        xtermRef.current.writeln(data.output);
       }
-      
-      // Remove typing indicator if present
-      setMessages(prev => prev.filter(msg => 
-        !msg.id.startsWith('typing-project-manager-')
-      ));
-      
-      // Add to processed messages
-      processedMessageIds.add(data.messageId);
-      
-      // Add Project Manager's response
-      setMessages(prev => [...prev, {
-        id: data.messageId || `pm-${Date.now()}`,
-        author: 'Project Manager',
-        content: data.content,
-        timestamp: new Date().toLocaleTimeString(),
-        avatar: '/static/images/avatar/agent.png',
-        isAgentResponse: true,
-        channel: data.channel,
-        isError: data.isError
-      }]);
     };
 
     const handleRemoveTypingIndicator = (data) => {
       setMessages(prev => prev.filter(msg => msg.id !== data.id));
     };
 
-    // Add event listeners
-    socket.on('agent_response', handleAgentResponse);
-    socket.on('project-manager-message', handleProjectManagerMessage);
+    // Handle sending messages with improved mention handling and messageId
+    const handleSendMessage = useCallback(async () => {
+      if (!newMessage.trim() || !socket) return;
+
+      try {
+        setLoading(true);
+        const messageId = `msg-${Date.now()}`;
+
+        // Process message content
+        let processedContent = newMessage;
+        if (autoPMMention && !processedContent.toLowerCase().includes('@halcyon')) {
+          processedContent = `@Halcyon ${processedContent}`;
+        }
+
+        // Add the message to local state first
+        const localMessage = {
+          id: messageId,
+          author: settings?.user?.name || 'You',
+          content: processedContent,
+          timestamp: new Date().toLocaleTimeString(),
+          avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
+          channel: selectedChannel
+        };
+        
+        setMessages(prev => [...prev, localMessage]);
+
+        // Check for Halcyon mention
+        const hasHalcyonMention = processedContent.toLowerCase().includes('@halcyon');
+
+        if (hasHalcyonMention) {
+          // Add typing indicator
+          const typingId = `typing-halcyon-${messageId}`;
+          setMessages(prev => [...prev, {
+            id: typingId,
+            author: 'Halcyon',
+            content: '...',
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/halcyon.png',
+            isTyping: true,
+            channel: selectedChannel
+          }]);
+
+          // Send command request to Halcyon according to API spec
+          socket.emit('command', {
+            type: 'command',
+            auth_token: settings?.user?.token,
+            command: processedContent,
+            messageId,
+            channel: selectedChannel
+          });
+        }
+
+        setNewMessage('');
+      } catch (error) {
+        console.error('Error sending message:', error);
+      } finally {
+        setLoading(false);
+      }
+    }, [newMessage, socket, selectedChannel, settings?.user, autoPMMention]);
+
+    // Handle confirmation actions
+    const handleConfirmAction = (confirmationId) => {
+      socket.emit('confirm', {
+        type: 'confirm',
+        auth_token: settings?.user?.token,
+        confirmation_id: confirmationId
+      });
+    };
+
+    // Add event listeners for Halcyon WebSocket
+    socket.on('halcyon_response', handleHalcyonResponse);
+    socket.on('command_output', handleCommandOutput);
     socket.on('remove_typing_indicator', handleRemoveTypingIndicator);
 
     // Cleanup
     return () => {
-      socket.off('agent_response', handleAgentResponse);
-      socket.off('project-manager-message', handleProjectManagerMessage);
+      socket.off('halcyon_response', handleHalcyonResponse);
+      socket.off('command_output', handleCommandOutput);
       socket.off('remove_typing_indicator', handleRemoveTypingIndicator);
     };
   }, [socket]);
+
+  // Initialize XTerm
+  useEffect(() => {
+    // Initialize terminal if not already done
+    if (!xtermRef.current) {
+      xtermRef.current = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: 'monospace',
+        theme: {
+          background: '#1a1a1a',
+          foreground: '#e6e6e6'
+        }
+      });
+    }
+
+    // Open terminal when dialog is shown
+    if (showTerminal && terminalRef.current) {
+      if (!terminalRef.current.querySelector('.xterm')) {
+        xtermRef.current.open(terminalRef.current);
+        xtermRef.current.writeln('Terminal ready...');
+      }
+      xtermRef.current.focus();
+    }
+
+    // Cleanup on component unmount
+    return () => {
+      if (xtermRef.current) {
+        try {
+          xtermRef.current.dispose();
+        } catch (error) {
+          console.error('Error disposing terminal:', error);
+        }
+        xtermRef.current = null;
+      }
+    };
+  }, [showTerminal]);
 
   // Message display with enhanced formatting
   const renderMessage = (message) => {
@@ -446,13 +500,38 @@ export default function Agora() {
         );
       }
 
+      if (message.isConfirmation) {
+        return (
+          <Box sx={{ width: '100%' }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>{content}</Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              onClick={() => handleConfirmAction(message.confirmationId)}
+            >
+              Confirm Action
+            </Button>
+          </Box>
+        );
+      }
+
       // Check if this is a command message
       if (content.includes('run_terminal_cmd(')) {
         return (
           <Box sx={{ width: '100%' }}>
-            <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-              Let me execute this command for you:
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="body2" color="textSecondary">
+                Let me execute this command for you:
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setShowTerminal(true)}
+              >
+                Open Terminal
+              </Button>
+            </Box>
             <Box 
               component="pre"
               sx={{ 
@@ -628,105 +707,6 @@ export default function Agora() {
     );
   };
 
-  // Handle sending messages with improved mention handling and messageId
-  const handleSendMessage = useCallback(async () => {
-    if (!newMessage.trim() || !socket) return;
-
-    try {
-      setLoading(true);
-      const messageId = `msg-${Date.now()}`;
-
-      // Process message content for code blocks and formatting
-      const processedContent = newMessage.replace(/\`\`\`(\w+)?\n([\s\S]+?)\`\`\`/g, (_, lang, code) => {
-        return `\`\`\`${lang || ''}\n${code.trim()}\n\`\`\``;
-      });
-
-      // Add the message to local state first
-      const localMessage = {
-        id: messageId,
-        author: settings?.user?.name || 'You',
-        content: processedContent,
-        timestamp: new Date().toLocaleTimeString(),
-        avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
-        channel: selectedChannel
-      };
-      
-      // Update messages state immediately
-      setMessages(prev => [...prev, localMessage]);
-
-      // Check for Project Manager mention
-      const hasPMMention = processedContent.toLowerCase().includes('@project manager');
-      const projectManager = users.find(u => u.isProjectManager);
-
-      if (hasPMMention && projectManager) {
-        console.log('Project Manager mentioned:', processedContent);
-        
-        // Add typing indicator with unique ID
-        const typingId = `typing-project-manager-${messageId}`;
-        setMessages(prev => [...prev, {
-          id: typingId,
-          author: 'Project Manager',
-          content: '...',
-          timestamp: new Date().toLocaleTimeString(),
-          avatar: '/static/images/avatar/agent.png',
-          isTyping: true,
-          channel: selectedChannel
-        }]);
-
-        // Emit the message to the Project Manager
-        socket.emit('project-manager-request', {
-          message: processedContent,
-          timestamp: new Date().toISOString(),
-          channel: selectedChannel,
-          messageId
-        });
-      }
-
-      // Emit the message to all users
-      socket.emit('new_message', {
-        content: processedContent,
-        channel: selectedChannel,
-        mentions: extractMentions(processedContent),
-        timestamp: new Date().toISOString(),
-        author: settings?.user?.name || 'You',
-        avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
-        messageId
-      });
-
-      setNewMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [newMessage, socket, selectedChannel, users, settings?.user]);
-
-  // Helper function to extract mentions
-  const extractMentions = (text) => {
-    const mentions = [];
-    const regex = /@(\w+)/g;
-    let match;
-    
-    while ((match = regex.exec(text)) !== null) {
-      const mentionedName = match[1];
-      const user = users.find(u => 
-        u.displayName.toLowerCase() === mentionedName.toLowerCase() ||
-        (mentionedName.toLowerCase() === 'project' && 
-         u.displayName.toLowerCase().includes('project manager'))
-      );
-      
-      if (user) {
-        mentions.push({
-          id: user.id,
-          name: user.displayName,
-          type: user.type
-        });
-      }
-    }
-    
-    return mentions;
-  };
-
   // Handle channel selection
   const handleChannelSelect = (channelId) => {
     setSelectedChannel(channelId);
@@ -742,6 +722,81 @@ export default function Agora() {
     return notifications.filter(n => 
       n.channel === channelId && !n.read
     ).length;
+  };
+
+  // Handle mention suggestions
+  const handleMentionInput = (event) => {
+    const text = event.target.value;
+    const cursorPos = event.target.selectionStart;
+    setCursorPosition(cursorPos);
+    
+    // Find the word being typed
+    const beforeCursor = text.slice(0, cursorPos);
+    const match = beforeCursor.match(/@(\w*)$/);
+    
+    if (match) {
+      const searchTerm = match[1].toLowerCase();
+      const suggestions = users.filter(user => 
+        user.displayName.toLowerCase().includes(searchTerm)
+      ).slice(0, 5); // Limit to 5 suggestions
+      
+      setMentionSuggestions(suggestions);
+      setShowMentionSuggestions(true);
+      setMentionAnchorEl(event.target);
+    } else {
+      setShowMentionSuggestions(false);
+    }
+    
+    setNewMessage(text);
+  };
+
+  // Handle mention selection
+  const handleMentionSelect = (user) => {
+    const text = newMessage;
+    const beforeCursor = text.slice(0, cursorPosition);
+    const afterCursor = text.slice(cursorPosition);
+    const mentionStart = beforeCursor.lastIndexOf('@');
+    
+    const newText = 
+      beforeCursor.slice(0, mentionStart) + 
+      `@${user.displayName} ` + 
+      afterCursor;
+    
+    setNewMessage(newText);
+    setShowMentionSuggestions(false);
+    
+    // Focus back on input
+    if (textFieldRef.current) {
+      textFieldRef.current.focus();
+    }
+  };
+
+  // Add channel management functions
+  const handleAddChannel = () => {
+    if (newChannelName.trim()) {
+      const channelId = newChannelName.toLowerCase().replace(/\s+/g, '-');
+      setChannels(prev => [
+        ...prev,
+        {
+          id: channelId,
+          name: newChannelName.trim(),
+          unread: 0,
+          description: `Channel for ${newChannelName} discussions`
+        }
+      ]);
+      setNewChannelName('');
+      setShowAddChannelDialog(false);
+    }
+  };
+
+  const handleDeleteChannel = (channelId) => {
+    if (channelId === 'general' || channelId === 'agents' || channelId === 'system') {
+      return; // Prevent deletion of default channels
+    }
+    setChannels(prev => prev.filter(channel => channel.id !== channelId));
+    if (selectedChannel === channelId) {
+      setSelectedChannel('general');
+    }
   };
 
   // CSS styles
@@ -849,11 +904,21 @@ export default function Agora() {
     <Box>
       <Typography variant="h4" gutterBottom>Agora</Typography>
       
-      {/* Add notifications indicator in the header */}
+      {/* Add notifications indicator and PM toggle in the header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <Alert severity="info" sx={{ flex: 1 }}>
           Welcome to Agora, the collaboration space for Nexa Agents. Chat with agents and team members in real-time.
         </Alert>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={autoPMMention}
+              onChange={(e) => setAutoPMMention(e.target.checked)}
+              color="primary"
+            />
+          }
+          label="Auto @PM"
+        />
         {notifications.filter(n => !n.read).length > 0 && (
           <Chip
             icon={<NotificationsIcon />}
@@ -1065,6 +1130,30 @@ export default function Agora() {
           >
             Add Channel
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Terminal Dialog */}
+      <Dialog
+        open={showTerminal}
+        onClose={() => setShowTerminal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Terminal</DialogTitle>
+        <DialogContent>
+          <Box
+            ref={terminalRef}
+            sx={{
+              height: '400px',
+              backgroundColor: '#1a1a1a',
+              borderRadius: 1,
+              overflow: 'hidden'
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowTerminal(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
