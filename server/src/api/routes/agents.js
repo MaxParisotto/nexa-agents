@@ -87,4 +87,9 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
+// Minimal example route to test
+router.get('/test', (req, res) => {
+  res.json({ message: 'Agents route working' });
+});
+
 module.exports = router;

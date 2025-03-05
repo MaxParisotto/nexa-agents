@@ -2,63 +2,49 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const path = require('path');
 const logger = require('./utils/logger').createLogger('main');
 
-// Initialize express app and server
-const app = express();
-const server = http.createServer(app);
+try {
+  const app = express();
+  const server = http.createServer(app);
 
-// Configure CORS
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+  // Basic middleware
+  app.use(cors({ origin: "*", credentials: true }));
+  app.use(express.json());
 
-// Basic middleware
-app.use(express.json());
+  // Static files first
+  const publicPath = path.join(__dirname, 'public');
+  app.use(express.static(publicPath));
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  // API routes
+  app.use('/api', require('./api/routes'));
 
-// Initialize Socket.IO with permissive CORS
-const io = new Server(server, {
-  cors: {
-    origin: true,
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  allowEIO3: true,
-  transports: ['polling', 'websocket']
-});
-
-// Socket connection handling
-io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
-  
-  socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
+  // SPA routes
+  app.get(['/', '/dashboard'], (req, res) => {
+    res.sendFile(path.join(publicPath, 'index.html'));
   });
-});
 
-// Start server
-const PORT = 3001;
-const HOST = '0.0.0.0';
+  // Socket.IO setup
+  const io = new Server(server, {
+    cors: { origin: "*" },
+    transports: ['polling', 'websocket']
+  });
 
-server.listen(PORT, HOST, () => {
-  logger.info(`HTTP server running on http://${HOST}:${PORT}`);
-  logger.info('WebSocket server enabled');
-});
+  io.on('connection', socket => {
+    logger.info(`Client connected: ${socket.id}`);
+    socket.on('disconnect', () => logger.info(`Client disconnected: ${socket.id}`));
+  });
 
-// Error handling
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception:', error);
-});
+  // Start server
+  const PORT = process.env.PORT || 3001;
+  const HOST = process.env.HOST || '0.0.0.0';
 
-process.on('SIGTERM', () => {
-  logger.info('Received SIGTERM, shutting down...');
-  server.close(() => process.exit(0));
-});
+  server.listen(PORT, HOST, () => {
+    logger.info(`Server running at http://${HOST}:${PORT}`);
+  });
 
-module.exports = { app, server, io };
+} catch (error) {
+  logger.error('Server initialization error:', error);
+  process.exit(1);
+}
