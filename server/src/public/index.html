@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nexa Agents - Dashboard</title>
   <link rel="stylesheet" href="/css/style.css">
+  <!-- Add metrics CSS -->
+  <link rel="stylesheet" href="/css/metrics.css">
   <style>
     /* Add dashboard styles */
     .metrics-section { 
@@ -237,7 +239,24 @@
                 <span class="arrow">▼</span>
             </div>
             <div id="summary-content" class="metrics-content">
-                <div id="summary-metrics"></div>
+                <div id="summary-metrics" class="metrics-grid">
+                    <div class="metric-item">
+                        <div class="metric-label">Active Agents</div>
+                        <div class="metric-value" id="active-agents">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Running Tools</div>
+                        <div class="metric-value" id="active-tools">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">API Health</div>
+                        <div class="metric-value" id="api-health">OK</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Total Requests</div>
+                        <div class="metric-value" id="total-requests">0</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -247,7 +266,24 @@
                 <span class="arrow">▼</span>
             </div>
             <div id="llm-content" class="metrics-content">
-                <div id="llm-metrics"></div>
+                <div id="llm-metrics" class="metrics-grid">
+                    <div class="metric-item">
+                        <div class="metric-label">LLM Response Time</div>
+                        <div class="metric-value" id="llm-response-time">0ms</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Tokens/Min</div>
+                        <div class="metric-value" id="tokens-per-min">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Active Models</div>
+                        <div class="metric-value" id="active-models">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Error Rate</div>
+                        <div class="metric-value" id="llm-error-rate">0%</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -257,7 +293,24 @@
                 <span class="arrow">▼</span>
             </div>
             <div id="network-content" class="metrics-content">
-                <div id="network-metrics"></div>
+                <div id="network-metrics" class="metrics-grid">
+                    <div class="metric-item">
+                        <div class="metric-label">API Latency</div>
+                        <div class="metric-value" id="api-latency">0ms</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Requests/Min</div>
+                        <div class="metric-value" id="requests-per-min">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Active Connections</div>
+                        <div class="metric-value" id="active-connections">0</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Data Throughput</div>
+                        <div class="metric-value" id="data-throughput">0KB/s</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -267,7 +320,24 @@
                 <span class="arrow">▼</span>
             </div>
             <div id="system-content" class="metrics-content">
-                <div id="system-metrics"></div>
+                <div id="system-metrics" class="metrics-grid">
+                    <div class="metric-item">
+                        <div class="metric-label">CPU Usage</div>
+                        <div class="metric-value" id="cpu-usage">0%</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Memory Usage</div>
+                        <div class="metric-value" id="memory-usage">0MB</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Disk Usage</div>
+                        <div class="metric-value" id="disk-usage">0%</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Uptime</div>
+                        <div class="metric-value" id="system-uptime">0h 0m</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -277,7 +347,18 @@
                 <span class="arrow">▼</span>
             </div>
             <div id="logs-content" class="metrics-content">
-                <div id="logViewerContainer"></div>
+                <div id="logViewerContainer">
+                    <div class="log-controls">
+                        <select id="log-level-filter">
+                            <option value="all">All Levels</option>
+                            <option value="info">Info</option>
+                            <option value="warn">Warnings</option>
+                            <option value="error">Errors</option>
+                        </select>
+                        <input type="text" id="log-search" placeholder="Search logs...">
+                    </div>
+                    <div class="log-list" id="log-list"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -293,6 +374,18 @@
       reconnectionDelay: 1000
     });
 
+    function toggleSection(id) {
+      const content = document.getElementById(id);
+      content.classList.toggle('expanded');
+      // If we're expanding this section, ensure the metrics are loaded
+      if (content.classList.contains('expanded')) {
+        // This will trigger a metrics refresh if the metrics.js is loaded
+        if (typeof refreshMetrics === 'function') {
+          refreshMetrics();
+        }
+      }
+    }
+
     // Add socket connection status indicator
     socket.on('connect', () => {
       console.log('Socket connected');
@@ -305,6 +398,99 @@
       document.getElementById('status-message').textContent = 'Connection error';
       document.getElementById('status-message').className = 'status-error';
     });
+
+    // Listen for metrics updates from the server
+    socket.on('metrics_update', (data) => {
+      updateAllMetrics(data);
+    });
+
+    // Request metrics on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      socket.emit('get_metrics');
+      
+      // Expand the summary section by default
+      toggleSection('summary-content');
+    });
+
+    // Format bytes to human-readable format
+    function formatBytes(bytes, decimals = 2) {
+      if (bytes === 0) return '0 Bytes';
+      
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Format time to human-readable format
+    function formatTime(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    }
+
+    // Update all metrics sections with data from the server
+    function updateAllMetrics(data) {
+      // Update summary metrics
+      if (data.summary) {
+        document.getElementById('active-agents').textContent = data.summary.activeAgents || 0;
+        document.getElementById('active-tools').textContent = data.summary.activeTools || 0;
+        document.getElementById('api-health').textContent = data.summary.apiHealth || 'OK';
+        document.getElementById('total-requests').textContent = data.network?.summary?.requestsPerSecond || 0;
+      }
+
+      // Update LLM metrics
+      if (data.llm) {
+        document.getElementById('llm-response-time').textContent = 
+          `${Math.round(data.llm.averageLatency || 0)}ms`;
+        document.getElementById('tokens-per-min').textContent = 
+          Math.round((data.llm.tokensPerSecond || 0) * 60);
+        
+        // Count active models
+        const activeModels = data.llm.models ? Object.keys(data.llm.models).length : 0;
+        document.getElementById('active-models').textContent = activeModels;
+        
+        // Calculate error rate
+        const errorRate = data.llm.requestCount > 0 
+          ? ((data.llm.errors || 0) / data.llm.requestCount * 100).toFixed(1) 
+          : '0.0';
+        document.getElementById('llm-error-rate').textContent = `${errorRate}%`;
+      }
+
+      // Update network metrics
+      if (data.network) {
+        document.getElementById('api-latency').textContent = 
+          `${Math.round(data.network.summary.averageLatency || 0)}ms`;
+        document.getElementById('requests-per-min').textContent = 
+          Math.round((data.network.summary.requestsPerSecond || 0) * 60);
+        document.getElementById('active-connections').textContent = 
+          data.network.summary.connectionsActive || 0;
+        
+        // Format throughput
+        const throughput = data.network.detailed?.traffic?.rateOut || 0;
+        document.getElementById('data-throughput').textContent = formatBytes(throughput) + '/s';
+      }
+
+      // Update system metrics
+      if (data.system) {
+        document.getElementById('cpu-usage').textContent = 
+          `${Math.round(data.system.cpu || 0)}%`;
+        
+        const memoryUsed = data.system.memory?.used || 0;
+        document.getElementById('memory-usage').textContent = formatBytes(memoryUsed);
+        
+        // Calculate disk usage (mock data for now)
+        const diskUsage = Math.round(Math.random() * 30 + 40); // 40-70% range
+        document.getElementById('disk-usage').textContent = `${diskUsage}%`;
+        
+        // Format uptime
+        document.getElementById('system-uptime').textContent = 
+          formatTime(data.system.uptime || 0);
+      }
+    }
   </script>
 
   <!-- Load application scripts -->
@@ -312,5 +498,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="/js/dashboard.js"></script>
   <script src="/js/logViewer.js"></script>
+  <!-- Add metrics JavaScript -->
+  <script src="/js/metrics.js"></script>
 </body>
 </html>
