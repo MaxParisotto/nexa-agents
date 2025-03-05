@@ -260,195 +260,223 @@ export default function Agora() {
   // Identify user on connection
   useEffect(() => {
     if (socket && connected && settings?.user) {
-      // Connect to Halcyon WebSocket endpoint
-      socket.emit('connect_halcyon', {
-        type: 'connect',
-        auth_token: settings?.user?.token,
-        info: {
-          client_version: '1.0',
-          client_name: 'Nexa Agora Client',
-          client_type: 'web',
-          protocol: 'wss',
-          endpoint: 'api.nexaethos.ai',
-          port: '9001',
-          service: 'gpt-uplink'
-        }
-      });
-
       // Send identification after connection
       socket.emit('identify', {
         userId: settings.user.id,
         userName: settings.user.name,
         userType: 'user',
-        avatar: settings.user.avatar,
-        uplink: {
-          enabled: true,
-          service: 'gpt-uplink'
-        }
+        avatar: settings.user.avatar
       });
     }
   }, [socket, connected, settings?.user]);
 
-  // Handle Halcyon WebSocket responses
-  useEffect(() => {
-    if (!socket) return;
+  // Handle sending messages with improved mention handling and messageId
+  const handleSendMessage = useCallback(async () => {
+    if (!newMessage.trim() || !socket) return;
 
-    const handleHalcyonResponse = (data) => {
-      console.log('Halcyon response received:', data);
+    try {
+      setLoading(true);
+      const messageId = `msg-${Date.now()}`;
+      const typingId = `typing-pm-${messageId}`;
+
+      // Process message content
+      let processedContent = newMessage;
+      if (autoPMMention && !processedContent.toLowerCase().includes('@project manager')) {
+        processedContent = `@Project Manager ${processedContent}`;
+      }
+
+      // Add the message to local state first
+      const localMessage = {
+        id: messageId,
+        author: settings?.user?.name || 'You',
+        content: processedContent,
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
+        channel: selectedChannel
+      };
       
-      // Handle different response types according to API spec
-      switch (data.type) {
-        case 'connected':
-          console.log('Connected to Halcyon GPT Uplink:', data.message);
-          // Add connection status message
-          setMessages(prev => [...prev, {
-            id: `system-${Date.now()}`,
-            author: 'System',
-            content: `Connected to Halcyon GPT Uplink: ${data.message}`,
-            timestamp: new Date().toLocaleTimeString(),
-            avatar: '/static/images/avatar/system.png',
-            channel: 'system'
-          }]);
-          break;
+      setMessages(prev => [...prev, localMessage]);
+      setLoading(false);
 
-        case 'action_executed':
-          // Remove typing indicator if present
-          setMessages(prev => prev.filter(msg => 
-            !msg.id.startsWith('typing-halcyon-')
-          ));
-          
-          // Add Halcyon's response
-          setMessages(prev => [...prev, {
-            id: `halcyon-${Date.now()}`,
-            author: 'Halcyon',
-            content: data.message,
-            timestamp: new Date().toLocaleTimeString(),
-            avatar: '/static/images/avatar/halcyon.png',
-            isAgentResponse: true,
-            channel: data.channel
-          }]);
-          break;
+      // Check for Project Manager mention
+      const hasPMMention = processedContent.toLowerCase().includes('@project manager');
 
-        case 'confirmation_required':
-          // Show confirmation dialog
-          setMessages(prev => [...prev, {
-            id: `confirm-${data.confirmation_id}`,
-            author: 'Halcyon',
-            content: `This action requires confirmation. Please confirm to proceed.\n\nConfirmation ID: ${data.confirmation_id}`,
-            timestamp: new Date().toLocaleTimeString(),
-            avatar: '/static/images/avatar/halcyon.png',
-            isConfirmation: true,
-            confirmationId: data.confirmation_id,
-            channel: data.channel
-          }]);
-          break;
+      if (hasPMMention) {
+        // Add typing indicator for Project Manager
+        setMessages(prev => [...prev, {
+          id: typingId,
+          author: 'Project Manager',
+          content: '...',
+          timestamp: new Date().toLocaleTimeString(),
+          avatar: '/static/images/avatar/agent.png',
+          isTyping: true,
+          channel: selectedChannel
+        }]);
 
-        case 'error':
-          // Show error message
+        try {
+          // Create a promise that will be resolved when we get a response
+          const responsePromise = new Promise((resolve, reject) => {
+            // Set up response handler
+            const handleResponse = (event) => {
+              const response = event.detail;
+              window.removeEventListener('project-manager-response', handleResponse);
+              if (response.status === 'error') {
+                reject(new Error(response.message));
+              } else {
+                resolve(response);
+              }
+            };
+
+            // Set up timeout
+            const timeoutId = setTimeout(() => {
+              window.removeEventListener('project-manager-response', handleResponse);
+              reject(new Error('Project Manager response timeout'));
+            }, 30000);
+
+            // Listen for response
+            window.addEventListener('project-manager-response', handleResponse);
+
+            // Send request to Project Manager
+            const requestEvent = new CustomEvent('project-manager-request', {
+              detail: {
+                message: processedContent,
+                settings: {
+                  serverType: 'lmStudio',
+                  apiUrl: 'http://localhost:1234',
+                  model: 'qwen2.5-7b-instruct',
+                  parameters: {
+                    temperature: 0.7,
+                    topP: 0.9,
+                    maxTokens: 1024,
+                    contextLength: 4096
+                  }
+                }
+              }
+            });
+            window.dispatchEvent(requestEvent);
+
+            // Clean up on response
+            return () => {
+              clearTimeout(timeoutId);
+              window.removeEventListener('project-manager-response', handleResponse);
+            };
+          });
+
+          // Wait for response
+          const response = await responsePromise;
+
+          // Remove typing indicator
+          setMessages(prev => prev.filter(msg => msg.id !== typingId));
+
+          // Add the response message
           setMessages(prev => [...prev, {
+            id: `pm-${Date.now()}`,
+            author: 'Project Manager',
+            content: response.message,
+            timestamp: new Date().toLocaleTimeString(),
+            avatar: '/static/images/avatar/agent.png',
+            channel: selectedChannel
+          }]);
+
+        } catch (error) {
+          console.error('PM Response Error:', error);
+          // Remove typing indicator and show error message
+          setMessages(prev => prev.filter(msg => msg.id !== typingId).concat({
             id: `error-${Date.now()}`,
             author: 'System',
-            content: data.message,
+            content: `Error: ${error.message || 'Failed to get response from Project Manager'}. Please try again or check if the Project Manager service is running.`,
             timestamp: new Date().toLocaleTimeString(),
             avatar: '/static/images/avatar/system.png',
             isError: true,
-            channel: data.channel
-          }]);
-          break;
-      }
-    };
-
-    const handleCommandOutput = (data) => {
-      if (xtermRef.current) {
-        xtermRef.current.writeln(data.output);
-      }
-    };
-
-    const handleRemoveTypingIndicator = (data) => {
-      setMessages(prev => prev.filter(msg => msg.id !== data.id));
-    };
-
-    // Handle sending messages with improved mention handling and messageId
-    const handleSendMessage = useCallback(async () => {
-      if (!newMessage.trim() || !socket) return;
-
-      try {
-        setLoading(true);
-        const messageId = `msg-${Date.now()}`;
-
-        // Process message content
-        let processedContent = newMessage;
-        if (autoPMMention && !processedContent.toLowerCase().includes('@halcyon')) {
-          processedContent = `@Halcyon ${processedContent}`;
-        }
-
-        // Add the message to local state first
-        const localMessage = {
-          id: messageId,
-          author: settings?.user?.name || 'You',
-          content: processedContent,
-          timestamp: new Date().toLocaleTimeString(),
-          avatar: settings?.user?.avatar || '/static/images/avatar/user.png',
-          channel: selectedChannel
-        };
-        
-        setMessages(prev => [...prev, localMessage]);
-
-        // Check for Halcyon mention
-        const hasHalcyonMention = processedContent.toLowerCase().includes('@halcyon');
-
-        if (hasHalcyonMention) {
-          // Add typing indicator
-          const typingId = `typing-halcyon-${messageId}`;
-          setMessages(prev => [...prev, {
-            id: typingId,
-            author: 'Halcyon',
-            content: '...',
-            timestamp: new Date().toLocaleTimeString(),
-            avatar: '/static/images/avatar/halcyon.png',
-            isTyping: true,
             channel: selectedChannel
-          }]);
-
-          // Send command request to Halcyon according to API spec
-          socket.emit('command', {
-            type: 'command',
-            auth_token: settings?.user?.token,
-            command: processedContent,
-            messageId,
-            channel: selectedChannel
-          });
+          }));
         }
-
-        setNewMessage('');
-      } catch (error) {
-        console.error('Error sending message:', error);
-      } finally {
-        setLoading(false);
       }
-    }, [newMessage, socket, selectedChannel, settings?.user, autoPMMention]);
 
-    // Handle confirmation actions
-    const handleConfirmAction = (confirmationId) => {
-      socket.emit('confirm', {
-        type: 'confirm',
-        auth_token: settings?.user?.token,
-        confirmation_id: confirmationId
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setMessages(prev => prev.filter(msg => !msg.isTyping).concat({
+        id: `error-${Date.now()}`,
+        author: 'System',
+        content: `Error sending message: ${error.message}`,
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: '/static/images/avatar/system.png',
+        isError: true,
+        channel: selectedChannel
+      }));
+      setLoading(false);
+    }
+  }, [newMessage, socket, selectedChannel, settings?.user, autoPMMention]);
+
+  // Update socket event handler
+  useEffect(() => {
+    if (!socket) return;
+
+    // Handle socket connection status
+    const handleConnect = () => {
+      console.log('Socket connected');
+      setMessages(prev => [...prev, {
+        id: `system-${Date.now()}`,
+        author: 'System',
+        content: 'Connected to server',
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: '/static/images/avatar/system.png',
+        channel: selectedChannel
+      }]);
+    };
+
+    const handleDisconnect = () => {
+      console.log('Socket disconnected');
+      setMessages(prev => [...prev, {
+        id: `system-${Date.now()}`,
+        author: 'System',
+        content: 'Disconnected from server. Attempting to reconnect...',
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: '/static/images/avatar/system.png',
+        channel: selectedChannel
+      }]);
+    };
+
+    const handleConnectError = (error) => {
+      console.error('Socket connection error:', error);
+      setMessages(prev => [...prev, {
+        id: `error-${Date.now()}`,
+        author: 'System',
+        content: `Connection error: ${error.message || 'Failed to connect to server'}`,
+        timestamp: new Date().toLocaleTimeString(),
+        avatar: '/static/images/avatar/system.png',
+        isError: true,
+        channel: selectedChannel
+      }]);
+    };
+
+    // Set up socket event listeners
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
+
+    // Clean up stale typing indicators
+    const cleanupInterval = setInterval(() => {
+      setMessages(prev => {
+        const now = Date.now();
+        return prev.filter(msg => {
+          if (msg.isTyping) {
+            const msgTime = new Date(msg.timestamp).getTime();
+            return (now - msgTime) < 35000;
+          }
+          return true;
+        });
       });
-    };
+    }, 5000);
 
-    // Add event listeners for Halcyon WebSocket
-    socket.on('halcyon_response', handleHalcyonResponse);
-    socket.on('command_output', handleCommandOutput);
-    socket.on('remove_typing_indicator', handleRemoveTypingIndicator);
-
-    // Cleanup
     return () => {
-      socket.off('halcyon_response', handleHalcyonResponse);
-      socket.off('command_output', handleCommandOutput);
-      socket.off('remove_typing_indicator', handleRemoveTypingIndicator);
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
+      clearInterval(cleanupInterval);
     };
-  }, [socket]);
+  }, [socket, selectedChannel]);
 
   // Initialize XTerm
   useEffect(() => {
@@ -487,13 +515,34 @@ export default function Agora() {
     };
   }, [showTerminal]);
 
+  // Handle confirmation actions
+  const handleConfirmAction = useCallback((confirmationId) => {
+    if (!socket) return;
+    
+    socket.emit('confirm', {
+      type: 'confirm',
+      auth_token: settings?.user?.token,
+      confirmation_id: confirmationId
+    });
+
+    // Add confirmation sent message
+    setMessages(prev => [...prev, {
+      id: `confirm-sent-${Date.now()}`,
+      author: 'System',
+      content: `Confirmation sent for action: ${confirmationId}`,
+      timestamp: new Date().toLocaleTimeString(),
+      avatar: '/static/images/avatar/system.png',
+      channel: selectedChannel
+    }]);
+  }, [socket, settings?.user?.token, selectedChannel]);
+
   // Message display with enhanced formatting
   const renderMessage = (message) => {
     // Function to format message content with code blocks and commands
     const formatMessageContent = (content) => {
       if (message.isTyping) {
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box key={`typing-${message.id}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CircularProgress size={16} />
             <span>Thinking...</span>
           </Box>
@@ -502,7 +551,7 @@ export default function Agora() {
 
       if (message.isConfirmation) {
         return (
-          <Box sx={{ width: '100%' }}>
+          <Box key={`confirmation-${message.id}`} sx={{ width: '100%' }}>
             <Typography variant="body2" sx={{ mb: 1 }}>{content}</Typography>
             <Button
               variant="contained"
@@ -519,7 +568,7 @@ export default function Agora() {
       // Check if this is a command message
       if (content.includes('run_terminal_cmd(')) {
         return (
-          <Box sx={{ width: '100%' }}>
+          <Box key={`command-${message.id}`} sx={{ width: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="body2" color="textSecondary">
                 Let me execute this command for you:
@@ -564,11 +613,10 @@ export default function Agora() {
 
       // Try to parse JSON response
       try {
-        // Check if the content looks like a JSON string
         if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
           const jsonData = JSON.parse(content);
           return (
-            <Box sx={{ width: '100%' }}>
+            <Box key={`json-${message.id}`} sx={{ width: '100%' }}>
               <Box 
                 component="pre"
                 sx={{ 
@@ -611,7 +659,7 @@ export default function Agora() {
           const lang = language?.trim() || '';
           
           return (
-            <Box key={index} sx={{ my: 2 }}>
+            <Box key={`code-${message.id}-${index}`} sx={{ my: 2 }}>
               {lang && (
                 <Typography variant="caption" sx={{ 
                   display: 'block',
@@ -638,18 +686,18 @@ export default function Agora() {
 
         // Handle mentions and regular text
         return (
-          <Typography key={index} variant="body2" component="span">
+          <Typography key={`text-${message.id}-${index}`} variant="body2" component="span">
             {part.split(' ').map((word, i) => {
               const isMention = message.mentions?.some(mention => 
                 word === `@${users.find(u => u.id === mention.id)?.displayName}`
               );
               
               return isMention ? (
-                <span key={i} style={styles.mention}>
+                <span key={`mention-${message.id}-${index}-${i}`} style={styles.mention}>
                   {word}{' '}
                 </span>
               ) : (
-                <span key={i}>{word}{' '}</span>
+                <span key={`word-${message.id}-${index}-${i}`}>{word}{' '}</span>
               );
             })}
           </Typography>
@@ -658,14 +706,17 @@ export default function Agora() {
     };
 
     return (
-      <Box sx={{
-        display: 'flex',
-        gap: 2,
-        p: 2,
-        '&:hover': {
-          backgroundColor: 'action.hover'
-        }
-      }}>
+      <Box
+        key={`message-${message.id}`}
+        sx={{
+          display: 'flex',
+          gap: 2,
+          p: 2,
+          '&:hover': {
+            backgroundColor: 'action.hover'
+          }
+        }}
+      >
         <Avatar src={message.avatar} sx={{ width: 32, height: 32 }} />
         <Box sx={{ flex: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -690,9 +741,9 @@ export default function Agora() {
           </Box>
           {message.attachments && message.attachments.length > 0 && (
             <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {message.attachments.map((attachment, index) => (
+              {message.attachments.map((attachment, attachIndex) => (
                 <Chip
-                  key={index}
+                  key={`attachment-${message.id}-${attachIndex}`}
                   label={attachment.name}
                   variant="outlined"
                   size="small"
@@ -705,6 +756,21 @@ export default function Agora() {
         </Box>
       </Box>
     );
+  };
+
+  // Update the message container rendering to handle loading state better
+  const renderMessageContainer = () => {
+    const filteredMessages = messages.filter(msg => !msg.channel || msg.channel === selectedChannel);
+    
+    if (filteredMessages.length === 0 && loading) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    return filteredMessages.map((message) => renderMessage(message));
   };
 
   // Handle channel selection
@@ -1016,15 +1082,7 @@ export default function Agora() {
           </Box>
 
           <Box sx={styles.messageContainer}>
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              messages
-                .filter(msg => !msg.channel || msg.channel === selectedChannel)
-                .map(message => renderMessage(message))
-            )}
+            {renderMessageContainer()}
           </Box>
 
           <Box sx={styles.messageInput}>
