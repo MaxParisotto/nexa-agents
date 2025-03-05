@@ -26,7 +26,10 @@
         transition: max-height 0.3s ease-out;
         max-height: 0;
     }
-    .metrics-content.expanded { max-height: 1000px; }
+    .metrics-content.expanded { 
+        max-height: 1000px; 
+        padding: 15px;
+    }
     .metric-value { 
         font-size: 24px; 
         font-weight: bold; 
@@ -41,7 +44,20 @@
     .expanded .arrow { transform: rotate(180deg); }
     .error { color: #f44336; }
     .success { color: #4CAF50; }
+    .metric-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .metric-item:last-child {
+        border-bottom: none;
+    }
   </style>
+  <!-- Add this inside <head> section, before your other scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="dashboard">
@@ -216,149 +232,85 @@
         <h2>System Metrics</h2>
         
         <div class="metrics-section">
-            <div class="metrics-header" onclick="toggleSection('summary')">
+            <div class="metrics-header" onclick="toggleSection('summary-content')">
                 <h3>Summary</h3>
                 <span class="arrow">▼</span>
             </div>
-            <div id="summary" class="metrics-content">
+            <div id="summary-content" class="metrics-content">
                 <div id="summary-metrics"></div>
             </div>
         </div>
 
         <div class="metrics-section">
-            <div class="metrics-header" onclick="toggleSection('llm')">
+            <div class="metrics-header" onclick="toggleSection('llm-content')">
                 <h3>LLM Performance</h3>
                 <span class="arrow">▼</span>
             </div>
-            <div id="llm" class="metrics-content">
+            <div id="llm-content" class="metrics-content">
                 <div id="llm-metrics"></div>
             </div>
         </div>
 
         <div class="metrics-section">
-            <div class="metrics-header" onclick="toggleSection('network')">
+            <div class="metrics-header" onclick="toggleSection('network-content')">
                 <h3>Network Status</h3>
                 <span class="arrow">▼</span>
             </div>
-            <div id="network" class="metrics-content">
+            <div id="network-content" class="metrics-content">
                 <div id="network-metrics"></div>
             </div>
         </div>
 
         <div class="metrics-section">
-            <div class="metrics-header" onclick="toggleSection('system')">
+            <div class="metrics-header" onclick="toggleSection('system-content')">
                 <h3>System Health</h3>
                 <span class="arrow">▼</span>
             </div>
-            <div id="system" class="metrics-content">
+            <div id="system-content" class="metrics-content">
                 <div id="system-metrics"></div>
+            </div>
+        </div>
+
+        <div class="metrics-section">
+            <div class="metrics-header" onclick="toggleSection('logs-content')">
+                <h3>System Logs</h3>
+                <span class="arrow">▼</span>
+            </div>
+            <div id="logs-content" class="metrics-content">
+                <div id="logViewerContainer"></div>
             </div>
         </div>
     </div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/dashboard.js"></script>
+  <!-- Update the script initialization -->
   <script>
-    // Temporary script to show server information
-    window.addEventListener('DOMContentLoaded', async () => {
-      try {
-        // Try to fetch health status
-        const response = await fetch('/api/health');
-        if (response.ok) {
-          const data = await response.json();
-          document.getElementById('status-message').textContent = `Server status: ${data.status}, Uptime: ${Math.floor(data.uptime/60)} minutes`;
-          document.getElementById('status-message').className = 'status-success';
-        }
-      } catch (error) {
-        console.error("Error fetching server status:", error);
-        document.getElementById('status-message').textContent = "Error connecting to server API";
-        document.getElementById('status-message').className = 'status-error';
-      }
+    // Initialize global socket before other scripts
+    window.socket = io({
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     });
 
-    // Metrics dashboard functionality
-    function toggleSection(id) {
-        const content = document.getElementById(id);
-        content.classList.toggle('expanded');
-    }
-
-    function formatNumber(num) {
-        return new Intl.NumberFormat().format(num);
-    }
-
-    function formatBytes(bytes) {
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log2(bytes) / 10);
-        return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
-    }
-
-    // Handle metrics updates
-    socket.on('metrics_update', (data) => {
-        updateSummaryMetrics(data);
-        updateLLMMetrics(data);
-        updateNetworkMetrics(data);
-        updateSystemMetrics(data);
+    // Add socket connection status indicator
+    socket.on('connect', () => {
+      console.log('Socket connected');
+      document.getElementById('status-message').textContent = 'Connected to server';
+      document.getElementById('status-message').className = 'status-success';
     });
 
-    function updateSummaryMetrics(data) {
-        document.getElementById('summary-metrics').innerHTML = `
-            <div class="metric-value">${formatNumber(data.llm.tokensPerSecond)}</div>
-            <div class="metric-label">Tokens/Second</div>
-            <table>
-                <tr><td>Total Requests</td><td>${formatNumber(data.llm.requestCount)}</td></tr>
-                <tr><td>Active Connections</td><td>${data.network.summary.connectionsActive}</td></tr>
-                <tr><td>System Load</td><td>${data.system.cpu.toFixed(2)}%</td></tr>
-            </table>
-        `;
-    }
-
-    function updateLLMMetrics(data) {
-        document.getElementById('llm-metrics').innerHTML = `
-            <table>
-                <tr>
-                    <th>Model</th>
-                    <th>Usage</th>
-                    <th>Cost</th>
-                    <th>Status</th>
-                </tr>
-                ${Object.entries(data.llm.models).map(([model, stats]) => `
-                    <tr>
-                        <td>${model}</td>
-                        <td>${formatNumber(stats.totalTokens)} tokens</td>
-                        <td>$${stats.totalCost.toFixed(4)}</td>
-                        <td class="${stats.errors > 0 ? 'error' : 'success'}">${stats.errors > 0 ? 'Error' : 'OK'}</td>
-                    </tr>
-                `).join('')}
-            </table>
-        `;
-    }
-
-    function updateNetworkMetrics(data) {
-        document.getElementById('network-metrics').innerHTML = `
-            <div class="metric-value">${formatNumber(data.network.summary.requestsPerSecond)}</div>
-            <div class="metric-label">Requests/Second</div>
-            <table>
-                <tr><td>Data In</td><td>${formatBytes(data.network.socketio.bytesReceived)}/s</td></tr>
-                <tr><td>Data Out</td><td>${formatBytes(data.network.socketio.bytesSent)}/s</td></tr>
-                <tr><td>Latency</td><td>${data.network.summary.averageLatency.toFixed(2)}ms</td></tr>
-            </table>
-        `;
-    }
-
-    function updateSystemMetrics(data) {
-        document.getElementById('system-metrics').innerHTML = `
-            <table>
-                <tr><td>CPU Usage</td><td>${data.system.cpu.toFixed(2)}%</td></tr>
-                <tr><td>Memory</td><td>${formatBytes(data.system.memory.used)} / ${formatBytes(data.system.memory.total)}</td></tr>
-                <tr><td>Uptime</td><td>${Math.floor(data.system.uptime / 3600)} hours</td></tr>
-            </table>
-        `;
-    }
-
-    // Initialize metrics
-    socket.emit('get_metrics');
-    document.getElementById('summary').classList.add('expanded');
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      document.getElementById('status-message').textContent = 'Connection error';
+      document.getElementById('status-message').className = 'status-error';
+    });
   </script>
+
+  <!-- Load application scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <script src="/js/logViewer.js"></script>
 </body>
 </html>

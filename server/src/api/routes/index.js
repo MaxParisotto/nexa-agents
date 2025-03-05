@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../../utils/logger').createLogger('routes');
+const logsRouter = require('./logs');
 
 // Basic health check route
 router.get('/health', (req, res) => {
@@ -32,6 +33,9 @@ Object.entries(routes).forEach(([name, handler]) => {
     logger.warn(`Failed to mount route ${name}:`, err.message);
   }
 });
+
+// Add logs routes
+router.use('/logs', logsRouter);
 
 // Basic error handler
 router.use((err, req, res, next) => {

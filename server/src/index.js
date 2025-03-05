@@ -3,11 +3,15 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const logger = require('./utils/logger').createLogger('main');
+const logService = require('./services/logService');
+const performanceMonitor = require('./api/middleware/performanceMonitor');
 
 try {
   const app = express();
   const server = http.createServer(app);
+
+  // Add performance monitoring
+  app.use(performanceMonitor);
 
   // Basic middleware
   app.use(cors({ origin: "*", credentials: true }));
@@ -25,6 +29,16 @@ try {
     res.sendFile(path.join(publicPath, 'index.html'));
   });
 
+  // Enhanced error handling
+  app.use((err, req, res, next) => {
+    logService.error('Express error', err, {
+      path: req.path,
+      method: req.method,
+      body: req.body
+    });
+    res.status(500).json({ error: true, message: 'Internal server error' });
+  });
+
   // Socket.IO setup
   const io = new Server(server, {
     cors: { origin: "*" },
@@ -32,19 +46,35 @@ try {
   });
 
   io.on('connection', socket => {
-    logger.info(`Client connected: ${socket.id}`);
-    socket.on('disconnect', () => logger.info(`Client disconnected: ${socket.id}`));
+    logService.info('Socket connected', { 
+      socketId: socket.id,
+      address: socket.handshake.address
+    });
+
+    socket.on('disconnect', () => {
+      logService.info('Socket disconnected', { socketId: socket.id });
+    });
+
+    socket.on('error', (error) => {
+      logService.error('Socket error', error, { socketId: socket.id });
+    });
   });
 
   // Start server
   const PORT = process.env.PORT || 3001;
   const HOST = process.env.HOST || '0.0.0.0';
 
+  // Log startup information
   server.listen(PORT, HOST, () => {
-    logger.info(`Server running at http://${HOST}:${PORT}`);
+    logService.info('Server started', {
+      port: PORT,
+      host: HOST,
+      env: process.env.NODE_ENV,
+      nodeVersion: process.version
+    });
   });
 
 } catch (error) {
-  logger.error('Server initialization error:', error);
+  logService.error('Fatal startup error', error);
   process.exit(1);
 }

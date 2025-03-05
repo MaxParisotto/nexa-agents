@@ -148,4 +148,26 @@ router.post('/defaults', (req, res, next) => {
   }
 });
 
+// Basic configuration endpoint
+router.get('/basic', (req, res) => {
+  try {
+    // Return basic configuration
+    res.json({
+      server: {
+        port: process.env.PORT || 3001,
+        host: process.env.HOST || '0.0.0.0',
+        environment: process.env.NODE_ENV || 'development'
+      },
+      features: {
+        logging: true,
+        metrics: true,
+        clustering: false
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching configuration:', error);
+    res.status(500).json({ error: 'Failed to fetch configuration' });
+  }
+});
+
 module.exports = router;

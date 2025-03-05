@@ -9,6 +9,8 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const logger = require('../utils/logger').createLogger('api');
 const networkTracker = require('./middleware/networkTracker');
+const networkMetrics = require('../services/metrics/networkMetrics');
+const { generateTestMetrics } = require('../services/metrics/testData');
 
 logger.info('Initializing API server...');
 
@@ -70,7 +72,32 @@ const io = new Server(server, {
 
 // Socket connection handling with preserved service handlers
 io.on('connection', (socket) => {
+  networkMetrics.trackConnection('websocket', true);
   logger.info('Client connected:', socket.id);
+
+  // Immediately send initial metrics on connection
+  const metrics = generateTestMetrics();
+  socket.emit('metrics_update', metrics);
+  logger.info('Sent initial metrics');
+
+  // Set up metrics interval
+  const metricsInterval = setInterval(() => {
+    const metrics = generateTestMetrics();
+    socket.emit('metrics_update', metrics);
+    logger.debug('Sent metrics update');
+  }, 2000); // Update every 2 seconds
+
+  socket.on('get_metrics', () => {
+    const metrics = generateTestMetrics();
+    socket.emit('metrics_update', metrics);
+    logger.debug('Sent metrics on request');
+  });
+
+  socket.on('disconnect', () => {
+    clearInterval(metricsInterval);
+    networkMetrics.trackConnection('websocket', false);
+    logger.info(`Client disconnected: ${socket.id}`);
+  });
 
   // ProjectManager handlers
   socket.on('project-manager-request', (data) => {
@@ -126,7 +153,17 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Send initial metrics
+  socket.emit('metrics_update', generateTestMetrics());
+
+  // Set up interval for metrics updates
+  const metricsInterval = setInterval(() => {
+    socket.emit('metrics_update', generateTestMetrics());
+  }, 5000); // Update every 5 seconds
+
   socket.on('disconnect', () => {
+    clearInterval(metricsInterval);
+    networkMetrics.trackConnection('websocket', false);
     logger.info(`Client disconnected: ${socket.id}`);
   });
 });

@@ -1,205 +1,158 @@
-const os = require('os');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const logger = require('../../utils/logger').createLogger('network-metrics');
-
-const execAsync = promisify(exec);
+const logger = require('../../utils/logger').createLogger('networkMetrics');
 
 class NetworkMetrics {
-  constructor() {
-    this.metrics = {
-      bytesReceived: 0,
-      bytesSent: 0,
-      connectionsActive: 0,
-      latency: new Map(),
-      errors: 0,
-      requestsPerSecond: 0,
-      interfaces: new Map()
-    };
-
-    this.lastStats = null;
-    this.lastStatsTime = null;
-  }
-
-  async getNetworkStats() {
-    try {
-      const interfaces = os.networkInterfaces();
-      const stats = {
-        timestamp: Date.now(),
-        interfaces: new Map()
-      };
-
-      // Get real network interface statistics on Linux
-      if (process.platform === 'linux') {
-        const { stdout } = await execAsync('cat /proc/net/dev');
-        const lines = stdout.split('\n').slice(2); // Skip headers
-
-        lines.forEach(line => {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 17) { // Valid interface line
-            const iface = parts[0].replace(':', '');
-            if (iface !== 'lo') { // Skip loopback
-              stats.interfaces.set(iface, {
-                bytesReceived: parseInt(parts[1], 10),
-                bytesSent: parseInt(parts[9], 10),
-                packetsReceived: parseInt(parts[2], 10),
-                packetsSent: parseInt(parts[10], 10),
-                errors: parseInt(parts[3], 10) + parseInt(parts[11], 10),
-                drops: parseInt(parts[4], 10) + parseInt(parts[12], 10)
-              });
+    constructor() {
+        this.metrics = {
+            requests: {
+                total: 0,
+                perSecond: 0,
+                byMethod: {},
+                byPath: {}
+            },
+            traffic: {
+                bytesIn: 0,
+                bytesOut: 0,
+                rateIn: 0,
+                rateOut: 0
+            },
+            connections: {
+                active: 0,
+                total: 0,
+                websocket: 0,
+                http: 0
+            },
+            latency: {
+                values: [],
+                average: 0,
+                min: Infinity,
+                max: 0
+            },
+            errors: {
+                count: 0,
+                byType: {}
             }
-          }
-        });
-      }
-
-      // Add socket.io specific stats if available
-      if (global.io) {
-        const engineStats = global.io.engine;
-        stats.socketio = {
-          connectionsCount: engineStats.clientsCount,
-          pollingCount: engineStats.pollCount,
-          websocketCount: engineStats.wsCount,
-          bytesReceived: engineStats.bytesReceived,
-          bytesSent: engineStats.bytesSent
         };
-      }
 
-      return stats;
-    } catch (error) {
-      logger.error('Error getting network stats:', error);
-      return null;
-    }
-  }
-
-  calculateThroughput(currentStats) {
-    if (!this.lastStats || !currentStats) return null;
-
-    const timeDiff = (currentStats.timestamp - this.lastStats.timestamp) / 1000;
-    const throughput = {
-      timestamp: currentStats.timestamp,
-      interfaces: new Map()
-    };
-
-    // Calculate per-interface throughput
-    currentStats.interfaces.forEach((current, iface) => {
-      const last = this.lastStats.interfaces.get(iface);
-      if (last) {
-        throughput.interfaces.set(iface, {
-          bytesReceivedPerSec: (current.bytesReceived - last.bytesReceived) / timeDiff,
-          bytesSentPerSec: (current.bytesSent - last.bytesSent) / timeDiff,
-          packetsReceivedPerSec: (current.packetsReceived - last.packetsReceived) / timeDiff,
-          packetsSentPerSec: (current.packetsSent - last.packetsSent) / timeDiff
-        });
-      }
-    });
-
-    // Calculate Socket.IO throughput
-    if (currentStats.socketio && this.lastStats.socketio) {
-      throughput.socketio = {
-        bytesReceivedPerSec: (currentStats.socketio.bytesReceived - this.lastStats.socketio.bytesReceived) / timeDiff,
-        bytesSentPerSec: (currentStats.socketio.bytesSent - this.lastStats.socketio.bytesSent) / timeDiff
-      };
+        // Start periodic calculations
+        setInterval(() => this.calculateRates(), 1000);
     }
 
-    return throughput;
-  }
-
-  async collect() {
-    const currentStats = await this.getNetworkStats();
-    const throughput = this.lastStats ? this.calculateThroughput(currentStats) : null;
-    this.lastStats = currentStats;
-
-    if (!currentStats) return null;
-
-    // Calculate average latency from stored values
-    const latencyValues = Array.from(this.metrics.latency.values());
-    const averageLatency = latencyValues.length > 0
-      ? latencyValues.reduce((a, b) => a + b, 0) / latencyValues.length
-      : 0;
-
-    // Prepare metrics report
-    const report = {
-      timestamp: new Date().toISOString(),
-      interfaces: {},
-      socketio: currentStats.socketio || {},
-      summary: {
-        connectionsActive: currentStats.socketio?.connectionsCount || 0,
-        averageLatency,
-        errors: this.metrics.errors,
-        requestsPerSecond: this.metrics.requestsPerSecond
-      }
-    };
-
-    // Add per-interface metrics
-    currentStats.interfaces.forEach((stats, iface) => {
-      report.interfaces[iface] = {
-        ...stats,
-        throughput: throughput?.interfaces.get(iface) || {}
-      };
-    });
-
-    // Add Socket.IO throughput if available
-    if (throughput?.socketio) {
-      report.socketio.throughput = throughput.socketio;
+    trackRequest(path, method, startTime, bytesIn = 0) {
+        this.metrics.requests.total++;
+        this.metrics.traffic.bytesIn += bytesIn;
+        
+        // Track by method
+        this.metrics.requests.byMethod[method] = (this.metrics.requests.byMethod[method] || 0) + 1;
+        
+        // Track by path (group similar paths)
+        const pathGroup = this.groupPath(path);
+        this.metrics.requests.byPath[pathGroup] = (this.metrics.requests.byPath[pathGroup] || 0) + 1;
     }
 
-    return report;
-  }
+    trackResponse(bytesOut, statusCode = 200, duration = 0) {
+        this.metrics.traffic.bytesOut += bytesOut;
 
-  trackRequest(path, method, startTime, bytes) {
-    const endTime = Date.now();
-    const latency = endTime - startTime;
+        // Track latency
+        if (duration > 0) {
+            this.metrics.latency.values.push(duration);
+            this.metrics.latency.min = Math.min(this.metrics.latency.min, duration);
+            this.metrics.latency.max = Math.max(this.metrics.latency.max, duration);
+            
+            // Keep only last 1000 latency values
+            if (this.metrics.latency.values.length > 1000) {
+                this.metrics.latency.values.shift();
+            }
+        }
 
-    // Update latency metrics
-    this.updateLatencyMetrics(path, latency);
-
-    // Update request rate
-    const now = Date.now();
-    const oneSecondAgo = now - 1000;
-    this.metrics.requests = (this.metrics.requests || [])
-      .filter(req => req.timestamp > oneSecondAgo)
-      .concat([{ timestamp: now, path, method }]);
-    
-    this.metrics.requestsPerSecond = this.metrics.requests.length;
-    this.metrics.bytesReceived += bytes || 0;
-  }
-
-  trackResponse(bytes) {
-    this.metrics.bytesSent += bytes || 0;
-  }
-
-  trackError(error) {
-    this.metrics.errors++;
-    logger.error('Network error:', error);
-  }
-
-  updateLatencyMetrics(path, latency) {
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-
-    // Clean old latency records
-    for (const [timestamp] of this.metrics.latency) {
-      if (timestamp < oneMinuteAgo) {
-        this.metrics.latency.delete(timestamp);
-      }
+        // Track errors
+        if (statusCode >= 400) {
+            this.metrics.errors.count++;
+            const errorType = Math.floor(statusCode / 100) * 100;
+            this.metrics.errors.byType[errorType] = (this.metrics.errors.byType[errorType] || 0) + 1;
+        }
     }
 
-    // Add new latency record
-    this.metrics.latency.set(now, { path, latency });
-  }
+    trackConnection(type = 'http', isConnect = true) {
+        if (isConnect) {
+            this.metrics.connections.active++;
+            this.metrics.connections.total++;
+            this.metrics.connections[type]++;
+        } else {
+            this.metrics.connections.active--;
+            this.metrics.connections[type]--;
+        }
+    }
 
-  reset() {
-    this.metrics = {
-      bytesReceived: 0,
-      bytesSent: 0,
-      connectionsActive: 0,
-      latency: new Map(),
-      errors: 0,
-      requestsPerSecond: 0,
-      interfaces: new Map()
-    };
-    this.lastStats = null;
-  }
+    getMetrics() {
+        return {
+            summary: {
+                requestsPerSecond: this.metrics.requests.perSecond,
+                connectionsActive: this.metrics.connections.active,
+                errorRate: this.calculateErrorRate(),
+                averageLatency: this.calculateAverageLatency()
+            },
+            detailed: {
+                requests: this.metrics.requests,
+                traffic: this.metrics.traffic,
+                connections: this.metrics.connections,
+                latency: {
+                    average: this.metrics.latency.average,
+                    min: this.metrics.latency.min,
+                    max: this.metrics.latency.max
+                },
+                errors: this.metrics.errors
+            }
+        };
+    }
+
+    // Private methods
+    calculateRates() {
+        const now = Date.now();
+        if (!this.lastCalculation) {
+            this.lastCalculation = now;
+            this.lastRequests = this.metrics.requests.total;
+            this.lastBytesIn = this.metrics.traffic.bytesIn;
+            this.lastBytesOut = this.metrics.traffic.bytesOut;
+            return;
+        }
+
+        const timeDiff = (now - this.lastCalculation) / 1000;
+        const requestDiff = this.metrics.requests.total - this.lastRequests;
+        const bytesInDiff = this.metrics.traffic.bytesIn - this.lastBytesIn;
+        const bytesOutDiff = this.metrics.traffic.bytesOut - this.lastBytesOut;
+
+        this.metrics.requests.perSecond = Math.round(requestDiff / timeDiff);
+        this.metrics.traffic.rateIn = Math.round(bytesInDiff / timeDiff);
+        this.metrics.traffic.rateOut = Math.round(bytesOutDiff / timeDiff);
+
+        this.lastCalculation = now;
+        this.lastRequests = this.metrics.requests.total;
+        this.lastBytesIn = this.metrics.traffic.bytesIn;
+        this.lastBytesOut = this.metrics.traffic.bytesOut;
+    }
+
+    calculateErrorRate() {
+        if (this.metrics.requests.total === 0) return 0;
+        return (this.metrics.errors.count / this.metrics.requests.total * 100).toFixed(2);
+    }
+
+    calculateAverageLatency() {
+        if (this.metrics.latency.values.length === 0) return 0;
+        const sum = this.metrics.latency.values.reduce((a, b) => a + b, 0);
+        this.metrics.latency.average = sum / this.metrics.latency.values.length;
+        return this.metrics.latency.average.toFixed(2);
+    }
+
+    groupPath(path) {
+        // Group similar paths (e.g., /users/123 and /users/456 become /users/:id)
+        return path.replace(/\/\d+/g, '/:id')
+                  .replace(/\/[0-9a-f]{24}/g, '/:id')  // MongoDB IDs
+                  .replace(/\/[0-9a-f-]{36}/g, '/:id'); // UUIDs
+    }
+
+    reset() {
+        this.metrics = new NetworkMetrics().metrics;
+    }
 }
 
-module.exports = NetworkMetrics;
+module.exports = new NetworkMetrics();

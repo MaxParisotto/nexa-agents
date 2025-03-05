@@ -1,0 +1,5 @@
+# Suppress favicon errors
+
+<Files "favicon.ico">
+  ErrorDocument 404 "No favicon"
+</Files>
