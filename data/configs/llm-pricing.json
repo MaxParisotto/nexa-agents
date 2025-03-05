@@ -1,0 +1,18 @@
+{
+  "gpt-4": {
+    "input": 0.03,
+    "output": 0.06,
+    "contextWindow": 8192,
+    "name": "GPT-4",
+    "description": "Most capable model, best for complex tasks",
+    "enabled": true
+  },
+  "gpt-3.5-turbo": {
+    "input": 0.0015,
+    "output": 0.002,
+    "contextWindow": 4096,
+    "name": "GPT-3.5 Turbo",
+    "description": "Good balance of capability and cost",
+    "enabled": true
+  }
+}

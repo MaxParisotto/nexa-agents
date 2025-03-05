@@ -1,86 +1,64 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
 const cors = require('cors');
 const logger = require('./utils/logger').createLogger('main');
 
+// Initialize express app and server
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
 
-const PORT = 3001;
+// Configure CORS
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
-// Middleware
-app.use(cors());
+// Basic middleware
 app.use(express.json());
 
-// Mount API routes
-const apiRoutes = require('./api/routes');
-app.use('/api', apiRoutes);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Server error:', err);
-  res.status(500).json({
-    error: true,
-    message: 'Internal server error'
-  });
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Serve static dashboard files
-app.use(express.static(path.join(__dirname, 'public')));
+// Initialize Socket.IO with permissive CORS
+const io = new Server(server, {
+  cors: {
+    origin: true,
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  allowEIO3: true,
+  transports: ['polling', 'websocket']
+});
 
-// Socket.IO connection handling
+// Socket connection handling
 io.on('connection', (socket) => {
-  logger.info('Client connected:', socket.id);
-  socket.on('disconnect', () => logger.info('Client disconnected:', socket.id));
+  logger.info(`Client connected: ${socket.id}`);
+  
+  socket.on('disconnect', () => {
+    logger.info(`Client disconnected: ${socket.id}`);
+  });
 });
 
 // Start server
-server.listen(PORT, '0.0.0.0', () => {
-  logger.info(`Server running on port ${PORT}`);
+const PORT = 3001;
+const HOST = '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+  logger.info(`HTTP server running on http://${HOST}:${PORT}`);
   logger.info('WebSocket server enabled');
 });
 
-// Keep process alive
-const keepAlive = setInterval(() => {
-  logger.debug('Heartbeat');
-}, 30000);
+// Error handling
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception:', error);
+});
 
-// Single error handler for uncaught errors
-const handleUncaughtError = (error) => {
-  logger.error('Uncaught error:', error);
-  gracefulShutdown();
-};
+process.on('SIGTERM', () => {
+  logger.info('Received SIGTERM, shutting down...');
+  server.close(() => process.exit(0));
+});
 
-// Single shutdown handler
-const gracefulShutdown = () => {
-  clearInterval(keepAlive);
-  server.close(() => {
-    logger.info('Server shutdown complete');
-    process.exit(0);
-  });
-  
-  // Force shutdown after 5s
-  setTimeout(() => {
-    logger.error('Force shutdown');
-    process.exit(1);
-  }, 5000);
-};
-
-// Process handlers - single instance each
-process.once('SIGTERM', gracefulShutdown);
-process.once('SIGINT', gracefulShutdown);
-process.once('uncaughtException', handleUncaughtError);
-process.once('unhandledRejection', handleUncaughtError);
-
-// Prevent immediate exit
-process.stdin.resume();
-
-module.exports = { server, app, io };
+module.exports = { app, server, io };

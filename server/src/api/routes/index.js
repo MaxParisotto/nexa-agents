@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../../utils/logger').createLogger('routes');
+const path = require('path');
 
 // Try to import rate limiter, fallback if not available
 let rateLimit;
@@ -26,32 +27,18 @@ try {
   };
 }
 
-// Import route modules safely
-const loadRoute = (name) => {
-  try {
-    return require(`./${name}`);
-  } catch (e) {
-    logger.error(`Failed to load route module: ${name}`, e);
-    const router = express.Router();
-    router.all('*', (req, res) => {
-      res.status(500).json({
-        error: true,
-        message: `Route module '${name}' failed to load`
-      });
-    });
-    return router;
-  }
+// Import all service routes
+const routes = {
+  agents: require('./agents'),
+  metrics: require('./metrics'),
+  settings: require('./settings'),
+  tools: require('./tools'),
+  workflows: require('./workflows'),
+  uplink: require('./uplink'),
+  backup: require('./backup'),
+  config: require('./config'),
+  // Add any additional service routes here
 };
-
-// Load routes
-const agentsRoutes = loadRoute('agents');
-const metricsRoutes = loadRoute('metrics');
-const settingsRoutes = loadRoute('settings');
-const toolsRoutes = loadRoute('tools');
-const workflowsRoutes = loadRoute('workflows');
-const uplinkRoutes = loadRoute('uplink');
-const backupRoutes = loadRoute('backup');
-const configRoutes = loadRoute('config');
 
 // API Rate limiter
 const apiLimiter = rateLimit({
@@ -69,38 +56,20 @@ const apiLimiter = rateLimit({
 router.use(apiLogger);
 router.use(apiLimiter);
 
-// API versioning (v1)
-const v1Router = express.Router();
+// Apply routes both to /v1 and root for backward compatibility
+Object.entries(routes).forEach(([name, handler]) => {
+  router.use(`/v1/${name}`, handler);
+  router.use(`/${name}`, handler);  // Backward compatibility
+});
 
-// Mount API routes on v1 router
-v1Router.use('/agents', agentsRoutes);
-v1Router.use('/metrics', metricsRoutes); 
-v1Router.use('/settings', settingsRoutes);
-v1Router.use('/tools', toolsRoutes);
-v1Router.use('/workflows', workflowsRoutes);
-v1Router.use('/uplink', uplinkRoutes);
-v1Router.use('/backup', backupRoutes);
-v1Router.use('/config', configRoutes);
-
-// Mount v1 router
-router.use('/v1', v1Router);
-
-// For backward compatibility, mount routes directly as well
-router.use('/agents', agentsRoutes);
-router.use('/metrics', metricsRoutes); 
-router.use('/settings', settingsRoutes);
-router.use('/tools', toolsRoutes);
-router.use('/workflows', workflowsRoutes);
-router.use('/uplink', uplinkRoutes);
-router.use('/config', configRoutes);
-
-// Health check endpoint
+// Health check endpoint with detailed info
 router.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     version: process.env.npm_package_version || '1.0.0',
+    services: Object.keys(routes),
     memory: {
       usage: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
     }

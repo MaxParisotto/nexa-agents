@@ -34,7 +34,7 @@ export function SocketProvider({ children }) {
 
   // Define sendProjectManagerMessage as a component function using useCallback
   const sendProjectManagerMessage = useCallback((message, messageId, source = 'chat-widget', channel = 'chat-widget') => {
-    if (!socketRef.current || !socketRef.current.connected) {
+    if (!socketRef.current?.connected) {
       logger.warn('Socket not connected, cannot send message');
       return;
     }
@@ -105,8 +105,12 @@ export function SocketProvider({ children }) {
 
         // Create new socket connection with retry logic
         const socketInstance = io(SOCKET_URL, {
+          transports: ['polling', 'websocket'],
+          autoConnect: true,
+          reconnection: true,
           reconnectionAttempts: 5,
-          timeout: 10000
+          reconnectionDelay: 1000,
+          timeout: 20000
         });
 
         // Set up event listeners before connecting
