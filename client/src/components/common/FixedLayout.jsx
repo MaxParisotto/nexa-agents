@@ -6,6 +6,7 @@ import {
   useMediaQuery, useTheme, Menu, MenuItem, Avatar, Badge 
 } from '@mui/material';
 import ProjectManagerChat from '../features/ChatWidget';
+import PropTypes from 'prop-types';
 
 // Import icons
 import MenuIcon from '@mui/icons-material/Menu';
@@ -28,20 +29,17 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BuildIcon from '@mui/icons-material/Build';
 import ChatIcon from '@mui/icons-material/Chat';
 
-import { useSettings } from '../../contexts/SettingsContext';
-
 // Drawer width
 const DRAWER_WIDTH = 240;
 
 /**
  * FixedLayout Component - Application layout with fixed sidebar and header
  */
-export default function FixedLayout({ darkMode, toggleDarkMode }) {
+const FixedLayout = ({ darkMode, toggleDarkMode }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
   const location = useLocation();
-  const { settings } = useSettings();
   
   // State for drawer on mobile
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -418,3 +416,10 @@ export default function FixedLayout({ darkMode, toggleDarkMode }) {
     </Box>
   );
 }
+
+FixedLayout.propTypes = {
+  darkMode: PropTypes.bool.isRequired,
+  toggleDarkMode: PropTypes.func.isRequired
+};
+
+export default FixedLayout;

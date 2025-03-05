@@ -42,6 +42,43 @@ const customFormat = winston.format.combine(
   })
 );
 
+// Create base logger configuration
+const createBaseLogger = (module) => {
+  return winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+      winston.format.timestamp({
+        format: 'YYYY-MM-DD HH:mm:ss'
+      }),
+      winston.format.printf(info => `${info.timestamp} ${info.level}: [${module}] ${info.message}`)
+    ),
+    transports: [
+      new winston.transports.Console({
+        handleExceptions: false,
+        handleRejections: false
+      })
+    ],
+    exitOnError: false
+  });
+};
+
+// Cache for loggers to prevent duplicates
+const loggerCache = new Map();
+
+// Create or get cached logger
+const createLogger = (module) => {
+  if (loggerCache.has(module)) {
+    return loggerCache.get(module);
+  }
+  
+  const logger = createBaseLogger(module);
+  loggerCache.set(module, logger);
+  return logger;
+};
+
+// Set max listeners for process
+process.setMaxListeners(20);
+
 // Create default logger
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'debug',
@@ -104,11 +141,6 @@ logger.stream = {
   write: function(message) {
     logger.info(message.trim());
   }
-};
-
-// Function to create a logger with a specific label
-const createLogger = (label) => {
-  return logger.child({ label });
 };
 
 // Export both the default logger and the createLogger function

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const agentsService = require('../../services/agentsService');
+const logger = require('../../utils/logger').createLogger('agents');
 
 // Get all agents
 router.get('/', async (req, res) => {
@@ -8,7 +9,7 @@ router.get('/', async (req, res) => {
     const agents = agentsService.getAllAgents();
     res.json(agents);
   } catch (error) {
-    console.error('Error retrieving agents:', error);
+    logger.error('Error retrieving agents:', error);
     res.status(500).json({ error: 'Failed to retrieve agents' });
   }
 });
@@ -24,7 +25,7 @@ router.get('/:id', async (req, res) => {
     
     res.json(agent);
   } catch (error) {
-    console.error(`Error retrieving agent ${req.params.id}:`, error);
+    logger.error(`Error retrieving agent ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to retrieve agent' });
   }
 });
@@ -35,7 +36,7 @@ router.post('/', async (req, res) => {
     const newAgent = agentsService.createAgent(req.body);
     res.status(201).json(newAgent);
   } catch (error) {
-    console.error('Error creating agent:', error);
+    logger.error('Error creating agent:', error);
     res.status(500).json({ error: 'Failed to create agent' });
   }
 });
@@ -49,7 +50,7 @@ router.put('/:id', async (req, res) => {
     if (error.message.includes('not found')) {
       return res.status(404).json({ error: error.message });
     }
-    console.error(`Error updating agent ${req.params.id}:`, error);
+    logger.error(`Error updating agent ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to update agent' });
   }
 });
@@ -63,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     if (error.message.includes('not found')) {
       return res.status(404).json({ error: error.message });
     }
-    console.error(`Error deleting agent ${req.params.id}:`, error);
+    logger.error(`Error deleting agent ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to delete agent' });
   }
 });
@@ -81,7 +82,7 @@ router.patch('/:id/status', async (req, res) => {
     if (error.message.includes('not found')) {
       return res.status(404).json({ error: error.message });
     }
-    console.error(`Error updating agent status ${req.params.id}:`, error);
+    logger.error(`Error updating agent status ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to update agent status' });
   }
 });

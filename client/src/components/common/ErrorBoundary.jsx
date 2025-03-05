@@ -64,7 +64,7 @@ class ErrorBoundary extends React.Component {
             </Typography>
             
             <Typography variant="body1" paragraph>
-              The application encountered an unexpected error. We're sorry for the inconvenience.
+              The application encountered an unexpected error. We&apos;re sorry for the inconvenience.
             </Typography>
             
             <Box sx={{ my: 3, p: 2, bgcolor: 'background.paper', borderRadius: 1, overflow: 'auto', textAlign: 'left' }}>

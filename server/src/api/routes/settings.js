@@ -1,19 +1,36 @@
+/**
+ * Settings API routes
+ */
 const express = require('express');
 const router = express.Router();
-const settingsService = require('../../services/settingsService');
+const logger = require('../../utils/logger').createLogger('settings');
 
-// Get all settings
-router.get('/', async (req, res) => {
+// Try to import settings service
+let settingsService;
+try {
+  settingsService = require('../../services/settingsService');
+} catch (e) {
+  logger.error('Failed to load settings service:', e);
+}
+
+router.get('/', (req, res) => {
   try {
-    const settings = settingsService.getSettings();
-    res.json(settings);
+    if (settingsService) {
+      const settings = settingsService.getSettings();
+      res.json(settings);
+    } else {
+      // Fallback response if service is unavailable
+      res.json({
+        message: 'Settings service unavailable',
+        error: true
+      });
+    }
   } catch (error) {
-    console.error('Error retrieving settings:', error);
-    res.status(500).json({ error: 'Failed to retrieve settings' });
+    logger.error('Error getting settings:', error);
+    res.status(500).json({ error: true, message: 'Error retrieving settings' });
   }
 });
 
-// Update settings
 router.put('/', async (req, res) => {
   try {
     const updatedSettings = settingsService.updateSettings(req.body);

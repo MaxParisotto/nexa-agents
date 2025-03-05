@@ -26,14 +26,11 @@ const SocketContext = createContext({
  * Socket Provider component to wrap application and provide socket functionality
  */
 export function SocketProvider({ children }) {
-  const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const socketRef = useRef(null);
   const cleanupRef = useRef(false);
   const unmountingRef = useRef(false);
-  const MAX_RECONNECT_ATTEMPTS = 5;
 
   // Define sendProjectManagerMessage as a component function using useCallback
   const sendProjectManagerMessage = useCallback((message, messageId, source = 'chat-widget', channel = 'chat-widget') => {
@@ -81,7 +78,6 @@ export function SocketProvider({ children }) {
 
       // Clear the socket reference
       socketRef.current = null;
-      setSocket(null);
       setConnected(false);
       logger.debug('Cleanup completed');
     }
@@ -109,16 +105,8 @@ export function SocketProvider({ children }) {
 
         // Create new socket connection with retry logic
         const socketInstance = io(SOCKET_URL, {
-          transports: ['websocket', 'polling'],
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
-          timeout: 20000,
-          autoConnect: true,
-          forceNew: true,
-          closeOnBeforeunload: false,
-          path: '/socket.io'
+          reconnectionAttempts: 5,
+          timeout: 10000
         });
 
         // Set up event listeners before connecting
@@ -126,7 +114,6 @@ export function SocketProvider({ children }) {
           if (cleanupRef.current || unmountingRef.current) return;
           logger.debug('Socket connected successfully');
           setConnected(true);
-          setReconnectAttempts(0);
           clearTimeout(connectionTimeout);
         });
 
@@ -134,14 +121,14 @@ export function SocketProvider({ children }) {
           if (cleanupRef.current || unmountingRef.current) return;
           logger.warn('Socket connection error:', error.message);
           setConnected(false);
-          setReconnectAttempts(prev => {
-            const newAttempts = prev + 1;
-            if (newAttempts >= MAX_RECONNECT_ATTEMPTS) {
-              logger.error('Max reconnection attempts reached');
-              cleanup();
-            }
-            return newAttempts;
-          });
+        });
+
+        socketInstance.on('connect_error', (error) => {
+          logger.error('Connection Error:', error);
+        });
+
+        socketInstance.on('connect_timeout', (timeout) => {
+          logger.error('Connection Timeout:', timeout);
         });
 
         socketInstance.on('disconnect', (reason) => {
@@ -221,7 +208,6 @@ export function SocketProvider({ children }) {
         }, 20000);
 
         socketRef.current = socketInstance;
-        setSocket(socketInstance);
 
         // Now that all listeners are set up, attempt to connect
         socketInstance.connect();

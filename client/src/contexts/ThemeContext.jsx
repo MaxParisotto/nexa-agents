@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo, useCallback } from 'react';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import { useSettings } from './SettingsContext';
 
@@ -27,9 +27,9 @@ export const ThemeProvider = ({ children }) => {
   }, [settings?.theme]);
   
   // Toggle dark mode
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode(prev => !prev);
+  }, []);
   
   // Create MUI theme based on current settings
   const theme = useMemo(() => {

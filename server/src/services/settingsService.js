@@ -10,6 +10,12 @@ const DATA_DIR = path.join(__dirname, '../../../data');
 const CONFIG_DIR = path.join(__dirname, '../../../config');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
+// Create backup directory
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+if (!fs.existsSync(BACKUP_DIR)) {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
 // Default settings
 const DEFAULT_SETTINGS = {
   llmProviders: [
@@ -215,6 +221,12 @@ class SettingsService {
 
   updateSettings(newSettings) {
     try {
+      // Create backup before updating
+      this.backupSettings();
+      
+      // Validate settings before saving
+      this.validateSettings(newSettings);
+
       // Merge with existing settings
       this.settings = {
         ...this.settings,
@@ -228,6 +240,94 @@ class SettingsService {
     } catch (error) {
       logger.error('Error updating settings:', error);
       throw error;
+    }
+  }
+
+  validateSettings(settings) {
+    // Basic validation to ensure required structure
+    if (settings.llmProviders && !Array.isArray(settings.llmProviders)) {
+      throw new Error('llmProviders must be an array');
+    }
+    
+    if (settings.agents && !settings.agents.items) {
+      throw new Error('agents must contain an items array');
+    }
+    
+    // Additional validation can be added as needed
+    return true;
+  }
+
+  backupSettings() {
+    try {
+      if (fs.existsSync(SETTINGS_FILE)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupFile = path.join(BACKUP_DIR, `settings-backup-${timestamp}.json`);
+        fs.copyFileSync(SETTINGS_FILE, backupFile);
+        
+        // Keep only last 10 backups
+        const backups = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith('settings-backup-'));
+        if (backups.length > 10) {
+          backups.sort();
+          fs.unlinkSync(path.join(BACKUP_DIR, backups[0]));
+        }
+        
+        logger.info(`Settings backed up to ${backupFile}`);
+      }
+    } catch (error) {
+      logger.warn('Failed to backup settings:', error);
+    }
+  }
+
+  mergeLLMProviders(baseProviders = [], overrideProviders = []) {
+    if (!overrideProviders.length) return baseProviders;
+    
+    const result = [...baseProviders];
+    
+    overrideProviders.forEach(override => {
+      const existingIndex = result.findIndex(base => base.id === override.id);
+      
+      if (existingIndex >= 0) {
+        // Update existing provider
+        result[existingIndex] = { ...result[existingIndex], ...override };
+      } else {
+        // Add new provider
+        result.push(override);
+      }
+    });
+    
+    return result;
+  }
+
+  restoreBackup(backupName) {
+    try {
+      const backupFile = path.join(BACKUP_DIR, backupName);
+      if (fs.existsSync(backupFile)) {
+        fs.copyFileSync(backupFile, SETTINGS_FILE);
+        this.initializeSettings();
+        logger.info(`Settings restored from ${backupName}`);
+        return true;
+      }
+      logger.error(`Backup file ${backupName} not found`);
+      return false;
+    } catch (error) {
+      logger.error('Failed to restore settings:', error);
+      return false;
+    }
+  }
+
+  listBackups() {
+    try {
+      return fs.readdirSync(BACKUP_DIR)
+        .filter(f => f.startsWith('settings-backup-'))
+        .map(filename => ({
+          name: filename,
+          path: path.join(BACKUP_DIR, filename),
+          created: fs.statSync(path.join(BACKUP_DIR, filename)).birthtime
+        }))
+        .sort((a, b) => b.created - a.created);
+    } catch (error) {
+      logger.error('Failed to list backups:', error);
+      return [];
     }
   }
 
@@ -249,7 +349,31 @@ class SettingsService {
       throw error;
     }
   }
+
+  getEnvironmentSettings() {
+    const env = process.env.NODE_ENV || 'development';
+    const envSettings = path.join(CONFIG_DIR, `settings.${env}.json`);
+    
+    try {
+      if (fs.existsSync(envSettings)) {
+        const envData = JSON.parse(fs.readFileSync(envSettings, 'utf8'));
+        return this.mergeSettings(this.settings, envData);
+      }
+    } catch (error) {
+      logger.error(`Error loading ${env} settings:`, error);
+    }
+    return this.settings;
+  }
+
+  mergeSettings(base, override) {
+    // Deep merge settings
+    return {
+      ...base,
+      ...override,
+      features: { ...base.features, ...override.features },
+      llmProviders: this.mergeLLMProviders(base.llmProviders, override.llmProviders)
+    };
+  }
 }
 
-// Export singleton instance
 module.exports = new SettingsService();

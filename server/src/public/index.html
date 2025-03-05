@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexa Agents - Configuration Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/dashboard.js" defer></script>
+</head>
+<body>
+  <div class="dashboard">
+    <header class="header">
+      <h1>Nexa Configuration Dashboard</h1>
+      <div class="actions">
+        <button id="save-all-btn" class="btn primary">Save All Changes</button>
+        <button id="restore-btn" class="btn secondary">Restore Defaults</button>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="server">Server</button>
+      <button class="tab-btn" data-tab="providers">LLM Providers</button>
+      <button class="tab-btn" data-tab="tools">Tools</button>
+      <button class="tab-btn" data-tab="agents">Agents</button>
+      <button class="tab-btn" data-tab="features">Features</button>
+      <button class="tab-btn" data-tab="backup">Backup</button>
+    </div>
+
+    <div class="tab-content">
+      <!-- Server Settings Tab -->
+      <div class="tab-pane active" id="server-tab">
+        <h2>Server Configuration</h2>
+        <form id="server-form" class="settings-form">
+          <div class="form-group">
+            <label for="server-port">Port</label>
+            <input type="number" id="server-port" name="PORT" min="1" max="65535" value="3001">
+          </div>
+          <div class="form-group">
+            <label for="server-host">Host</label>
+            <input type="text" id="server-host" name="HOST" value="0.0.0.0">
+          </div>
+          <div class="form-group">
+            <label for="server-env">Environment</label>
+            <select id="server-env" name="NODE_ENV">
+              <option value="development">Development</option>
+              <option value="production">Production</option>
+              <option value="testing">Testing</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="api-timeout">API Timeout (ms)</label>
+            <input type="number" id="api-timeout" name="API_TIMEOUT" min="1000" step="1000" value="30000">
+          </div>
+          <div class="form-group">
+            <label>Clustering</label>
+            <div class="checkbox-group">
+              <input type="checkbox" id="enable-clustering" name="ENABLE_CLUSTERING">
+              <label for="enable-clustering">Enable Clustering</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="worker-count">Worker Count (0 = auto)</label>
+            <input type="number" id="worker-count" name="WORKER_COUNT" min="0" value="0">
+          </div>
+        </form>
+      </div>
+
+      <!-- LLM Providers Tab -->
+      <div class="tab-pane" id="providers-tab">
+        <h2>LLM Providers</h2>
+        <div class="providers-list" id="providers-list">
+          <!-- Providers will be added here dynamically -->
+        </div>
+        <button id="add-provider-btn" class="btn">Add Provider</button>
+      </div>
+
+      <!-- Tools Tab -->
+      <div class="tab-pane" id="tools-tab">
+        <h2>Available Tools</h2>
+        <div class="tools-list" id="tools-list">
+          <!-- Tools will be added here dynamically -->
+        </div>
+        <button id="add-tool-btn" class="btn">Add Tool</button>
+      </div>
+
+      <!-- Agents Tab -->
+      <div class="tab-pane" id="agents-tab">
+        <h2>Configured Agents</h2>
+        <div class="agents-list" id="agents-list">
+          <!-- Agents will be added here dynamically -->
+        </div>
+        <button id="add-agent-btn" class="btn">Add Agent</button>
+      </div>
+
+      <!-- Features Tab -->
+      <div class="tab-pane" id="features-tab">
+        <h2>Feature Flags</h2>
+        <form id="features-form" class="settings-form">
+          <!-- Features will be added here dynamically -->
+        </form>
+      </div>
+
+      <!-- Backup Tab -->
+      <div class="tab-pane" id="backup-tab">
+        <h2>Backup and Restore</h2>
+        <div class="backup-actions">
+          <button id="create-backup-btn" class="btn">Create Backup</button>
+        </div>
+        <h3>Available Backups</h3>
+        <div class="backups-list" id="backups-list">
+          <!-- Backups will be added here dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-footer">
+      <span id="status-message"></span>
+      <span id="save-indicator"></span>
+    </div>
+  </div>
+
+  <!-- Templates -->
+  <template id="provider-template">
+    <div class="provider-item card">
+      <div class="card-header">
+        <h3 class="provider-name">Provider Name</h3>
+        <div class="card-actions">
+          <button class="btn-edit btn-small">Edit</button>
+          <button class="btn-toggle btn-small">Disable</button>
+          <button class="btn-delete btn-small">Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="provider-details"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="provider-form-template">
+    <form class="provider-form">
+      <div class="form-group">
+        <label for="provider-name">Name</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="provider-type">Type</label>
+        <select name="type">
+          <option value="openai">OpenAI</option>
+          <option value="lmstudio">LM Studio</option>
+          <option value="ollama">Ollama</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="provider-url">Base URL</label>
+        <input type="url" name="baseUrl">
+      </div>
+      <div class="form-group">
+        <label for="provider-apikey">API Key</label>
+        <input type="password" name="apiKey">
+      </div>
+      <div class="form-group">
+        <label for="provider-models">Models (comma-separated)</label>
+        <input type="text" name="models">
+      </div>
+      <div class="form-group">
+        <label for="provider-temp">Temperature</label>
+        <input type="range" name="temperature" min="0" max="1" step="0.1" value="0.7">
+        <span class="range-value">0.7</span>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn primary">Save</button>
+        <button type="button" class="btn cancel">Cancel</button>
+      </div>
+    </form>
+  </template>
+
+  <script>
+    // Temporary script to show server information
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // Try to fetch health status
+        const response = await fetch('/api/health');
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('status-message').textContent = `Server status: ${data.status}, Uptime: ${Math.floor(data.uptime/60)} minutes`;
+          document.getElementById('status-message').className = 'status-success';
+        }
+      } catch (error) {
+        console.error("Error fetching server status:", error);
+        document.getElementById('status-message').textContent = "Error connecting to server API";
+        document.getElementById('status-message').className = 'status-error';
+      }
+    });
+  </script>
+</body>
+</html>
